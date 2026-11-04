@@ -1,0 +1,74 @@
+# Oceanic Tools API
+
+Express 5 API for inventory, POS, purchasing, receivables/payables, accounting, and the public store. PostgreSQL on Neon is the source of truth; Prisma 6 manages the schema. The API and background worker run separately from Next.js.
+
+## Local setup
+
+1. Create a Neon project. Copy `.env.example` to the API/worker `.env` and set `DATABASE_URL` to your Neon pooled hostname (contains `-pooler`). Keep `DIRECT_URL` out of API and worker runtime; supply it only to a migration task. Do not commit `.env` or expose secrets through `NEXT_PUBLIC_*`.
+2. Set the Paystack, Resend, and Termii credentials for the integrations you plan to use. Leave optional provider variables unset while developing; outbound deliveries remain queued and retry with bounded backoff.
+3. Run `npm install` and `npm run db:generate`.
+4. Apply checked-in migrations from a dedicated migration task. Supply both a pooled `DATABASE_URL` (required by the Prisma schema) and a direct `DIRECT_URL` with `sslmode=require&connect_timeout=30`; see `.env.migrate.example`. Run `npm run db:preflight` and `npm run db:deploy`. `DIRECT_URL` is a deployment-time migration secret, not an API/worker runtime variable.
+5. Set `OWNER_EMAIL`, `OWNER_PASSWORD` (at least 12 characters), `OWNER_NAME`, and `BUSINESS_NAME`; run `npm run seed:owner` once. It creates the business, default branch, owner, and starter chart of accounts in one transaction.
+6. Start the API with `npm run dev` and the notification/reservation worker with `npm run worker`. The health endpoint is `GET http://localhost:4000/health`.
+
+The API and worker use `@prisma/adapter-pg` with `pg` and the pooled `DATABASE_URL`; production startup requires the Neon `-pooler` host and TLS with `sslmode=require` or `sslmode=verify-full`. Runtime code upgrades `require` to `verify-full` before connecting, preserving the current pg behavior without the upcoming pg 9 alias warning. Each process uses a local pool capped at 10 connections. Worker sweeps do not overlap, and failures identify the task that was running. Prisma Migrate uses the separately supplied direct `DIRECT_URL`. API and worker processes do not require `DIRECT_URL`. Owner and staff sign-ins use separate role-specific `HttpOnly`, `Secure` access and refresh cookies (cookie names are the configured `SESSION_COOKIE_NAME` and `REFRESH_COOKIE_NAME` prefixes with `_owner` or `_staff`). The frontend keeps the selected role in per-tab `sessionStorage` and sends it as `X-Oceanic-Workspace`; the API checks that the selected role matches the session user. This lets an owner tab and a staff tab stay signed in independently in the same browser. The access cookie lasts 15 minutes and the refresh cookie lasts 7 days. Refresh tokens rotate on renewal; reuse outside the short collision grace period revokes that session. Refresh lifetime is capped at 7 days from login. The refresh cookie is scoped to `/api/v1/auth/refresh`; set `COOKIE_SAME_SITE=none` when the frontend and API are cross-site, and keep the configured frontend origin exact. Auth-changing POST routes require that Origin. Cookies are sent only over HTTPS (modern browsers also permit secure cookies on localhost for development). Customer storefront sessions remain separate. The API validates business ownership on records and role checks on sensitive operations.
+
+## Staff access
+
+For pooled Neon runtime connections, include `connect_timeout=15` in `DATABASE_URL` to allow idle computes to wake; runtime code supplies this default only when the parameter is missing. Prisma transactions wait up to 10 seconds to start and may run up to 15 seconds.
+
+The platform has two staff roles: `OWNER` and `STAFF`. Owners manage the business, branches, team accounts, settings, audit history, and product merges. Each staff account is assigned to one branch. Staff-created products are automatically attached to that branch; owners choose the branches that stock a new product. Product images are shared across branches and optional; products can be published with any number of views. Staff use the shared operational workspace for products, stock, purchasing, checkout and shifts, customers and online orders, payments, expenses, accounting, and reports. Staff sign in at `/staff/login` and open their dashboard at `/staff/dashboard`. The dashboard shares operational pages and navigation with the owner workspace. Apply the pending migrations, including `20261102090000_consolidate_staff_roles`, `20261102120000_product_image_gallery`, `20261102130000_product_creation_fields`, and `20261102140000_product_categories`, before deploying this API version.
+
+## Backend capabilities
+
+- Session authentication, Argon2id passwords, role-based access, tenant scoping, security headers, origin checks, rate limits, audit log, and health endpoint.
+- Products with business-wide category and subcategory management, brand/model and flexible specifications, duplicate checks, optional multiple labeled product photos, bulk structured-row and CSV-text import preview/commit, product merge, branch assignment and opening stock, movements, adjustments, stock transfers, and count/approve/post workflows. Imported products must reference categories and subcategories already created in the business. Existing product category names are backfilled by migration `20261102140000_product_categories`.
+- Suppliers, purchase orders, approval, partial goods receiving, supplier invoices/payments/returns, weighted-average product cost, and payable aging.
+- POS sales with server-side pricing, idempotency, branch stock locking, customer credit limits, payment allocations, refunds, and cashier shifts.
+- Public store catalogue and checkout, reservations/expiry, Paystack initialization and server verification, signed webhooks, order fulfillment, gateway settlement reconciliation, and channel attribution.
+- Customer statements/payments, credit balances, consent preferences, reminder history, queued email/SMS reminders, and a worker that retries Resend/Termii delivery failures.
+- Customer accounts with secure sessions, email verification, and one-time password reset links delivered through the retryable Resend outbox.
+- Separate customer registration and sign-in (`/api/v1/customer-account`) with isolated secure sessions, customer-only online order history, and account statements.
+- Double-entry journals, seeded chart of accounts, expenses, receivables/payables, inventory valuation and stock-health summaries, weekly sales/profit trends and top products, tax, classified cash flow, purchase, purchase-cohort, and aging reports.
+- Low-stock, overdue debt, reservation-expiry, and customer reminder jobs.
+- Branch-level batch lots with expiry-aware FEFO allocation across POS and online checkout, reservation/release, returns, purchasing, transfers, stock counts, and adjustments. Existing stock is backfilled into undated opening lots during migration. Batch visibility is available from `GET /api/v1/inventory/lots`.
+
+## API route groups
+
+All application routes use `/api/v1`.
+
+| Prefix | Main operations |
+| --- | --- |
+| `/auth` | Login, current session, refresh/rotation, refresh-cookie logout, password change (revokes all administrator sessions) |
+| `/business`, `/users`, `/branches` | Business settings, staff, branches |
+| `/products` | Product CRUD, imports, merge, stock movements and adjustments |
+| `/inventory` | Branch stock summary, movements, lots, transfers and stock counts |
+| `/suppliers`, `/purchases` | Suppliers, purchase orders, receiving, supplier returns |
+| `/customers` | Customers, statements, payments, reminder preferences/history/queue |
+| `/sales` | POS sales, returns/refunds, cashier shifts |
+| `/store`, `/online-orders` | Public catalogue/checkout, payment verification, fulfillment |
+| `/customer-account` | Registration, email verification, login, password reset, customer orders/statements, logout |
+| `/webhooks/paystack` | Paystack signed webhook events |
+| `/payments`, `/expenses`, `/accounting` | Supplier payments, settlements, expenses, chart of accounts, journals |
+| `/notifications`, `/audit-logs` | In-app alerts and audit history |
+| `/reports` | Weekly performance, profit and loss, balance sheet, tax, classified cash flow, purchases, inventory valuation, cohort, receivable/payable aging, cash reconciliation; JSON by default and downloadable CSV, XLSX, or PDF with `?format=csv`, `?format=xlsx`, or `?format=pdf` |
+
+## Neon and schema workflow
+
+- `npm run db:generate` regenerates the typed Prisma client; generation does not connect to the database and was verified without `DIRECT_URL`.
+- `npm run db:preflight` validates `DIRECT_URL` as a TLS-enabled direct PostgreSQL URL with a bounded connection timeout; it never prints the URL.
+- `npm run db:deploy` applies checked-in migrations. Run it from a one-off migration task after `db:preflight`. The administrator refresh-session migration expires existing administrator access sessions so staff sign in again after deployment. The product setup migration adds staff branch assignments and product brand/model/specification fields; apply it before using those flows.
+- `npm run db:status` checks migration status and requires `DIRECT_URL`.
+- Create development migrations from a separate Neon development branch using `prisma migrate dev` with that branch's direct URL. Do not use production credentials for local schema development.
+- The initial, FEFO stock-lot, reserved-lot backfill, customer-account, customer-email-flow, product-image, and Cloudinary media-asset migrations have been applied to the configured Neon database. The product image gallery migration (`20261102120000_product_image_gallery`) is new and must be applied through the separate migration task before deploying this code.
+
+## Operational notes and remaining launch integrations
+
+- Resend and Termii delivery requires verified sender configuration and provider credentials. Customer email/SMS consent defaults to off. Scheduled reminders use a one-day-before, due-date, then weekly-overdue cadence; providers do not block POS or checkout.
+- Paystack webhooks are validated from the raw request body with HMAC SHA-512 and payment status is re-verified server-side before online orders become sales.
+- Product photos support optional `FRONT`, `BACK`, `SIDE`, and multiple `ADDITIONAL` views. Upload or replace with multipart `image` and `view` fields at `POST /products/:productId/images`; pass `imageId` to replace a particular additional photo. Remove a photo with `DELETE /products/:productId/images/:imageId`. Product editing lets the owner manage photos and publish without requiring images. Legacy `POST` and `DELETE /products/:productId/image` endpoints continue to manage the Front view. Public product detail responses include the active gallery at `GET /store/products/:sku?store=:storeSlug`, and the frontend view is `/store/:storeSlug/products/:sku`. All product images are shared across branches and stored in Cloudinary; the database stores only asset references and view labels. The gallery migration backfills existing single images as Front views.
+- Customer verification and reset links use `CUSTOMER_ACCOUNT_BASE_URL`; configure it to the public frontend origin in deployed environments. The frontend still needs matching verification and reset-password pages.
+- Product CSV can be parsed at `/products/import/csv/parse` (UTF-8 text in JSON, up to 1 MB); XLSX can be parsed at `/products/import/xlsx/parse` (raw XLSX upload, up to 5 MB, one worksheet). Both return normalized rows for review through `/import/validate` and submission through `/import/commit`; rows must reference categories and subcategories already created in the business. XLSX imports allow plain text and numeric cells only; formulas, merged cells, rich text, hyperlinks, errors, and multiple worksheets are rejected. Owners and inventory managers can upload or replace a product image using multipart field `image` at `POST /products/:productId/image` (JPEG, PNG, or WebP; default 5 MB), and remove it at `DELETE /products/:productId/image`. Course videos use `POST /media/course-videos` and `PUT /media/course-videos/:assetId` with fields `file` and `courseId` (MP4 or WebM; default 50 MB); course documents use `POST /media/course-documents` and `PUT /media/course-documents/:assetId` with the same fields (PDF; default 10 MB). All limits are configurable in bytes with `CLOUDINARY_IMAGE_MAX_BYTES`, `CLOUDINARY_VIDEO_MAX_BYTES`, and `CLOUDINARY_DOCUMENT_MAX_BYTES`, with hard upper bounds of 20 MB, 100 MB, and 25 MB. Assets are streamed from memory-only uploads into Cloudinary folders scoped by business (`products/images`, `courses/videos`, `courses/documents`). Media rows store the Cloudinary URL, public ID, resource type, original filename, MIME type, and ownership/lifecycle fields; the database never stores file bytes or Base64 content. `GET /media` lists owned assets, and `DELETE /media/:assetId` removes/retries cleanup; Cloudinary deletion failures remain as `DELETE_PENDING` rows. Product records retain URL/public-ID references for the existing product API. `/reports/cash-flow` classifies posted journal cash movements using the standard cash accounts and asset accounts named for cash, bank, or gateway clearing, then returns unclassified amounts and a reconciliation difference for review; it is business-wide because journal entries do not carry a branch dimension. `/reports/tax` summarizes recorded tax adjustments and proportional return reversals; it does not calculate jurisdiction-specific tax rates or replace statutory filing advice. OpenAPI coverage also remains to be written from the route validators.
+- The admin dashboard reads `GET /inventory/summary` for branch-aware on-hand, reserved, available, low-stock, out-of-stock, expiring-lot, and role-gated valuation metrics. Weekly performance reports include business-timezone `byDay` sales/profit points and the five highest-value products for the selected period. Online-order list responses include exact per-status counts in addition to the latest 200 records.
+- Customer email verification and password recovery routes were smoke-checked after migration. Successful delivery still requires a verified Resend sender and deployed `CUSTOMER_ACCOUNT_BASE_URL`; the matching frontend pages are not yet present.
+- Before production, add integration tests against a dedicated Neon branch, configure backups/restore checks and provider sender domains, and deploy the API and worker as separate long-running services. Apply the production migration as a separately authorized one-off job, then roll out the application only after it succeeds. Never derive a direct hostname by rewriting a pooled URL.

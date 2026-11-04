@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f8f9fa;
+  --color-foreground: #1a1d1f;
+  --color-ink: #1a1d1f;
+  --color-muted: #757780;
+  --color-line: #e7e9eb;
+  --color-canvas: #f8f9fa;
+  --color-brand: #149e8f;
+  --color-brand-dark: #108578;
+  --color-teal: #149e8f;
+  --text-xs: 0.8125rem;
+  --font-sans: var(--font-nunito), "Nunito", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
