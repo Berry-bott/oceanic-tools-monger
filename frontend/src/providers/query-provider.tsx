@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -95,7 +95,9 @@ export function QueryProvider({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AdminSessionLifecycle />
+      <Suspense fallback={null}>
+        <AdminSessionLifecycle />
+      </Suspense>
       {children}
     </QueryClientProvider>
   );
