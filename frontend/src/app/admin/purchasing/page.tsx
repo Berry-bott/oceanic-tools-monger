@@ -488,7 +488,7 @@ export default function PurchasingPage() {
             )}
           </section>
           <footer className="flex items-center justify-between pt-[13px] px-[1px] pb-0 [border-top:1px_solid_#e9eeea] text-[#9aa49d] text-sm max-[620px]:gap-2 max-[620px]:items-start max-[620px]:flex-col max-[620px]:text-sm">
-            <span>Oceanic Tools Purchasing</span>
+            <span>OceanicToolsMonger Purchasing</span>
             <span>
               Receiving posts inventory and can optionally record a supplier
               invoice.

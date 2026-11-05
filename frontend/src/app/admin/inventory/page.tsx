@@ -834,7 +834,7 @@ export default function InventoryPage() {
             </section>
           </div>
           <footer className="flex items-center justify-between pt-[13px] px-[1px] pb-0 [border-top:1px_solid_#e9eeea] text-[#9aa49d] text-sm max-[620px]:gap-2 max-[620px]:items-start max-[620px]:flex-col max-[620px]:text-sm">
-            <span>Oceanic Tools Inventory control</span>
+            <span>OceanicToolsMonger Inventory control</span>
             <span>
               Count posting checks that stock has not changed since the count
               began.

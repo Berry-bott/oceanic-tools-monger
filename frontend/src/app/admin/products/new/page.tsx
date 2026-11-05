@@ -14,7 +14,7 @@ import { useBranches } from "@/hooks/queries/use-branches";
 import { ProductSpecificationsEditor, type ProductSpecificationInput } from "@/components/product-specifications-editor";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
-import { checkProductDuplicates, updateProduct, type ProductDuplicate } from "@/services/products/product.service";
+import { checkProductDuplicates, type ProductDuplicate } from "@/services/products/product.service";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 
 type Role = "OWNER" | "STAFF";
@@ -44,9 +44,10 @@ export default function NewProductPage() {
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
-  const [openingStock, setOpeningStock] = useState<Record<string, string>>({});
+  const [quantity, setQuantity] = useState("0");
+  const [publishOnSave, setPublishOnSave] = useState(true);
+  const [savedProductVisibility, setSavedProductVisibility] = useState<boolean | null>(null);
   const [primaryImageKey, setPrimaryImageKey] = useState("FRONT");
-  const [publishAfterSave, setPublishAfterSave] = useState(false);
   const [savedProductId, setSavedProductId] = useState("");
   const [possibleDuplicates, setPossibleDuplicates] = useState<ProductDuplicate[]>([]);
   const [confirmedDuplicateKey, setConfirmedDuplicateKey] = useState("");
@@ -102,7 +103,9 @@ export default function NewProductPage() {
           brand: form.get("brand"),
           model: form.get("model"),
           specifications: specifications.filter((item) => item.name.trim() && item.value.trim()),
-          branchAssignments: user.role === "OWNER" ? [{ branchId: selectedBranchId, openingStock: Number(openingStock[selectedBranchId] || 0) }] : undefined,
+          branchAssignments: user.role === "OWNER" ? [{ branchId: selectedBranchId, openingStock: Number(quantity) }] : undefined,
+          quantity: Number(quantity),
+          publishOnSave,
           category: form.get("category"),
           categoryId: selectedCategoryId,
           subcategoryId: selectedSubcategoryId || undefined,
@@ -113,6 +116,7 @@ export default function NewProductPage() {
         });
         productId = result.data.id;
         setSavedProductId(productId);
+        setSavedProductVisibility(publishOnSave);
       }
       if (productId) {
         try {
@@ -137,17 +141,11 @@ export default function NewProductPage() {
           setSaving(false);
           return;
         }
-        if (publishAfterSave) {
-          try {
-            await updateProduct(productId, { state: "ACTIVE", isPublished: true });
-          } catch (publishError) {
-            setError(`Product and photos were saved, but it could not be published. ${publishError instanceof Error ? publishError.message : "Try publishing again from the product page."}`);
-            setSaving(false);
-            return;
-          }
-        }
       }
-      window.sessionStorage.setItem("oceanic-product-created", "1");
+      window.sessionStorage.setItem(
+        "oceanic-product-created",
+        (savedProductVisibility ?? publishOnSave) ? "published" : "draft",
+      );
       router.push("/admin/products");
     } catch (requestError) {
       setError(
@@ -204,7 +202,7 @@ export default function NewProductPage() {
             Add a product
           </h1>
           <p className="mt-2 mx-0 mb-0 text-base text-[#75827c]">
-            Add the details, choose the branches, and set opening stock if needed.
+            Add the product details and its quantity for the branch.
           </p>
         </div>
         <Link
@@ -378,15 +376,20 @@ export default function NewProductPage() {
                     {(branchQuery.data?.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{branch.isDefault ? " (Main branch)" : ""}</option>)}
                   </select>
                 </label>
-                {selectedBranchId && <label className={fieldClass}><span className="flex items-center gap-1">Opening stock <span className="text-muted">(optional)</span></span>
-                  <input type="number" min="0" step="0.001" value={openingStock[selectedBranchId] ?? "0"} onChange={(event) => setOpeningStock((current) => ({ ...current, [selectedBranchId]: event.target.value }))} className={inputClass} />
-                </label>}
+                <label className={fieldClass}>Quantity
+                  <input type="number" name="quantity" min="0" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
+                </label>
               </div>
             ) : (
-              <div className="rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">
-                {user.branchId
-                  ? `This product will be assigned to ${assignedBranch?.name ?? "your assigned branch"}.`
-                  : "Your account has no branch yet. Ask the owner to assign one before you add a product."}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">
+                  {user.branchId
+                    ? `This product will be assigned to ${assignedBranch?.name ?? "your assigned branch"}.`
+                    : "Your account has no branch yet. Ask the owner to assign one before you add a product."}
+                </div>
+                <label className={fieldClass}>Quantity
+                  <input type="number" name="quantity" min="0" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
+                </label>
               </div>
             )}
             {branchQuery.isError && (
@@ -397,15 +400,30 @@ export default function NewProductPage() {
             )}
             {user.role === "OWNER" && !branchQuery.isLoading && !(branchQuery.data?.data.length) && <p className="m-0 text-sm text-[#a75043]">Create a branch before adding a product.</p>}
           </section>
-          <section className="grid gap-3 rounded-xl border border-line bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="m-0 text-lg font-semibold text-ink">Website visibility</h2>
-            <label className="flex cursor-pointer items-start gap-3 text-sm text-[#536159]">
-              <input type="checkbox" checked={publishAfterSave} onChange={(event) => setPublishAfterSave(event.target.checked)} className="mt-1 size-4 accent-brand" />
-              <span>
-                <strong className="block font-medium text-ink">Publish after saving</strong>
-                <span className="mt-1 block text-muted">You can publish the product with or without photos, and add more views later.</span>
-              </span>
-            </label>
+          <section className="flex flex-col gap-4 rounded-xl border border-line bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6" aria-labelledby="website-visibility-heading">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="image" size={19} /></span>
+              <div>
+                <h2 id="website-visibility-heading" className="m-0 text-base font-semibold text-ink">Website visibility</h2>
+                <p className="mb-0 mt-1 text-sm text-muted">
+                  {savedProductVisibility === null
+                    ? publishOnSave ? "Published after saving. Switch off to keep this product as a draft." : "Saved as a draft and hidden from customers. Switch on to publish after saving."
+                    : savedProductVisibility ? "This product is set to publish after saving." : "This product is set to save as a draft."}
+                  {" "}Photos are optional and can be added later.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={savedProductVisibility ?? publishOnSave}
+              aria-label="Publish product after saving"
+              disabled={Boolean(savedProductId) || saving}
+              onClick={() => setPublishOnSave((current) => !current)}
+              className={`inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-60 ${publishOnSave ? "bg-brand" : "bg-[#cbd5ce]"}`}
+            >
+              <span className={`size-5 rounded-full bg-white shadow-sm transition-transform ${publishOnSave ? "translate-x-5" : "translate-x-0"}`} />
+            </button>
           </section>
           {possibleDuplicates.length > 0 && !savedProductId && (
             <section className="grid gap-3 rounded-lg border border-[#ead9ad] bg-[#fffaf0] p-4 text-sm text-[#725b2a]" aria-labelledby="similar-products-title">

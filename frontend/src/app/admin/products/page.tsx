@@ -62,10 +62,11 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (window.sessionStorage.getItem("oceanic-product-created") === "1") {
-      setNotice(
-        "Product saved as a draft. Add stock or activate it when it is ready.",
-      );
+    const visibility = window.sessionStorage.getItem("oceanic-product-created");
+    if (visibility) {
+      setNotice(visibility === "draft"
+        ? "Product saved as a draft. It is hidden from customers."
+        : "Product saved and published on your website.");
       window.sessionStorage.removeItem("oceanic-product-created");
     }
   }, [user]);
@@ -493,7 +494,7 @@ export default function ProductsPage() {
             )}
           </section>
           <footer className="flex items-center justify-between pt-[13px] px-[1px] pb-0 [border-top:1px_solid_#e9eeea] text-[#9aa49d] text-sm max-[620px]:gap-2 max-[620px]:items-start max-[620px]:flex-col max-[620px]:text-sm">
-            <span>Oceanic Tools Product catalogue</span>
+            <span>OceanicToolsMonger Product catalogue</span>
             <span>Stock is available quantity after active reservations.</span>
           </footer>
         </div>

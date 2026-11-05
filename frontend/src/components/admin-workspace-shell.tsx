@@ -76,9 +76,9 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-[#f8f9fa] text-[#1a1d1f] [&_h1]:[font-weight:700] [&_h2]:[font-weight:700] [&_h3]:[font-weight:700] [&_strong]:[font-weight:400] [&_b]:[font-weight:400]">
       {mobileOpen && <button className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-[#203131] bg-[#0c1919] px-4 py-6 text-white transition-transform lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <Link className="mb-9 flex h-10 items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="Oceanic Tools home">
+        <Link className="mb-9 flex h-10 items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="OceanicToolsMonger home">
           <span className="grid size-9 place-items-center rounded-xl bg-[#149e8f] text-lg font-normal">O</span>
-          <span className="text-xl font-normal tracking-tight">oceanic<span className="ml-1 text-[#83ded3]">tools</span></span>
+          <span className="text-lg font-normal tracking-tight">OceanicToolsMonger</span>
         </Link>
         <p className="mb-3 px-3 text-[11px] font-normal tracking-[0.14em] text-[#aebfbc]">WORKSPACE</p>
         <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Admin pages">

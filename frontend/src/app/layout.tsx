@@ -12,8 +12,8 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Oceanic Tools Admin",
-  description: "Manage inventory, sales and business finances with Oceanic Tools.",
+  title: "OceanicToolsMonger Admin",
+  description: "Manage inventory, sales and business finances with OceanicToolsMonger.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Suspense
             fallback={
               <main className="grid min-h-screen place-items-center bg-background text-sm text-muted">
-                Loading Oceanic Tools...
+                Loading OceanicToolsMonger...
               </main>
             }
           >

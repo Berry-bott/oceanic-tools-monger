@@ -1,6 +1,6 @@
-# Oceanic Tools Frontend
+# OceanicToolsMonger Frontend
 
-Next.js 16 admin application for the Oceanic Tools API.
+Next.js 16 admin application for the OceanicToolsMonger API.
 
 ## Local development
 
@@ -13,7 +13,7 @@ Next.js 16 admin application for the Oceanic Tools API.
 
 The dashboard reads business, branch, report, inventory summary, activity, purchase, online-order, and notification data from the API. Financial views are requested only for roles authorized by the backend. Date filters use the business timezone. Failed sections show an error state instead of a fabricated zero.
 
-The dashboard visual language takes cues from the `skipdq` admin shell while using Oceanic Tools colors and business workflows. `skipdq` itself remains a separate reference project.
+The dashboard visual language takes cues from the `skipdq` admin shell while using OceanicToolsMonger colors and business workflows. `skipdq` itself remains a separate reference project.
 
 ## Admin workspaces
 

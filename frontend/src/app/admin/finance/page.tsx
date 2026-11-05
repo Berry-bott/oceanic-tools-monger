@@ -751,7 +751,7 @@ export default function FinancePage() {
             )}
           </section>
           <footer className="flex items-center justify-between pt-[13px] px-[1px] pb-0 [border-top:1px_solid_#e9eeea] text-[#9aa49d] text-sm max-[620px]:gap-2 max-[620px]:items-start max-[620px]:flex-col max-[620px]:text-sm">
-            <span>Oceanic Tools Accounting</span>
+            <span>OceanicToolsMonger Accounting</span>
             <span>
               Reports reflect posted entries; operational records may require
               reconciliation.

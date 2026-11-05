@@ -82,9 +82,9 @@ export default function LoginPage() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#071817]/90 via-[#0c2422]/35 to-[#0c2422]/10" />
         <div className="relative flex min-h-[300px] flex-col justify-between p-6 text-white sm:min-h-[380px] sm:p-10 lg:min-h-screen lg:p-14">
-          <Link className="flex w-fit items-center gap-3" href="/admin" aria-label="Oceanic Tools home">
+          <Link className="flex w-fit items-center gap-3" href="/admin" aria-label="OceanicToolsMonger home">
             <span className="grid size-10 place-items-center rounded-xl bg-[#149e8f] text-lg font-extrabold text-white">O</span>
-            <span className="text-xl font-extrabold tracking-tight">oceanic<span className="ml-1 text-[#83ded3]">tools</span></span>
+            <span className="text-lg font-extrabold tracking-tight">OceanicToolsMonger</span>
           </Link>
           <div className="max-w-xl pb-2 sm:pb-6 lg:pb-10">
             <span className="mb-4 inline-flex rounded-full border border-white/30 bg-black/15 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-white/90">
@@ -97,7 +97,7 @@ export default function LoginPage() {
               Keep stock, sales and business money organised from one simple workspace.
             </p>
           </div>
-          <p className="hidden text-xs text-white/70 lg:block">Oceanic Tools business workspace</p>
+          <p className="hidden text-xs text-white/70 lg:block">OceanicToolsMonger business workspace</p>
         </div>
       </section>
 
@@ -106,7 +106,7 @@ export default function LoginPage() {
           <div className="mb-8 lg:hidden">
             <Link className="flex w-fit items-center gap-2.5 text-[#1d3129]" href="/admin">
               <span className="grid size-9 place-items-center rounded-xl bg-[#149e8f] font-extrabold text-white">O</span>
-              <span className="text-lg font-extrabold tracking-tight">oceanic<span className="ml-1 text-[#108578]">tools</span></span>
+              <span className="text-base font-extrabold tracking-tight">OceanicToolsMonger</span>
             </Link>
           </div>
           <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#108578]">{isStaffLogin ? "Staff workspace" : "Business operations"}</p>
