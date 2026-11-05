@@ -20,6 +20,8 @@ const createProductSchema = z.object({
   brand: z.string().trim().max(120).optional().or(z.literal("")),
   model: z.string().trim().max(120).optional().or(z.literal("")),
   specifications: z.array(z.object({ name: z.string().trim().min(1).max(100), value: z.string().trim().min(1).max(500) })).max(50).default([]),
+  quantity: z.coerce.number().min(0).max(1_000_000),
+  publishOnSave: z.boolean().default(true),
   branchAssignments: z.array(z.object({ branchId: z.string().min(1), openingStock: z.coerce.number().min(0).max(1_000_000).default(0) })).max(100).optional(),
   category: z.string().trim().min(1).max(100),
   categoryId: z.string().min(1).optional(),
@@ -30,7 +32,7 @@ const createProductSchema = z.object({
   sellingPrice: z.coerce.number().min(0),
   reorderLevel: z.coerce.number().min(0).default(0),
 });
-const updateProductSchema = createProductSchema.omit({ specifications: true, branchAssignments: true }).partial().extend({
+const updateProductSchema = createProductSchema.omit({ specifications: true, branchAssignments: true, quantity: true, publishOnSave: true }).partial().extend({
   categoryId: z.string().min(1).nullable().optional(),
   subcategoryId: z.string().min(1).nullable().optional(),
   specifications: z.array(z.object({ name: z.string().trim().min(1).max(100), value: z.string().trim().min(1).max(500) })).max(50).optional(),
@@ -45,7 +47,7 @@ const adjustStockSchema = z.object({
 const inventoryRoles = ["OWNER", "STAFF"] as const;
 const productImageUpload = createMediaUploadMiddleware("PRODUCT_IMAGE", "image");
 const normalizeName = (value: string) => value.toLocaleLowerCase("en-NG").normalize("NFKC").trim().replace(/\s+/g, " ").replace(/\s*(\d)\s*(kg|g|ml|l|cl)\b/gi, "$1$2");
-const importRowSchema = createProductSchema.extend({ openingStock: z.coerce.number().min(0).default(0), duplicateOverrideReason: z.string().trim().min(5).max(500).optional() });
+const importRowSchema = createProductSchema.omit({ quantity: true, publishOnSave: true }).extend({ openingStock: z.coerce.number().min(0).max(1_000_000), duplicateOverrideReason: z.string().trim().min(5).max(500).optional() });
 
 function parseCsv(text: string) {
   const rows: string[][] = [];
@@ -75,12 +77,13 @@ function parseCsv(text: string) {
   row.push(field);
   if (row.some((cell) => cell.trim())) rows.push(row);
   if (rows.length < 2 || rows.length > 5001) throw new ApiError(400, "CSV must contain a header and between 1 and 5,000 product rows.", "INVALID_CSV_ROW_COUNT");
-  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "openingstock", "duplicateoverridereason"]);
+  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
   const headers = rows[0].map((header, index) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[ _-]/g, ""));
   if (headers.some((header) => !header || !allowed.has(header)) || new Set(headers).size !== headers.length) throw new ApiError(400, "CSV headers must be unique and use supported product fields.", "INVALID_CSV_HEADERS");
   for (const required of ["sku", "name", "category", "sellingprice"]) if (!headers.includes(required)) throw new ApiError(400, `CSV is missing the required ${required} column.`, "INVALID_CSV_HEADERS");
+  if (!headers.includes("quantity") && !headers.includes("openingstock")) throw new ApiError(400, "CSV is missing the required quantity column.", "INVALID_CSV_HEADERS");
   if (rows.slice(1).some((item) => item.length !== headers.length)) throw new ApiError(400, "Every CSV row must have the same number of columns as the header.", "INVALID_CSV_COLUMNS");
-  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
+  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
   return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [keyName(header), cells[index].trim()]).filter(([, value]) => value !== "")));
 }
 
@@ -118,12 +121,13 @@ async function parseXlsx(buffer: Buffer) {
     if (cells.some((value) => value.trim())) rows.push(cells);
   }
   if (rows.length < 2 || rows.length > 5001) throw new ApiError(400, "The worksheet must contain a header and 1 to 5,000 product rows.", "INVALID_XLSX_ROW_COUNT");
-  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "openingstock", "duplicateoverridereason"]);
+  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
   const headers = rows[0].map((header) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[ _-]/g, ""));
   if (headers.some((header) => !header || !allowed.has(header)) || new Set(headers).size !== headers.length) throw new ApiError(400, "XLSX headers must be unique and use supported product fields.", "INVALID_XLSX_HEADERS");
   for (const required of ["sku", "name", "category", "sellingprice"]) if (!headers.includes(required)) throw new ApiError(400, `XLSX is missing the required ${required} column.`, "INVALID_XLSX_HEADERS");
+  if (!headers.includes("quantity") && !headers.includes("openingstock")) throw new ApiError(400, "XLSX is missing the required quantity column.", "INVALID_XLSX_HEADERS");
   if (rows.slice(1).some((row) => row.length !== headers.length)) throw new ApiError(400, "Every XLSX row must have the same number of columns as the header.", "INVALID_XLSX_COLUMNS");
-  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
+  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
   return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [keyName(header), cells[index].trim()]).filter(([, value]) => value !== "")));
 }
 
@@ -464,7 +468,7 @@ productsRouter.post("/import/commit", requireRoles(...inventoryRoles), async (re
     const createdProducts = [];
     for (const [index, row] of parsed.data.rows.entries()) {
       const { category, subcategory } = categorySelections[index];
-      const product = await transaction.product.create({ data: { businessId: auth.businessId, createdById: auth.userId, sku: row.sku, barcode: row.barcode || null, name: row.name, normalizedName: normalizeName(row.name), description: row.description, category: category.name, categoryId: category.id, subcategory: subcategory?.name ?? null, subcategoryId: subcategory?.id ?? null, unit: row.unit, costPrice: row.costPrice, sellingPrice: row.sellingPrice, reorderLevel: row.reorderLevel, state: "DRAFT" } });
+      const product = await transaction.product.create({ data: { businessId: auth.businessId, createdById: auth.userId, sku: row.sku, barcode: row.barcode || null, name: row.name, normalizedName: normalizeName(row.name), description: row.description, category: category.name, categoryId: category.id, subcategory: subcategory?.name ?? null, subcategoryId: subcategory?.id ?? null, unit: row.unit, costPrice: row.costPrice, sellingPrice: row.sellingPrice, reorderLevel: row.reorderLevel, state: "ACTIVE", isPublished: true } });
       await transaction.stockBalance.create({ data: { productId: product.id, branchId: branch.id, onHand: row.openingStock } });
       if (row.openingStock > 0) await transaction.stockLot.create({ data: { productId: product.id, branchId: branch.id, unitCost: row.costPrice, quantity: row.openingStock, origin: "OPENING" } });
       if (row.openingStock > 0) {
@@ -549,8 +553,8 @@ productsRouter.post("/", requireRoles(...inventoryRoles), async (request, respon
   }
 
   const branchAssignments = auth.role === "STAFF"
-    ? auth.branchId ? [{ branchId: auth.branchId, openingStock: 0 }] : []
-    : data.branchAssignments ?? [];
+    ? auth.branchId ? [{ branchId: auth.branchId, openingStock: data.quantity }] : []
+    : (data.branchAssignments ?? []).map((assignment) => ({ ...assignment, openingStock: data.quantity }));
   if (branchAssignments.length === 0) throw new ApiError(400, auth.role === "STAFF" ? "Your account needs a branch assignment before you can create products." : "Choose at least one branch for this product.", auth.role === "STAFF" ? "STAFF_BRANCH_REQUIRED" : "PRODUCT_BRANCH_REQUIRED");
   if (new Set(branchAssignments.map((assignment) => assignment.branchId)).size !== branchAssignments.length) throw new ApiError(400, "Choose each branch only once.", "DUPLICATE_PRODUCT_BRANCH");
   const branches = await prisma.branch.findMany({ where: { businessId: auth.businessId, id: { in: branchAssignments.map((assignment) => assignment.branchId) } }, select: { id: true, name: true } });
@@ -583,7 +587,8 @@ productsRouter.post("/", requireRoles(...inventoryRoles), async (request, respon
         costPrice: new Prisma.Decimal(data.costPrice),
         sellingPrice: new Prisma.Decimal(data.sellingPrice),
         reorderLevel: new Prisma.Decimal(data.reorderLevel),
-        state: ProductState.DRAFT,
+        state: data.publishOnSave ? ProductState.ACTIVE : ProductState.DRAFT,
+        isPublished: data.publishOnSave,
       },
     });
     if (data.specifications.length) await transaction.productSpecification.createMany({ data: data.specifications.map((item, position) => ({ productId: created.id, name: item.name, value: item.value, position })) });
