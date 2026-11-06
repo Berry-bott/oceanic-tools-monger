@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   useCreateProduct,
@@ -30,6 +30,7 @@ const secondaryButton = "inline-flex h-10 cursor-pointer items-center justify-ce
 
 export default function NewProductPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const userQuery = useCurrentUser();
   const user = (userQuery.data?.user as User | undefined) ?? null;
   const branchQuery = useBranches<Branch>(Boolean(user));
@@ -40,7 +41,7 @@ export default function NewProductPage() {
   const [images, setImages] = useState<Record<"FRONT" | "BACK" | "SIDE", File | null>>({ FRONT: null, BACK: null, SIDE: null });
   const [specifications, setSpecifications] = useState<ProductSpecificationInput[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [selectedCategoryIdOverride, setSelectedCategoryIdOverride] = useState<string | null>(null);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
   const [quantity, setQuantity] = useState("0");
   const [publishOnSave, setPublishOnSave] = useState(true);
@@ -52,6 +53,7 @@ export default function NewProductPage() {
   const [pendingDuplicateKey, setPendingDuplicateKey] = useState("");
   const createProductMutation = useCreateProduct();
   const uploadImageMutation = useUploadProductImage();
+  const selectedCategoryId = selectedCategoryIdOverride ?? searchParams.get("categoryId") ?? "";
   const selectedCategory = categoriesQuery.data?.data.find((category) => category.id === selectedCategoryId);
   const assignedBranch = branchQuery.data?.data.find((branch) => branch.id === user?.branchId);
 
@@ -219,7 +221,7 @@ export default function NewProductPage() {
                   className={inputClass}
                   required
                   value={selectedCategoryId}
-                  onChange={(event) => { setSelectedCategoryId(event.target.value); setSelectedSubcategoryId(""); }}
+                  onChange={(event) => { setSelectedCategoryIdOverride(event.target.value); setSelectedSubcategoryId(""); }}
                   disabled={categoriesQuery.isPending || categoriesQuery.isError || !categoriesQuery.data?.data.length}
                   aria-label="Product category"
                 >

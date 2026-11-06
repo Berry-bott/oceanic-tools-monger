@@ -4,12 +4,27 @@ import { prisma } from "./lib/prisma.js";
 import { writeAudit } from "./lib/audit.js";
 import { safeErrorMetadata } from "./lib/safe-error.js";
 
+const dailyOutOfStockReminders = new Map<string, string>();
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 }
 
 function safeFailureMessage(error: unknown) {
   return safeErrorMetadata(error).errorMessage ?? "Unknown provider failure";
+}
+
+function localClock(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return { date: `${value.year}-${value.month}-${value.day}`, hour: Number(value.hour) };
 }
 
 async function dispatchDeliveries() {
@@ -106,15 +121,43 @@ async function releaseExpiredReservations() {
 
 async function refreshLowStockAlerts() {
   const balances = await prisma.stockBalance.findMany({ where: { product: { state: "ACTIVE" } }, include: { product: { select: { id: true, businessId: true, name: true, reorderLevel: true } }, branch: { select: { id: true, name: true, businessId: true } } }, take: 2000 });
+  const alertKeys = balances.map((balance) => `LOW-STOCK:${balance.branchId}:${balance.productId}`);
+  const existingAlerts = await prisma.notification.findMany({ where: { dedupeKey: { in: alertKeys } }, select: { dedupeKey: true, title: true } });
+  const existingTitles = new Map(existingAlerts.flatMap((alert) => alert.dedupeKey ? [[alert.dedupeKey, alert.title] as const] : []));
+  const businessIds = [...new Set(balances.map((balance) => balance.product.businessId))];
+  const businesses = await prisma.business.findMany({
+    where: { id: { in: businessIds } },
+    select: { id: true, timezone: true, users: { where: { role: "OWNER", isActive: true }, select: { id: true } } },
+  });
+  const businessMap = new Map(businesses.map((business) => [business.id, business]));
   const now = new Date();
   for (const balance of balances) {
     const available = Number(balance.onHand) - Number(balance.reserved);
     const key = `LOW-STOCK:${balance.branchId}:${balance.productId}`;
     if (available > Number(balance.product.reorderLevel)) {
-      await prisma.notification.updateMany({ where: { dedupeKey: key, readAt: null }, data: { readAt: now, message: `${balance.product.name} stock recovered at ${balance.branch.name}.` } });
+      await prisma.notification.updateMany({ where: { dedupeKey: key }, data: { readAt: now, title: "Stock recovered", message: `${balance.product.name} stock recovered at ${balance.branch.name}.` } });
+      await prisma.notification.updateMany({ where: { businessId: balance.product.businessId, entityType: "Product", entityId: balance.productId, dedupeKey: { startsWith: `OUT-OF-STOCK-REMINDER:${balance.branchId}:` }, readAt: null }, data: { readAt: now, message: `${balance.product.name} stock recovered at ${balance.branch.name}.` } });
       continue;
     }
-    await prisma.notification.upsert({ where: { dedupeKey: key }, create: { businessId: balance.product.businessId, type: "INVENTORY", severity: available <= 0 ? "CRITICAL" : "WARNING", title: available <= 0 ? "Out of stock" : "Low stock", message: `${balance.product.name} has ${available} available units at ${balance.branch.name}.`, entityType: "Product", entityId: balance.productId, dedupeKey: key }, update: { severity: available <= 0 ? "CRITICAL" : "WARNING", message: `${balance.product.name} has ${available} available units at ${balance.branch.name}.` } });
+    const title = available <= 0 ? "Out of stock" : "Low stock";
+    await prisma.notification.upsert({ where: { dedupeKey: key }, create: { businessId: balance.product.businessId, type: "INVENTORY", severity: available <= 0 ? "CRITICAL" : "WARNING", title, message: `${balance.product.name} has ${available} available units at ${balance.branch.name}.`, entityType: "Product", entityId: balance.productId, dedupeKey: key }, update: { severity: available <= 0 ? "CRITICAL" : "WARNING", title, message: `${balance.product.name} has ${available} available units at ${balance.branch.name}.`, ...(existingTitles.get(key) !== title ? { readAt: null, createdAt: now } : {}) } });
+
+    if (available < 1) {
+      const business = businessMap.get(balance.product.businessId);
+      if (!business || !business.users.length) continue;
+      const clock = localClock(now, business.timezone);
+      const reminderScope = `${business.id}:${balance.branchId}:${balance.productId}`;
+      if (clock.hour < 8 || dailyOutOfStockReminders.get(reminderScope) === clock.date) continue;
+      for (const owner of business.users) {
+        const reminderKey = `OUT-OF-STOCK-REMINDER:${balance.branchId}:${balance.productId}:${clock.date}:${owner.id}`;
+        await prisma.notification.upsert({
+          where: { dedupeKey: reminderKey },
+          create: { businessId: balance.product.businessId, userId: owner.id, type: "INVENTORY", severity: "CRITICAL", title: "Out-of-stock reminder", message: `${balance.product.name} is still out of stock at ${balance.branch.name}. Available quantity: ${available}. Please restock or review this item.`, entityType: "Product", entityId: balance.productId, dedupeKey: reminderKey },
+          update: {},
+        });
+      }
+      dailyOutOfStockReminders.set(reminderScope, clock.date);
+    }
   }
 }
 

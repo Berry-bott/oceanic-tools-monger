@@ -13,6 +13,15 @@ export const salesRouter = Router();
 const saleSchema = z.object({ branchId: z.string(), customerId: z.string().optional(), creditReference: z.string().trim().max(100).optional(), dueAt: z.coerce.date().optional(), cashShiftId: z.string().optional(), tax: z.coerce.number().min(0).default(0), channel: z.enum(["POS", "MANUAL"]).default("POS"), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitPrice: z.coerce.number().positive().optional() })).min(1).max(100), payments: z.array(z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), amount: z.coerce.number().positive() })).default([]) });
 const reference = (prefix: string) => `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
 const moneyRound = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+const formatMoney = (amount: number) => `₦${new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+const formatDateTime = (value: Date | string) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};
 
 salesRouter.use(requireAuth);
 
@@ -253,7 +262,7 @@ salesRouter.post("/shifts/open", requireRoles("OWNER", "STAFF"), async (request,
     const shift = await prisma.$transaction(async (transaction) => {
       const created = await transaction.cashShift.create({ data: { businessId: auth.businessId, branchId: branch.id, userId: auth.userId, openingCash: parsed.data.openingCash, openKey } });
       const owners = await transaction.user.findMany({ where: { businessId: auth.businessId, role: "OWNER", isActive: true }, select: { id: true } });
-      if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked in", message: `${auth.name} (${auth.email}) clocked in at ${branch.name} at ${created.openedAt.toISOString()}.`, entityType: "CashShift", entityId: created.id, dedupeKey: `SHIFT-OPENED:${created.id}:${owner.id}` })) });
+      if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked in", message: `${auth.name} clocked in at ${branch.name} on ${formatDateTime(created.openedAt)}.`, entityType: "CashShift", entityId: created.id, dedupeKey: `SHIFT-OPENED:${created.id}:${owner.id}` })) });
       await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CASH_SHIFT_OPENED", entityType: "CashShift", entityId: created.id, after: { branchId: branch.id, openedAt: created.openedAt, openingCash: created.openingCash.toString() } });
       return created;
     });
@@ -294,7 +303,7 @@ salesRouter.post("/shifts/:shiftId/close", requireRoles("OWNER", "STAFF"), async
   const parsed = z.object({ closingCash: z.coerce.number().min(0) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter the counted closing cash.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
-  const shift = await prisma.cashShift.findFirst({ where: { id: request.params.shiftId as string, businessId: auth.businessId, userId: auth.userId, closedAt: null }, include: { sales: { include: { payments: { include: { payment: true } }, refunds: true } }, movements: true, branch: { select: { name: true } } } });
+  const shift = await prisma.cashShift.findFirst({ where: { id: request.params.shiftId as string, businessId: auth.businessId, userId: auth.userId, closedAt: null }, include: { sales: { include: { payments: { include: { payment: true } }, refunds: true } }, movements: true, branch: { select: { name: true } }, user: { select: { name: true } } } });
   if (!shift) throw new ApiError(404, "Open shift not found.", "SHIFT_NOT_FOUND");
   const cashReceived = shift.sales.reduce((sum, sale) => sum + sale.payments.filter((entry) => entry.payment.method === "CASH" && entry.payment.status === "SUCCEEDED").reduce((total, entry) => total + Number(entry.amount), 0), 0);
   const cashMovements = shift.movements.reduce((sum, movement) => sum + (movement.type === "PAID_IN" ? Number(movement.amount) : -Number(movement.amount)), 0);
@@ -306,8 +315,12 @@ salesRouter.post("/shifts/:shiftId/close", requireRoles("OWNER", "STAFF"), async
     const result = await transaction.cashShift.update({ where: { id: shift.id }, data: { closingCash: parsed.data.closingCash, expectedClosingCash: expected, closedAt: new Date(), openKey: null } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CASH_SHIFT_CLOSED", entityType: "CashShift", entityId: shift.id, before: { expectedClosingCash: expected }, after: { closingCash: parsed.data.closingCash, variance: parsed.data.closingCash - expected } });
     const owners = await transaction.user.findMany({ where: { businessId: auth.businessId, role: "OWNER", isActive: true }, select: { id: true } });
-    if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked out", message: `${auth.name} (${auth.email}) clocked out from ${shift.branch.name} at ${result.closedAt?.toISOString()}. Clock-in: ${shift.openedAt.toISOString()}. Sales: ${shift.sales.length} transactions, gross ${grossSales.toFixed(2)}, refunds ${totalRefunds.toFixed(2)}, net ${Math.max(0, grossSales - totalRefunds).toFixed(2)}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-CLOSED:${shift.id}:${owner.id}` })) });
-    if (Math.abs(parsed.data.closingCash - expected) >= 0.01) await transaction.notification.create({ data: { businessId: auth.businessId, userId: auth.userId, type: "CASH_SHIFT", severity: "WARNING", title: "Cashier shift discrepancy", message: `Shift ${shift.id} closed with a cash variance of ${(parsed.data.closingCash - expected).toFixed(2)}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-VARIANCE:${shift.id}` } });
+    if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked out", message: `${shift.user.name} clocked out from ${shift.branch.name} on ${formatDateTime(result.closedAt ?? new Date())}. Clock-in: ${formatDateTime(shift.openedAt)}. Sales: ${shift.sales.length} transactions, gross ${formatMoney(grossSales)}, refunds ${formatMoney(totalRefunds)}, net ${formatMoney(Math.max(0, grossSales - totalRefunds))}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-CLOSED:${shift.id}:${owner.id}` })) });
+    if (Math.abs(parsed.data.closingCash - expected) >= 0.01) {
+      const variance = parsed.data.closingCash - expected;
+      const difference = Math.abs(variance);
+      if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "WARNING", title: "Quick note", message: `${shift.user.name}'s shift at ${shift.branch.name} closed with ${formatMoney(difference)} ${variance < 0 ? "less" : "more"} cash than expected. Counted cash: ${formatMoney(parsed.data.closingCash)}. Cash in system: ${formatMoney(expected)}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-VARIANCE:${shift.id}:${owner.id}` })) });
+    }
     return result;
   });
   response.json({ data: closed, variance: parsed.data.closingCash - expected });

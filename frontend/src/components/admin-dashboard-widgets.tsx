@@ -172,7 +172,6 @@ export function DashboardSummaryCard({
 
 export function DashboardPageHeading({
   greeting,
-  userName,
   businessName,
   loading,
   onRefresh,
@@ -181,7 +180,6 @@ export function DashboardPageHeading({
   workspaceLabel = "BUSINESS OVERVIEW",
 }: {
   greeting: string;
-  userName: string;
   businessName: string;
   loading: boolean;
   onRefresh: () => void;
@@ -196,10 +194,10 @@ export function DashboardPageHeading({
           <span className="size-1.5 rounded-full bg-[#62a47e]" /> {workspaceLabel}
         </p>
         <h1 className="m-0 text-[25px] font-bold leading-tight tracking-tight text-[#1a2a22] max-[620px]:text-[22px]">
-          Good {greeting}, {userName.split(" ")[0]}
+          Good {greeting}, {businessName}
         </h1>
         <p className="mt-1.5 text-sm text-[#829087]">
-          Here&apos;s what&apos;s happening across {businessName}.
+          Here&apos;s what&apos;s happening across your business.
         </p>
       </div>
       <div className="flex gap-2 max-[620px]:w-full [&_button]:max-[620px]:flex-1">

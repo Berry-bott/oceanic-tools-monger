@@ -30,7 +30,7 @@ export default function AdminNotificationsPage() {
   const notifications = useQuery({
     queryKey: ["admin-notifications"],
     queryFn: () => apiRequest<{ data: Notification[]; unreadCount: number }>("/notifications"),
-    enabled: currentUser.data?.user.role === "OWNER",
+    enabled: Boolean(currentUser.data?.user),
     refetchInterval: 60_000,
   });
   const markRead = useMutation({
@@ -38,17 +38,13 @@ export default function AdminNotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
   });
 
-  if (currentUser.data?.user.role !== "OWNER") {
-    return <main className="mx-auto max-w-3xl p-6"><h1 className="text-xl font-semibold">This page is for the owner</h1><p className="text-sm text-muted">Staff can see their own notifications from the bell at the top.</p></main>;
-  }
-
   return (
     <main className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-5 flex items-end justify-between gap-4 max-sm:items-start max-sm:flex-col">
         <div>
           <p className="mb-2 text-xs font-semibold tracking-wide text-brand">BUSINESS UPDATES</p>
           <h1 className="m-0 text-2xl font-semibold text-ink">Notifications</h1>
-          <p className="mb-0 mt-2 text-sm text-muted">See staff clock-ins, clock-outs, stock alerts, and other important activity.</p>
+          <p className="mb-0 mt-2 text-sm text-muted">Review recent activity and important updates.</p>
         </div>
         <span className="rounded-full bg-[#edf5ef] px-3 py-1.5 text-xs font-medium text-brand">{notifications.data?.unreadCount ?? 0} unread</span>
       </header>

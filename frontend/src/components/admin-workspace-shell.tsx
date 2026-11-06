@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { AdminNavIcon } from "@/components/admin-nav-icon";
@@ -29,7 +29,7 @@ const navigation: { section: string; label: string; href: string; ownerOnly?: bo
   { section: "Money", label: "Money & reports", href: "/admin/finance", icon: "finance" },
   { section: "Money", label: "Reports", href: "/admin/reports", icon: "finance" },
   { section: "Money", label: "Creditors", href: "/admin/creditors", ownerOnly: true, icon: "creditors" },
-  { section: "Manage", label: "Notifications", href: "/admin/notifications", ownerOnly: true, icon: "notifications" },
+  { section: "Manage", label: "Notifications", href: "/admin/notifications", icon: "notifications" },
   { section: "Manage", label: "Staff", href: "/admin/staff", ownerOnly: true, icon: "settings" },
   { section: "Manage", label: "Audit history", href: "/admin/audit-logs", ownerOnly: true, icon: "settings" },
   { section: "Manage", label: "Settings", href: "/admin/settings", ownerOnly: true, icon: "settings" },
@@ -47,6 +47,14 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
+  const stockAlertsQuery = useQuery({
+    queryKey: ["inventory", "sidebar-alert-count"],
+    queryFn: () => apiRequest<{ summary: { lowStockCount: number; outOfStockCount: number } }>("/inventory/summary"),
+    enabled: Boolean(currentUserQuery.data),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+  const stockAlertCount = (stockAlertsQuery.data?.summary?.lowStockCount ?? 0) + (stockAlertsQuery.data?.summary?.outOfStockCount ?? 0);
   const markNotificationRead = useMarkNotificationRead();
   const isStaff = currentUserQuery.data?.user.role === "STAFF";
   const visibleNavigation = navigation.filter((item) => !item.ownerOnly || !isStaff);
@@ -55,6 +63,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const isNavigationItemActive = (item: (typeof navigation)[number]) => item.href === "/admin"
     ? pathname === item.href || pathname.startsWith("/staff")
     : item.href === "/admin/sales"
@@ -67,6 +76,24 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
     window.addEventListener("open-admin-navigation", openNavigation);
     return () => window.removeEventListener("open-admin-navigation", openNavigation);
   }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !notificationsRef.current?.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNotificationsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [notificationsOpen]);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -117,6 +144,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                           <AdminNavIcon name={item.icon} />
                         </span>
                         {item.label}
+                        {item.href === "/admin/inventory" && stockAlertCount > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[#d56f5c] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white" aria-label={`${stockAlertCount} low or out of stock items`} title={`${stockAlertCount} low or out of stock items`}>{stockAlertCount > 99 ? "99+" : stockAlertCount}</span>}
                       </Link>
                     );
                   })}
@@ -158,18 +186,21 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
               <AdminNavIcon name="notes" />
             </Link>
             <span className="hidden items-center gap-1.5 text-xs text-[#738079] sm:flex"><i className="size-1.5 rounded-full bg-[#54a576]" />Live business data</span>
-            <button type="button" className="relative grid size-9 cursor-pointer place-items-center rounded-lg text-[#76837b] hover:bg-[#f1f6f2]" aria-label={`${notificationsQuery.data?.unreadCount ?? 0} unread notifications`} onClick={() => setNotificationsOpen((value) => !value)}>
-              <AdminNavIcon name="notifications" />
-              {(notificationsQuery.data?.unreadCount ?? 0) > 0 && <span className="absolute right-0.5 top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#d56f5c] px-1 text-[10px] text-white">{notificationsQuery.data?.unreadCount}</span>}
-            </button>
+            <div className="relative" ref={notificationsRef}>
+              <button type="button" className="relative grid size-9 cursor-pointer place-items-center rounded-lg text-[#76837b] hover:bg-[#f1f6f2]" aria-label={`${notificationsQuery.data?.unreadCount ?? 0} unread notifications`} aria-expanded={notificationsOpen} aria-haspopup="true" onClick={() => setNotificationsOpen((value) => !value)}>
+                <AdminNavIcon name="notifications" />
+                {(notificationsQuery.data?.unreadCount ?? 0) > 0 && <span className="absolute right-0.5 top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#d56f5c] px-1 text-[10px] text-white">{notificationsQuery.data?.unreadCount}</span>}
+              </button>
+              {notificationsOpen && <AdminPageEntrance className="absolute right-0 top-full z-40 mt-2 max-h-[450px] w-[min(360px,calc(100vw-28px))] overflow-auto rounded-[14px] border border-line bg-white p-3 shadow-xl">
+                <div className="flex justify-between border-b border-line px-1 pb-2 text-sm"><strong>Notifications</strong><span className="text-muted">{notificationsQuery.data?.unreadCount ?? 0} unread</span></div>
+                {notificationsQuery.data?.data.slice(0, 8).map((notice) => <button key={notice.id} type="button" className={`grid w-full cursor-pointer gap-1 border-b border-line p-2 text-left hover:bg-canvas ${notice.readAt ? "" : "bg-[#f7faf7]"}`} onClick={() => { setNotificationsOpen(false); if (!notice.readAt) markNotificationRead.mutate(notice.id); router.push("/admin/notifications"); }}><strong className="text-sm font-medium">{notice.title}</strong><span className="text-xs text-muted">{notice.message}</span><small className="text-[11px] text-muted">{Number.isFinite(new Date(notice.createdAt).getTime()) ? new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(notice.createdAt)) : "Date unavailable"}</small></button>)}
+                {!notificationsQuery.data?.data.length && <AdminEmptyState icon="bell" title="You’re all caught up" description="New business alerts will show up here." />}
+                <Link href="/admin/notifications" onClick={() => setNotificationsOpen(false)} className="mt-2 block rounded-lg px-2 py-2 text-center text-sm font-medium text-brand hover:bg-[#f1f6f2]">View all notifications</Link>
+              </AdminPageEntrance>}
+            </div>
             <span className="h-6 w-px bg-line" />
             <span className="grid size-8 place-items-center rounded-full bg-[#153c3a] text-xs text-[#7fddd2]">{(currentUserQuery.data?.user.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
           </div>
-          {notificationsOpen && <AdminPageEntrance className="absolute right-4 top-14 z-40 max-h-[450px] w-[min(360px,calc(100vw-28px))] overflow-auto rounded-[14px] border border-line bg-white p-3 shadow-xl sm:right-8">
-            <div className="flex justify-between border-b border-line px-1 pb-2 text-sm"><strong>Notifications</strong><span className="text-muted">{notificationsQuery.data?.unreadCount ?? 0} unread</span></div>
-            {notificationsQuery.data?.data.slice(0, 8).map((notice) => <button key={notice.id} type="button" className={`grid w-full cursor-pointer gap-1 border-b border-line p-2 text-left hover:bg-canvas ${notice.readAt ? "" : "bg-[#f7faf7]"}`} onClick={() => { void markNotificationRead.mutateAsync(notice.id).then(() => queryClient.invalidateQueries({ queryKey: ["workspace-notifications"] })); }}><strong className="text-sm font-medium">{notice.title}</strong><span className="text-xs text-muted">{notice.message}</span><small className="text-[11px] text-muted">{Number.isFinite(new Date(notice.createdAt).getTime()) ? new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(notice.createdAt)) : "Date unavailable"}</small></button>)}
-            {!notificationsQuery.data?.data.length && <AdminEmptyState icon="bell" title="You’re all caught up" description="New business alerts will show up here." />}
-          </AdminPageEntrance>}
         </header>
         <AdminPageEntrance key={pathname}>{children}</AdminPageEntrance>
       </div>

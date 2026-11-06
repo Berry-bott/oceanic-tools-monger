@@ -16,6 +16,7 @@ import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
+import { AppErrorModal } from "@/components/app-error-modal";
 import { creditorKeys, createCreditor, getCreditors, type Creditor } from "@/services/customers/creditor.service";
 import {
   closeCashShift,
@@ -140,11 +141,11 @@ export default function SalesPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [creditError, setCreditError] = useState("");
-  const pageError = error || (salesQuery.error instanceof Error
+  const pageError = salesQuery.error instanceof Error
     ? salesQuery.error.message
     : customersQuery.error instanceof Error
       ? customersQuery.error.message
-      : "");
+      : "";
 
   const loadOperational = useCallback(async () => {
     setError("");
@@ -231,7 +232,9 @@ export default function SalesPage() {
         shift.id,
         Number(form.get("closingCash")),
       );
-      setNotice(`Shift closed. Cash variance: ${fmtMoney(result.variance)}.`);
+      setNotice(Math.abs(result.variance) < 0.01
+        ? `${user?.name ?? "Cashier"}'s shift is closed. Counted cash matched the expected amount.`
+        : `${user?.name ?? "Cashier"}'s shift is closed. Counted cash was ${fmtMoney(Math.abs(result.variance))} ${result.variance < 0 ? "below" : "above"} the expected amount.`);
       await invalidateAdminSummaries(queryClient);
       await loadOperational();
     } catch (e) {
@@ -708,14 +711,14 @@ export default function SalesPage() {
               </div>
             </div>
             <div className="overflow-auto">
-              <table className="w-full min-w-[760px] border-collapse text-left [&_th]:h-10 [&_th]:bg-[#fafbfa] [&_th]:px-4 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-[#87938b] [&_th]:whitespace-nowrap [&_td]:border-t [&_td]:border-[#f0f3f0] [&_td]:px-4 [&_td]:py-3 [&_td]:text-sm [&_td]:text-[#5c6b61] [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-[#f8faf8]">
+              <table className="w-full min-w-[900px] border-collapse text-left [&_th]:h-10 [&_th]:bg-[#fafbfa] [&_th]:px-4 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-[#87938b] [&_th]:whitespace-nowrap [&_td]:border-t [&_td]:border-[#f0f3f0] [&_td]:px-4 [&_td]:py-3 [&_td]:text-sm [&_td]:text-[#5c6b61] [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-[#f8faf8]">
                 <thead>
                   <tr>
                     <th>SALE</th>
                     <th>ITEMS</th>
                     <th>TOTAL</th>
-                    <th>STATUS</th>
-                    {canPos && <th>ACTIONS</th>}
+                    <th className="min-w-[220px]">STATUS</th>
+                    {canPos && <th className="w-[110px] text-right">ACTIONS</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -743,14 +746,18 @@ export default function SalesPage() {
                         <strong className="font-medium text-[#35463b]">{fmtMoney(Number(sale.total))}</strong>
                       </td>
                       <td>
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${["CANCELLED", "REFUNDED", "VOIDED"].includes(sale.status) ? "bg-[#fff0ed] text-[#ae6559]" : "bg-[#edf6ef] text-[#4d805a]"}`}>
-                          {!["CANCELLED", "REFUNDED", "VOIDED"].includes(sale.status) && <AdminUiIcon name="check" size={12} />}
-                          {sale.status.toLowerCase().replaceAll("_", " ")}
-                          {(() => { const paid = (sale.payments ?? []).filter((entry) => entry.payment.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0); const returned = (sale.returns ?? []).reduce((sum, entry) => sum + Number(entry.total), 0); const balance = Math.max(0, Number(sale.total) - paid - returned); return <span className="ml-2 font-semibold">· {balance <= 0.005 ? "Paid" : paid > 0 ? `Part paid · ${fmtMoney(balance)} due` : `Unpaid · ${fmtMoney(balance)} due`}</span>; })()}
-                        </span>
+                        <div className="grid justify-items-start gap-1">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium capitalize ${["CANCELLED", "REFUNDED", "VOIDED"].includes(sale.status) ? "bg-[#fff0ed] text-[#ae6559]" : "bg-[#edf6ef] text-[#4d805a]"}`}>
+                            {!["CANCELLED", "REFUNDED", "VOIDED"].includes(sale.status) && <AdminUiIcon name="check" size={12} />}
+                            {sale.status.toLowerCase().replaceAll("_", " ")}
+                          </span>
+                          <small className="text-xs text-[#929d95]">
+                            {(() => { const paid = (sale.payments ?? []).filter((entry) => entry.payment.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0); const returned = (sale.returns ?? []).reduce((sum, entry) => sum + Number(entry.total), 0); const balance = Math.max(0, Number(sale.total) - paid - returned); return balance <= 0.005 ? "Paid" : paid > 0 ? `Part paid · ${fmtMoney(balance)} due` : `Unpaid · ${fmtMoney(balance)} due`; })()}
+                          </small>
+                        </div>
                       </td>
                       {canPos && (
-                        <td>
+                        <td className="text-right">
                           <Link
                             href={`/admin/sales/returns?reference=${encodeURIComponent(sale.number)}`}
                             className="inline-grid size-9 cursor-pointer place-items-center rounded-lg border border-line bg-white text-brand transition-colors hover:bg-canvas"
@@ -803,7 +810,6 @@ export default function SalesPage() {
                   <label className="grid gap-1.5 text-sm text-[#536159]">Credit limit<input name="creditLimit" type="number" min="0" step="0.01" defaultValue={Math.ceil(total)} className="h-10 rounded-[10px] border border-[#dfe6e0] px-3 text-sm" required /></label>
                   <label className="grid gap-1.5 text-sm text-[#536159]">Payment due in (days)<input name="creditDays" type="number" min="1" max="365" defaultValue="30" className="h-10 rounded-[10px] border border-[#dfe6e0] px-3 text-sm" required /></label>
                 </div>
-                {creditError && <p role="alert" className="m-0 rounded-lg border border-[#f0d7d2] bg-[#fff5f2] px-3 py-2 text-sm text-[#a5554a]">{creditError}</p>}
                 <div className="flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="inline-flex h-10 cursor-pointer items-center justify-center rounded-[10px] border border-[#dfe6e0] bg-white px-4 text-sm text-[#4e5e54]" onClick={() => { setShowNewCreditor(false); setCreditError(""); }}>Back</button><button className="inline-flex h-10 cursor-pointer items-center justify-center rounded-[10px] border border-brand bg-brand px-4 text-sm font-medium text-white disabled:opacity-60" disabled={busy}>{busy ? "Saving..." : "Save account"}</button></div>
               </form>
             ) : (
@@ -824,13 +830,13 @@ export default function SalesPage() {
                   <label className="grid gap-1.5 text-sm text-[#536159]">Payment method<select value={partPaymentMethod} onChange={(event) => setPartPaymentMethod(event.target.value as typeof partPaymentMethod)} className="h-10 w-full rounded-[10px] border border-[#dfe6e0] bg-white px-3 text-sm"><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option></select></label>
                   {partPaymentMethod === "CASH" && !shift && <p className="col-span-2 m-0 text-xs text-[#a5554a] max-[620px]:col-span-1">Open a cashier shift before recording a cash part payment.</p>}
                 </div>}
-                {creditError && <p role="alert" className="m-0 rounded-lg border border-[#f0d7d2] bg-[#fff5f2] px-3 py-2 text-sm text-[#a5554a]">{creditError}</p>}
                 <div className="flex items-center justify-between gap-3 border-t border-line pt-4 max-[500px]:items-stretch max-[500px]:flex-col"><span className="text-sm text-muted">Sale total <strong className="text-[#26372d]">{fmtMoney(total)}</strong></span><div className="flex justify-end gap-2"><button type="button" className="inline-flex h-10 cursor-pointer items-center justify-center rounded-[10px] border border-[#dfe6e0] bg-white px-4 text-sm text-[#4e5e54]" onClick={() => setCreditOpen(false)}>Cancel</button><button type="button" className="inline-flex h-10 cursor-pointer items-center justify-center rounded-[10px] border border-brand bg-brand px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || !cart.length || !selectedCreditorId || (payPartNow && !partPaymentAmount) || (payPartNow && partPaymentMethod === "CASH" && !shift)} onClick={() => void checkoutCredit()}>{busy ? "Recording..." : "Complete credit sale"}</button></div></div>
               </div>
             )}
           </AdminDialogPanel>
         </div>
       ), document.body)}
+      <AppErrorModal message={creditError || error} onClose={() => { setCreditError(""); setError(""); }} title={creditError ? "Credit sale could not be completed" : "Sale could not be completed"} />
     </div>
   );
 }

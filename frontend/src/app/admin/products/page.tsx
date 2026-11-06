@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import { createPortal } from "react-dom";
 import { statusPill } from "@/lib/ui";
 import { useProducts } from "@/hooks/queries/use-products";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
@@ -11,6 +11,8 @@ import type { Product } from "@/services/products/product.service";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
+import { AdminDialogPanel } from "@/components/admin-motion";
+import { AppErrorModal } from "@/components/app-error-modal";
 import { FourDotLoader } from "@/components/four-dot-loader";
 
 type Role = "OWNER" | "STAFF";
@@ -52,6 +54,7 @@ export default function ProductsPage() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [productBusy, setProductBusy] = useState("");
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const productsQuery = useProducts(search);
   const updateState = useUpdateProductState();
   const products = productsQuery.data?.data ?? [];
@@ -153,14 +156,6 @@ export default function ProductsPage() {
               </div>
             )}
           </div>
-          {actionError && (
-            <div
-              className="mb-3 rounded-lg border border-[#f0d7d2] bg-[#fff3f0] px-3 py-2.5 text-sm text-[#a75043]"
-              role="alert"
-            >
-              {actionError}
-            </div>
-          )}
           {notice && (
             <div
               className="mb-3 border border-[#dcebe0] bg-[#f1f8f3] rounded-lg py-2.5 px-3 text-[#4b7557] text-sm flex items-center justify-between gap-3 [&_button]:[border:0] [&_button]:bg-transparent [&_button]:text-inherit [&_button]:text-[15px]"
@@ -289,20 +284,26 @@ export default function ProductsPage() {
               />
             ) : (
               <>
-                <div className="overflow-auto">
-                  <table className="w-full min-w-[1120px] border-collapse text-left">
+                <div className="w-full overflow-hidden">
+                  <table className="w-full table-fixed border-collapse text-left">
+                    <colgroup>
+                      <col className="w-1/4 max-[760px]:w-[40%] max-[520px]:w-[44%]" />
+                      <col className="w-[12.5%] max-[760px]:hidden" />
+                      <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:hidden" />
+                      <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:w-[28%]" />
+                      <col className="w-[12.5%] max-[760px]:hidden" />
+                      <col className="w-[12.5%] max-[760px]:hidden" />
+                      <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:w-[28%]" />
+                    </colgroup>
                     <thead>
                       <tr className="h-10 border-b border-[#e9eeea] bg-[#f8faf8] text-[10px] font-medium uppercase tracking-wide text-[#78857d]">
-                        <th className="px-5">Product</th>
-                        <th className="px-4">SKU / barcode</th>
-                        <th className="px-4">Category</th>
-                        <th className="px-4 text-right">Available</th>
-                        <th className="px-4 text-right">Selling price</th>
-                        <th className="px-4">Stock</th>
-                        <th className="px-4">Product state</th>
-                        {canManage(user.role) && (
-                          <th className="px-4 text-right">Actions</th>
-                        )}
+                        <th className="px-2">Product</th>
+                        <th className="px-2 max-[760px]:hidden">Category</th>
+                        <th className="px-2 text-right max-[520px]:hidden">Available</th>
+                        <th className="px-2 text-right">Selling price</th>
+                        <th className="px-2 max-[760px]:hidden">Stock</th>
+                        <th className="px-2 max-[760px]:hidden">Product state</th>
+                        <th className="px-2 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -312,58 +313,27 @@ export default function ProductsPage() {
                         return (
                           <tr
                             key={product.id}
-                            className="border-b border-[#edf1ed] text-xs text-[#536159] transition-colors last:border-0 hover:bg-[#fbfdfb]"
+                            className="h-12 border-b border-[#edf1ed] text-xs text-[#536159] transition-colors last:border-0 hover:bg-[#fbfdfb]"
                           >
-                            <td className="px-5 py-4">
-                              <div className="flex min-w-[230px] items-center gap-3">
+                            <td className="overflow-hidden px-2 py-2">
+                              <div className="flex min-w-0 items-center gap-2">
                                 {product.imageUrl ? (
-                                  <Image
-                                    src={product.imageUrl}
-                                    alt=""
-                                    width={48}
-                                    height={48}
-                                    unoptimized
-                                    className="size-12 shrink-0 rounded-lg border border-line bg-canvas object-cover"
-                                  />
+                                  <img src={product.imageUrl} alt="" width={32} height={32} className="size-8 shrink-0 rounded-md border border-line bg-canvas object-cover" />
                                 ) : (
                                   <span
                                     aria-hidden="true"
-                                    className="grid size-12 shrink-0 place-items-center rounded-lg bg-[#edf4ef] text-brand"
+                                    className="grid size-8 shrink-0 place-items-center rounded-md bg-[#edf4ef] text-brand"
                                   >
-                                    <AdminUiIcon name="box" size={19} />
+                                    <AdminUiIcon name="box" size={15} />
                                   </span>
                                 )}
-                                <span className="grid min-w-0 gap-1">
-                                  <strong className="max-w-[240px] truncate text-xs font-semibold text-[#26372d]">
-                                    {product.name}
-                                  </strong>
-                                  <small className="text-[10px] capitalize text-muted">
-                                    {product.unit}
-                                  </small>
-                                </span>
+                                <strong title={`${product.name} · ${product.unit}`} className="min-w-0 truncate whitespace-nowrap text-xs font-semibold text-[#26372d]">{product.name}</strong>
                               </div>
                             </td>
-                            <td className="px-4 py-4">
-                              <strong className="font-medium text-[#46564c]">
-                                {product.sku}
-                              </strong>
-                              <small className="mt-1 block text-[10px] text-muted">
-                                {product.barcode || "No barcode"}
-                              </small>
+                            <td className="max-w-0 truncate whitespace-nowrap px-2 py-2 max-[760px]:hidden" title={`${product.category}${product.subcategory ? ` · ${product.subcategory}` : ""}`}>
+                              <span className="text-xs font-medium text-[#397853]">{product.category}</span>{product.subcategory && <small className="ml-1 text-[10px] text-muted">· {product.subcategory}</small>}
                             </td>
-                            <td className="px-4 py-4">
-                              <div className="grid justify-items-start gap-1">
-                                <span className="rounded-md bg-[#edf5ef] px-2.5 py-1 text-xs font-medium text-[#397853]">
-                                  {product.category}
-                                </span>
-                                {product.subcategory && (
-                                  <span className="text-[10px] text-muted">
-                                    {product.subcategory}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-right">
+                            <td className="whitespace-nowrap px-2 py-2 text-right max-[520px]:hidden">
                               <strong className="font-semibold tabular-nums text-[#26372d]">
                                 {quantity(availableUnits)}{" "}
                                 <span className="text-[10px] font-normal text-muted">
@@ -371,12 +341,12 @@ export default function ProductsPage() {
                                 </span>
                               </strong>
                             </td>
-                            <td className="px-4 py-4 text-right">
-                              <strong className="font-medium tabular-nums text-[#26372d]">
+                            <td className="whitespace-nowrap px-2 py-2 text-right">
+                              <strong title={`Selling price ${currency(product.sellingPrice)}`} className="font-medium tabular-nums text-[#26372d]">
                                 {currency(product.sellingPrice)}
                               </strong>
                             </td>
-                            <td className="px-4 py-4">
+                            <td className="px-2 py-2 max-[760px]:hidden">
                               <span className={statusPill(stock.toLowerCase())}>
                                 {stock === "IN_STOCK"
                                   ? "In stock"
@@ -385,7 +355,7 @@ export default function ProductsPage() {
                                     : "Out of stock"}
                               </span>
                             </td>
-                            <td className="px-4 py-4">
+                            <td className="px-2 py-2 max-[760px]:hidden">
                               <span
                                 className={statusPill(
                                   product.state.toLowerCase(),
@@ -394,20 +364,23 @@ export default function ProductsPage() {
                                 {product.state.toLowerCase()}
                               </span>
                             </td>
-                            {canManage(user.role) && (
-                              <td className="px-4 py-4">
-                                <div className="flex items-center justify-end gap-2">
+                            <td className="px-2 py-2">
+                              <div className="flex items-center justify-end gap-1">
+                                <button type="button" aria-label={`View ${product.name} details`} title="View details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dce8f2] bg-[#f3f8fc] text-[#507597] transition-colors hover:bg-[#e4eff8] hover:text-[#315f84]" onClick={() => setViewingProduct(product)}><AdminUiIcon name="eye" size={15} /></button>
+                                {canManage(user.role) && <>
                                   <Link
                                     aria-label={`Edit ${product.name}`}
                                     title="Edit product"
-                                    className="grid size-9 cursor-pointer place-items-center rounded-lg border border-line bg-white text-muted transition-colors hover:bg-canvas hover:text-brand"
+                                    className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dcebe0] bg-[#f3f8f4] text-brand transition-colors hover:bg-[#e4f1e7] hover:text-brand-dark"
                                     href={`/admin/products/${product.id}/edit`}
                                   >
-                                    <AdminUiIcon name="edit" size={16} />
+                                    <AdminUiIcon name="edit" size={14} />
                                   </Link>
                                   {product.state !== "ARCHIVED" && (
                                     <button
-                                      className="h-9 cursor-pointer rounded-lg border border-line bg-white px-3 text-xs text-[#4e5e54] transition-colors hover:bg-canvas disabled:cursor-wait"
+                                      aria-label={`${product.state === "ACTIVE" ? "Deactivate" : "Activate"} ${product.name}`}
+                                      title={product.state === "ACTIVE" ? "Deactivate product" : "Activate product"}
+                                      className={`grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border transition-colors disabled:cursor-wait ${product.state === "ACTIVE" ? "border-[#f0dfda] bg-[#fff6f3] text-[#ab6255] hover:bg-[#ffe9e4]" : "border-[#dcebe0] bg-[#f3f8f4] text-brand hover:bg-[#e4f1e7]"}`}
                                       disabled={productBusy === product.id}
                                       onClick={() =>
                                         void changeProductState(product)
@@ -415,26 +388,18 @@ export default function ProductsPage() {
                                     >
                                       {productBusy === product.id ? (
                                         <span className="inline-flex items-center gap-2">
-                                          <FourDotLoader /> Saving...
+                                          <FourDotLoader />
                                         </span>
                                       ) : product.state === "ACTIVE" ? (
-                                        "Deactivate"
+                                        <AdminUiIcon name="minus" size={15} />
                                       ) : (
-                                        "Activate"
+                                        <AdminUiIcon name="check" size={15} />
                                       )}
                                     </button>
                                   )}
-                                  <Link
-                                    aria-label={`Manage photos for ${product.name}`}
-                                    title="Manage photos"
-                                    className="grid size-9 cursor-pointer place-items-center rounded-lg border border-line bg-white text-muted transition-colors hover:bg-canvas hover:text-brand"
-                                    href={`/admin/products/${product.id}/edit#product-images-title`}
-                                  >
-                                    <AdminUiIcon name="image" size={16} />
-                                  </Link>
-                                </div>
-                              </td>
-                            )}
+                                </>}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -476,6 +441,38 @@ export default function ProductsPage() {
           </footer>
         </div>
       </main>
+      {viewingProduct && createPortal(<div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 [backdrop-filter:blur(2px)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setViewingProduct(null); }}>
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="view-product-title" onEscape={() => setViewingProduct(null)} className="max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f0] text-[#2a6a51]"><AdminUiIcon name="eye" size={19} /></span><div className="min-w-0"><p className="mb-1 mt-0 text-[10px] font-medium tracking-wide text-[#718b79]">PRODUCT DETAILS</p><h2 id="view-product-title" className="m-0 truncate text-base font-semibold tracking-[-.3px] text-ink">{viewingProduct.name}</h2><p className="mb-0 mt-1 text-sm text-[#89948b]">{viewingProduct.sku} · per {viewingProduct.unit}</p></div></div>
+            <button type="button" aria-label="Close product details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#76837b] transition-colors hover:bg-[#f1f6f2] hover:text-[#28644c]" onClick={() => setViewingProduct(null)}><AdminUiIcon name="close" size={15} /></button>
+          </div>
+          <div className="space-y-4">
+            <div className="grid gap-4 rounded-xl border border-[#e8ede9] bg-white p-4 sm:grid-cols-[160px_minmax(0,1fr)]">
+              <div className="flex items-start gap-3 sm:grid sm:content-start">
+                {viewingProduct.imageUrl ? <img src={viewingProduct.imageUrl} alt={viewingProduct.name} className="size-24 shrink-0 rounded-xl border border-line bg-canvas object-cover sm:size-40" /> : <div className="grid size-24 shrink-0 place-items-center rounded-xl bg-[#edf4ef] text-brand sm:size-40"><AdminUiIcon name="box" size={30} /></div>}
+                {!!viewingProduct.productImages?.length && <div className="flex flex-wrap gap-2 sm:grid sm:grid-cols-3">{viewingProduct.productImages.map((image) => image.mediaAsset.secureUrl && <img key={image.id} src={image.mediaAsset.secureUrl} alt={`${viewingProduct.name} ${image.view.toLowerCase()} view`} title={`${image.view.toLowerCase()} image`} className="size-12 rounded-lg border border-line bg-canvas object-cover" />)}</div>}
+              </div>
+              <div className="grid min-w-0 grid-cols-2 content-start gap-2.5 text-sm sm:grid-cols-3 [&>div]:min-w-0 [&>div]:rounded-lg [&>div]:bg-[#f7f9f7] [&>div]:px-3 [&>div]:py-2.5 max-[480px]:grid-cols-1">
+                <div><span className="block text-xs text-muted">SKU</span><strong className="font-medium text-ink">{viewingProduct.sku}</strong></div>
+                <div><span className="block text-xs text-muted">Category</span><strong className="font-medium text-ink">{viewingProduct.category}{viewingProduct.subcategory ? ` · ${viewingProduct.subcategory}` : ""}</strong></div>
+                <div><span className="block text-xs text-muted">Barcode</span><strong className="font-medium text-ink">{viewingProduct.barcode || "Not set"}</strong></div>
+                <div><span className="block text-xs text-muted">Brand / model</span><strong className="font-medium text-ink">{[viewingProduct.brand, viewingProduct.model].filter(Boolean).join(" · ") || "Not set"}</strong></div>
+                <div><span className="block text-xs text-muted">Product state</span><span className={statusPill(viewingProduct.state.toLowerCase())}>{viewingProduct.state.toLowerCase()}</span></div>
+                <div><span className="block text-xs text-muted">Public store</span><strong className="font-medium text-ink">{viewingProduct.isPublished ? "Published" : "Hidden"}</strong></div>
+              </div>
+            </div>
+            {viewingProduct.description && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-2 mt-0 text-sm font-semibold text-ink">Description</h3><p className="m-0 whitespace-pre-wrap text-sm leading-6 text-[#536159]">{viewingProduct.description}</p></section>}
+            <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="m-0 text-sm font-semibold text-ink">Pricing and stock</h3><p className="mb-0 mt-1 text-xs text-muted">Stock totals across all branches.</p></div><span className="text-xs text-muted">Unit: {viewingProduct.unit}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[["Selling price", currency(viewingProduct.sellingPrice)], ["Cost price", currency(viewingProduct.costPrice ?? 0)], ["Available", `${quantity(available(viewingProduct))} ${viewingProduct.unit}`], ["Reorder at", `${quantity(Number(viewingProduct.reorderLevel))} ${viewingProduct.unit}`]].map(([label, value]) => <div key={label} className="rounded-lg bg-[#f7f9f7] p-3"><span className="block text-[11px] text-muted">{label}</span><strong className="mt-1 block text-sm font-semibold text-ink">{value}</strong></div>)}
+            </div></section>
+            {viewingProduct.balances.length > 0 && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Branch stock</h3><div className="grid gap-2">{viewingProduct.balances.map((balance) => <div key={balance.branchId} className="grid grid-cols-2 gap-2 rounded-lg bg-[#f7f9f7] px-3 py-3 text-xs sm:grid-cols-4"><strong className="col-span-2 font-medium text-[#35453b] sm:col-span-1">{balance.branch?.name ?? "Branch"}</strong><span>On hand <strong>{quantity(Number(balance.onHand))}</strong></span><span>Reserved <strong>{quantity(Number(balance.reserved))}</strong></span><span>Available <strong>{quantity(Number(balance.onHand) - Number(balance.reserved))}</strong></span></div>)}</div></section>}
+            {!!viewingProduct.specifications?.length && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Specifications</h3><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{viewingProduct.specifications.map((spec) => <div key={spec.id} className="flex justify-between gap-3 rounded-lg bg-[#f7f9f7] px-3 py-2.5 text-xs"><span className="text-muted">{spec.name}</span><strong className="text-right font-medium text-ink">{spec.value}</strong></div>)}</div></section>}
+          </div>
+          <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canManage(user.role) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
+        </AdminDialogPanel>
+      </div>, document.body)}
+      <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Product update could not be completed" />
     </div>
   );
 }

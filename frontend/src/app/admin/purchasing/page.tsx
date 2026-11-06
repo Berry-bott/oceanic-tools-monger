@@ -11,6 +11,7 @@ import { useBranches } from "@/hooks/queries/use-branches";
 import { useProducts } from "@/hooks/queries/use-products";
 import { usePurchasingOverview } from "@/hooks/queries/use-purchasing-overview";
 import { AdminDialogPanel } from "@/components/admin-motion";
+import { AppErrorModal } from "@/components/app-error-modal";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import {
@@ -321,14 +322,6 @@ export default function PurchasingPage() {
               ></button>
             </div>
           )}
-          {actionError && (
-            <p
-              className="m-0 text-[#b44f44] text-sm leading-normal"
-              role="alert"
-            >
-              {actionError}
-            </p>
-          )}
           <section className="grid grid-cols-4 gap-3 mb-4 max-[620px]:grid-cols-2 max-[620px]:gap-2">
             <article className="bg-white border border-line rounded-xl p-4 grid gap-1.5 min-h-[106px] [&>span]:text-sm [&>span]:text-[#75827a] [&>span]:font-normal [&>strong]:text-2xl [&>strong]:leading-none [&>strong]:font-normal [&>strong]:tracking-tight [&>strong]:text-[#26372d] [&>small]:text-sm [&>small]:text-[#9aa49d] max-[620px]:min-h-[91px] max-[620px]:p-3 max-[620px]:[&>strong]:text-xl">
               <span>Suppliers</span>
@@ -576,11 +569,6 @@ export default function PurchasingPage() {
                   defaultValue="0"
                 />
               </label>
-              {actionError && (
-                <p className="m-0 text-[#b44f44] text-sm leading-normal">
-                  {actionError}
-                </p>
-              )}
               <div className="flex justify-end gap-2 [padding-top:5px]">
                 <button
                   type="button"
@@ -675,11 +663,6 @@ export default function PurchasingPage() {
                   <input name="notes" maxLength={2000} />
                 </label>
               </div>
-              {actionError && (
-                <p className="m-0 text-[#b44f44] text-sm leading-normal">
-                  {actionError}
-                </p>
-              )}
               <div className="flex justify-end gap-2 [padding-top:5px]">
                 <button
                   type="button"
@@ -741,7 +724,6 @@ export default function PurchasingPage() {
                 <label className="grid gap-1.5 text-sm text-[#536159]">Payment reference<input name="paymentReference" required maxLength={80} placeholder="Receipt or transfer reference" className="h-10 rounded-md border border-[#dfe6e0] px-3" /></label>
               </div>}
               <p className="m-0 text-xs text-[#829087]">Stock is added only for quantities recorded as received. Any unpaid amount stays as a supplier balance.</p>
-              {actionError && <p role="alert" className="m-0 text-sm text-[#b44f44]">{actionError}</p>}
               <div className="flex justify-end gap-2">
                 <button type="button" className="h-9 rounded-lg border border-[#e0e7e1] bg-white px-4 text-sm text-[#4e5e54] hover:bg-[#f8faf8]" onClick={() => setReceivingOrder(null)}>Cancel</button>
                 <button disabled={busy === receivingOrder.id} className="h-9 rounded-lg border border-brand bg-brand px-4 text-sm text-white hover:bg-brand-dark disabled:opacity-60">{busy === receivingOrder.id ? "Saving receipt…" : "Save received items and bill"}</button>
@@ -750,6 +732,7 @@ export default function PurchasingPage() {
           </AdminDialogPanel>
         </div>
       )}
+      <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Purchasing action could not be completed" />
     </div>
   );
 }

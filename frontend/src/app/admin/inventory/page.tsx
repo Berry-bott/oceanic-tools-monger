@@ -10,6 +10,7 @@ import { useInventoryOverview } from "@/hooks/queries/use-inventory-overview";
 import { useBranchStore } from "@/stores/branch.store";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
+import { AppErrorModal } from "@/components/app-error-modal";
 import {
   adjustProductStock,
   approveStockCount,
@@ -273,7 +274,13 @@ export default function InventoryPage() {
     const matchesStatus = stockStatusFilter === "all" || (stockStatusFilter === "out" ? isOut : stockStatusFilter === "low" ? isLow : !isOut && !isLow);
     return matchesSearch && matchesStatus && (!categoryFilter || row.category === categoryFilter);
   });
-  const availableByUnit = [...groupedStockRows.reduce((totals, row) => totals.set(row.unit, (totals.get(row.unit) ?? 0) + row.available), new Map<string, number>())];
+  const availableByUnit = [...groupedStockRows.reduce((totals, row) => {
+    const current = totals.get(row.unit) ?? { quantity: 0, items: [] as string[] };
+    current.quantity += row.available;
+    current.items.push(`${row.name} (${fmt(row.available)} ${row.unit})`);
+    totals.set(row.unit, current);
+    return totals;
+  }, new Map<string, { quantity: number; items: string[] }>())];
   const productPageSize = 30;
   const productPageCount = Math.max(1, Math.ceil(filteredStockRows.length / productPageSize));
   const visibleStockRows = filteredStockRows.slice((productPage - 1) * productPageSize, productPage * productPageSize);
@@ -333,14 +340,6 @@ export default function InventoryPage() {
               ></button>
             </div>
           )}
-          {actionError && (
-            <div
-              className="m-0 text-[#b44f44] text-sm leading-normal"
-              role="alert"
-            >
-              {actionError}
-            </div>
-          )}
           <section className="grid grid-cols-5 gap-3 mb-4 max-[1000px]:grid-cols-3 max-[620px]:grid-cols-2 max-[620px]:gap-2">
             <article className="bg-white border border-line rounded-xl p-4 grid gap-1.5 min-h-[106px] [&>span]:text-xs [&>span]:text-[#75827a] [&>span]:font-semibold [&>strong]:text-2xl [&>strong]:leading-none [&>strong]:font-normal [&>strong]:tracking-tight [&>strong]:text-[#26372d] [&>small]:text-xs [&>small]:text-[#9aa49d] max-[620px]:min-h-[91px] max-[620px]:p-3 max-[620px]:[&>strong]:text-xl">
               <span>Products stocked</span>
@@ -356,10 +355,13 @@ export default function InventoryPage() {
               </strong>
               <small>Products with stock ready to sell</small>
             </article>
-            <article className="bg-white border border-line rounded-xl p-4 grid content-start gap-1.5 min-h-[106px] max-[620px]:min-h-[91px] max-[620px]:p-3">
-              <span className="text-xs font-semibold text-[#75827a]">Available units</span>
-              <div className="grid gap-1 text-2xl font-semibold leading-none tracking-tight text-[#26372d]">
-                {loading ? "Loading" : availableByUnit.length ? availableByUnit.map(([unit, quantity]) => <span key={unit}>{fmt(quantity)} <small className="text-xs font-medium tracking-normal">{unit}</small></span>) : <span>0</span>}
+            <article className="grid min-h-[106px] min-w-0 content-start gap-2 overflow-hidden rounded-xl border border-line bg-white p-4 max-[620px]:min-h-[91px] max-[620px]:p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-[#75827a]">Available units</span>
+                {!!availableByUnit.length && <small className="shrink-0 text-[10px] text-[#9aa49d]">{availableByUnit.length} types</small>}
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]" aria-label="Available stock by unit">
+                {loading ? <span className="text-sm text-[#87948b]">Loading…</span> : availableByUnit.length ? availableByUnit.map(([unit, total]) => <span key={unit} title={`${fmt(total.quantity)} ${unit} total\n${total.items.join("\n")}`} aria-label={`${fmt(total.quantity)} ${unit} total. Includes: ${total.items.join(", ")}`} className="inline-flex shrink-0 items-baseline gap-1 rounded-md bg-[#f2f6f2] px-2 py-1 text-sm font-semibold leading-none text-[#304438]">{fmt(total.quantity)}<small className="text-[10px] font-medium text-[#718077]">{unit}</small></span>) : <span className="rounded-md bg-[#f2f6f2] px-2 py-1 text-sm font-semibold leading-none text-[#304438]">0</span>}
               </div>
               <small className="text-xs text-[#9aa49d]">On hand</small>
             </article>
@@ -380,63 +382,76 @@ export default function InventoryPage() {
           </section>
           <div className="grid [grid-template-columns:minmax(0,1.6fr)_minmax(270px,1fr)] gap-3 mb-3 items-start max-[950px]:grid-cols-1">
             <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
-              <div className="flex items-center justify-between gap-4 border-b border-[#edf1ed] px-5 py-4 max-[1000px]:items-start max-[1000px]:flex-col max-[620px]:px-4">
-                <div>
-                  <h2 className="m-0 text-sm font-semibold text-ink">Stock by product</h2>
-                  <p className="mb-0 mt-1 text-xs text-muted">{filteredStockRows.length} products in this view · showing {filteredStockRows.length ? (productPage - 1) * productPageSize + 1 : 0}–{Math.min(productPage * productPageSize, filteredStockRows.length)}</p>
+              <div className="grid gap-3 border-b border-[#edf1ed] px-5 py-4 max-[620px]:px-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="m-0 text-sm font-semibold text-ink">Stock by product</h2>
+                    <p className="mb-0 mt-1 text-xs text-muted">{filteredStockRows.length} products in this view · showing {filteredStockRows.length ? (productPage - 1) * productPageSize + 1 : 0}–{Math.min(productPage * productPageSize, filteredStockRows.length)}</p>
+                  </div>
+                  <div className="flex max-w-full flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap">
+                    <select
+                      value={categoryFilter}
+                      onChange={(event) => { setCategoryFilter(event.target.value); setProductPage(1); }}
+                      aria-label="Filter products by category"
+                      className="h-10 shrink-0 rounded-lg border border-line bg-white px-3 text-xs text-ink focus:border-brand focus:outline-none"
+                    >
+                      <option value="">All categories</option>
+                      {categories.map((category) => (
+                        <option value={category} key={category}>{category}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={stockStatusFilter}
+                      onChange={(event) => { setStockStatusFilter(event.target.value); setProductPage(1); }}
+                      aria-label="Filter products by stock status"
+                      className="h-10 shrink-0 rounded-lg border border-line bg-white px-3 text-xs text-ink focus:border-brand focus:outline-none"
+                    >
+                      <option value="all">All stock levels</option>
+                      <option value="in">In stock</option>
+                      <option value="low">Low stock</option>
+                      <option value="out">Out of stock</option>
+                    </select>
+                    <Link
+                      className="flex shrink-0 items-center gap-1 px-2 text-xs text-brand hover:underline"
+                      href="/admin/products"
+                    >
+                      Manage products
+                    </Link>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="search"
-                    value={productSearch}
-                    onChange={(event) => { setProductSearch(event.target.value); setProductPage(1); }}
-                    placeholder="Search products"
-                    aria-label="Search stock products"
-                    className="h-10 w-48 rounded-lg border border-line bg-white px-3 text-xs text-ink placeholder:text-muted focus:border-brand focus:outline-none max-[620px]:w-full"
-                  />
-                  <select
-                    value={categoryFilter}
-                    onChange={(event) => { setCategoryFilter(event.target.value); setProductPage(1); }}
-                    aria-label="Filter products by category"
-                    className="h-10 rounded-lg border border-line bg-white px-3 text-xs text-ink focus:border-brand focus:outline-none"
-                  >
-                    <option value="">All categories</option>
-                    {categories.map((category) => (
-                      <option value={category} key={category}>{category}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={stockStatusFilter}
-                    onChange={(event) => { setStockStatusFilter(event.target.value); setProductPage(1); }}
-                    aria-label="Filter products by stock status"
-                    className="h-10 rounded-lg border border-line bg-white px-3 text-xs text-ink focus:border-brand focus:outline-none"
-                  >
-                    <option value="all">All stock levels</option>
-                    <option value="in">In stock</option>
-                    <option value="low">Low stock</option>
-                    <option value="out">Out of stock</option>
-                  </select>
-                  <Link
-                    className="flex items-center gap-1 px-2 text-xs text-brand hover:underline"
-                    href="/admin/products"
-                  >
-                    Manage products
-                  </Link>
-                </div>
+                <input
+                  type="search"
+                  value={productSearch}
+                  onChange={(event) => { setProductSearch(event.target.value); setProductPage(1); }}
+                  placeholder="Search products"
+                  aria-label="Search stock products"
+                  className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-ink placeholder:text-muted focus:border-brand focus:outline-none"
+                />
               </div>
-              <div className="overflow-auto">
-                <table className="w-full min-w-[980px] border-collapse text-left">
+              <div className="overflow-x-auto overscroll-x-contain">
+                <table className="w-full min-w-[1220px] table-fixed border-collapse text-left">
+                  <colgroup>
+                    <col className="w-[280px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[135px]" />
+                    <col className="w-[85px]" />
+                    <col className="w-[85px]" />
+                    <col className="w-[110px]" />
+                    <col className="w-[110px]" />
+                    <col className="w-[130px]" />
+                    <col className="w-[165px]" />
+                  </colgroup>
                   <thead>
                     <tr className="h-10 border-b border-line bg-[#f8faf8] text-left text-[10px] font-medium uppercase tracking-wide text-muted">
-                      <th className="px-4">Product</th>
-                      <th className="px-4">Category</th>
-                      <th className="px-4">Branch stock</th>
-                      <th className="px-4 text-right">On hand</th>
-                      <th className="px-4 text-right">Reserved</th>
-                      <th className="px-4 text-right">Available</th>
-                      <th className="px-4 text-right">Reorder at</th>
-                      <th className="px-4">Stock status</th>
-                      <th className="px-4">Last updated</th>
+                      <th className="px-3">Product</th>
+                      <th className="px-3">Category</th>
+                      <th className="px-3">Branch stock</th>
+                      <th className="px-3 text-right">On hand</th>
+                      <th className="px-3 text-right">Reserved</th>
+                      <th className="px-3 text-right">Available</th>
+                      <th className="px-3 text-right">Reorder at</th>
+                      <th className="px-3">Stock status</th>
+                      <th className="px-3">Last updated</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -448,48 +463,52 @@ export default function InventoryPage() {
                       const expanded = expandedProducts.has(row.productId);
                       return (
                       <Fragment key={row.productId}>
-                      <tr className="border-b border-[#edf1ed] text-xs text-[#536159] last:border-0 hover:bg-[#fbfdfb]">
-                        <td className="px-4 py-3">
-                          <div className="flex min-w-[220px] items-center gap-3">
+                      <tr tabIndex={0} role="button" aria-expanded={expanded} aria-label={`${expanded ? "Hide" : "View"} details for ${row.name}`} onClick={() => setExpandedProducts((current) => { const next = new Set(current); if (next.has(row.productId)) next.delete(row.productId); else next.add(row.productId); return next; })} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setExpandedProducts((current) => { const next = new Set(current); if (next.has(row.productId)) next.delete(row.productId); else next.add(row.productId); return next; }); } }} className="h-[58px] cursor-pointer border-b border-[#edf1ed] text-xs text-[#536159] last:border-0 hover:bg-[#fbfdfb] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                        <td className="whitespace-nowrap px-3 py-2 align-middle">
+                          <div className="flex min-w-0 items-center gap-2.5">
                             {row.imageUrl ? (
-                              <img src={row.imageUrl} alt="" className="size-10 rounded-lg border border-line bg-[#f4f7f4] object-cover" />
+                              <img src={row.imageUrl} alt="" className="size-9 shrink-0 rounded-lg border border-line bg-[#f4f7f4] object-cover" />
                             ) : (
-                              <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-xs font-semibold text-brand">
+                              <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-xs font-semibold text-brand">
                                 {row.name.trim().charAt(0).toUpperCase() || "P"}
                               </span>
                             )}
-                            <span className="grid min-w-0 gap-1">
-                              <strong className="truncate text-xs font-medium text-ink">{row.name}</strong>
-                              <small className="text-[10px] text-muted">{row.sku} · per {row.unit}</small>
-                            </span>
+                            <span className="min-w-0 truncate" title={`${row.name} · ${row.sku} · per ${row.unit}`}><strong className="text-[13px] font-semibold leading-4 text-ink">{row.name}</strong><small className="ml-1 text-[10px] text-muted">· {row.sku}</small></span>
                           </div>
                         </td>
-                        <td className="px-4 py-3">{row.category || "Uncategorised"}</td>
-                        <td className="px-4 py-3">
+                        <td className="truncate whitespace-nowrap px-3 py-2 align-middle text-[#65736a]" title={row.category || "Uncategorised"}>{row.category || "Uncategorised"}</td>
+                        <td className="truncate whitespace-nowrap px-3 py-2 align-middle" title={row.branches.map((branch) => branch.name).join(", ")}>
                           {row.branches.length === 1 ? row.branches[0].name : (
-                            <button type="button" className="cursor-pointer text-left text-brand hover:underline" onClick={() => setExpandedProducts((current) => { const next = new Set(current); if (next.has(row.productId)) next.delete(row.productId); else next.add(row.productId); return next; })} aria-expanded={expanded}>
+                            <span className="font-medium text-brand">
                               {row.branches.length} branches
-                            </button>
+                            </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{fmt(row.onHand)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{fmt(row.reserved)}</td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
+                        <td className="whitespace-nowrap px-3 py-2 text-right align-middle font-medium tabular-nums text-[#35453b]" title={`On hand: ${fmt(row.onHand)} ${row.unit}`}>{fmt(row.onHand)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right align-middle tabular-nums text-muted" title={`Reserved: ${fmt(row.reserved)} ${row.unit}`}>{fmt(row.reserved)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right align-middle font-semibold tabular-nums text-ink" title={`Available: ${fmt(row.available)} ${row.unit}`}>
                           {fmt(row.available)} <span className="text-[10px] font-normal text-muted">{row.unit}</span>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{fmt(row.reorderLevel)} <span className="text-[10px] text-muted">{row.unit}</span></td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium ${isOut ? "bg-[#fff0ed] text-[#ae6559]" : isLow ? "bg-[#fff6e8] text-[#a77b35]" : "bg-[#edf6ef] text-[#4d805a]"}`}>
+                        <td className="whitespace-nowrap px-3 py-2 text-right align-middle tabular-nums" title={`Reorder at: ${fmt(row.reorderLevel)} ${row.unit}`}>{fmt(row.reorderLevel)} <span className="text-[10px] text-muted">{row.unit}</span></td>
+                        <td className="whitespace-nowrap px-3 py-2 align-middle" title={isOut ? "Out of stock" : isLow ? "Low stock" : "In stock"}>
+                          <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold ${isOut ? "bg-[#fff0ed] text-[#ae6559]" : isLow ? "bg-[#fff6e8] text-[#a77b35]" : "bg-[#edf6ef] text-[#4d805a]"}`}>
                             {isOut ? "Out of stock" : isLow ? "Low stock" : "In stock"}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-muted">{row.updatedAt ? date(row.updatedAt) : "-"}</td>
+                        <td className="whitespace-nowrap px-3 py-2 align-middle text-[11px] text-muted" title={row.updatedAt ? date(row.updatedAt) : "No update recorded"}>{row.updatedAt ? date(row.updatedAt) : "-"}</td>
                       </tr>
-                      {expanded && row.branches.length > 1 && (
-                        <tr key={`${row.productId}-branches`} className="border-b border-[#edf1ed] bg-[#f8faf8] text-xs text-[#536159]">
-                          <td colSpan={9} className="px-6 py-3"><div className="grid gap-2">
-                            {row.branches.map((branch) => <div key={branch.id ?? branch.name} className="grid grid-cols-[minmax(120px,1fr)_repeat(3,minmax(70px,auto))] gap-4"><strong className="font-medium">{branch.name}</strong><span className="text-right">On hand: {fmt(branch.onHand)} {row.unit}</span><span className="text-right">Reserved: {fmt(branch.reserved)} {row.unit}</span><span className="text-right">Available: {fmt(branch.available)} {row.unit}</span></div>)}
-                          </div></td>
+                      {expanded && (
+                        <tr key={`${row.productId}-details`} className="border-b border-[#edf1ed] bg-[#f8faf8] text-xs text-[#536159]">
+                          <td colSpan={9} className="px-5 py-4">
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                              <div><p className="m-0 text-sm font-semibold text-[#35453b]">{row.name}</p><p className="mb-0 mt-1 text-xs text-muted">SKU: {row.sku} <span className="px-1">·</span> {row.category || "Uncategorised"} <span className="px-1">·</span> Sold per {row.unit}</p></div>
+                              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isOut ? "bg-[#fff0ed] text-[#ae6559]" : isLow ? "bg-[#fff6e8] text-[#a77b35]" : "bg-[#edf6ef] text-[#4d805a]"}`}>{isOut ? "Out of stock" : isLow ? "Low stock" : "In stock"}</span>
+                            </div>
+                            <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2 text-xs"><span>On hand: <strong>{fmt(row.onHand)} {row.unit}</strong></span><span>Reserved: <strong>{fmt(row.reserved)} {row.unit}</strong></span><span>Available: <strong>{fmt(row.available)} {row.unit}</strong></span><span>Reorder at: <strong>{fmt(row.reorderLevel)} {row.unit}</strong></span></div>
+                            <div className="grid gap-2 border-t border-[#e6ece7] pt-3">
+                              {row.branches.map((branch) => <div key={branch.id ?? branch.name} className="grid grid-cols-[minmax(120px,1fr)_repeat(3,minmax(90px,auto))] gap-4 max-[620px]:grid-cols-2"><strong className="truncate font-medium" title={branch.name}>{branch.name}</strong><span className="text-right">On hand: {fmt(branch.onHand)} {row.unit}</span><span className="text-right">Reserved: {fmt(branch.reserved)} {row.unit}</span><span className="text-right">Available: {fmt(branch.available)} {row.unit}</span></div>)}
+                            </div>
+                          </td>
                         </tr>
                       )}
                       </Fragment>
@@ -512,8 +531,8 @@ export default function InventoryPage() {
                 </div>
               )}
             </section>
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-[15px] [&>.panel-heading]:[margin-bottom:10px] [&_select]:[font:inherit] [&_input]:[font:inherit]">
-              <div className="flex items-start justify-between gap-3 mb-3 [&_h2]:text-sm [&_h2]:m-0 [&_h2]:font-bold [&_h2]:tracking-[-.1px] [&_p]:text-sm [&_p]:text-[#8d9991] [&_p]:mt-1 mx-0 mb-0">
+            <section className="min-w-0 rounded-xl border border-[#e5ebe6] bg-white p-4 shadow-[0_2px_8px_rgba(32,52,40,0.04)] min-[1500px]:p-5 max-[620px]:p-3 [&_select]:[font:inherit] [&_input]:[font:inherit]">
+              <div className="mb-4 flex items-start justify-between gap-3 [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:tracking-[-.2px] [&_p]:mt-1 [&_p]:text-sm [&_p]:text-[#87948b]">
                 <div>
                   <h2>Stock workflows</h2>
                   <p>You need owner or stock manager access to do this.</p>
@@ -522,7 +541,7 @@ export default function InventoryPage() {
               {canManage ? (
                 <>
                   <form
-                    className="grid gap-2 py-2.5 px-0 [border-top:1px_solid_#edf1ed] [&>strong]:text-sm [&>strong]:text-[#43544a] [&_input]:h-[33px] [&_input]:min-w-0 [&_input]:border border-[#e4eae5] [&_input]:rounded-[5px] [&_input]:py-0 px-2 [&_input]:bg-white [&_input]:text-[#536159] [&_input]:text-sm [&_select]:h-[33px] [&_select]:min-w-0 [&_select]:border border-[#e4eae5] [&_select]:rounded-[5px] [&_select]:py-0 px-2 [&_select]:bg-white [&_select]:text-[#536159] [&_select]:text-sm [&_.form-row]:gap-2 [&_.button-primary]:h-[33px] [&_.button-primary]:text-sm [&_.button-primary]:py-0 px-2 [&_.button-secondary]:h-[33px] [&_.button-secondary]:text-sm [&_.button-secondary]:py-0 px-2"
+                    className="grid gap-3 rounded-lg border border-[#edf1ed] bg-[#fafcfb] p-3 [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:text-[#43544a] [&_input]:h-10 [&_input]:min-w-0 [&_input]:rounded-md [&_input]:border [&_input]:border-[#dce5de] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#45564b] [&_input]:outline-none [&_input]:placeholder:text-[#9aa69e] [&_input:focus]:border-[#8aab91] [&_input:focus]:ring-2 [&_input:focus]:ring-[#e5efe7] [&_select]:h-10 [&_select]:min-w-0 [&_select]:rounded-md [&_select]:border [&_select]:border-[#dce5de] [&_select]:bg-white [&_select]:px-3 [&_select]:text-sm [&_select]:text-[#45564b] [&_select:focus]:border-[#8aab91] [&_.button-primary]:h-10 [&_.button-primary]:text-sm [&_.button-primary]:font-medium"
                     onSubmit={(event) => void createTransfer(event)}
                   >
                     <strong>New transfer</strong>
@@ -578,7 +597,7 @@ export default function InventoryPage() {
                     </div>
                   </form>
                   <form
-                    className="grid gap-2 py-2.5 px-0 [border-top:1px_solid_#edf1ed] [&>strong]:text-sm [&>strong]:text-[#43544a] [&_input]:h-[33px] [&_input]:min-w-0 [&_input]:border border-[#e4eae5] [&_input]:rounded-[5px] [&_input]:py-0 px-2 [&_input]:bg-white [&_input]:text-[#536159] [&_input]:text-sm [&_select]:h-[33px] [&_select]:min-w-0 [&_select]:border border-[#e4eae5] [&_select]:rounded-[5px] [&_select]:py-0 px-2 [&_select]:bg-white [&_select]:text-[#536159] [&_select]:text-sm [&_.form-row]:gap-2 [&_.button-primary]:h-[33px] [&_.button-primary]:text-sm [&_.button-primary]:py-0 px-2 [&_.button-secondary]:h-[33px] [&_.button-secondary]:text-sm [&_.button-secondary]:py-0 px-2"
+                    className="grid gap-3 rounded-lg border border-[#edf1ed] bg-[#fafcfb] p-3 [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:text-[#43544a] [&_input]:h-10 [&_input]:min-w-0 [&_input]:rounded-md [&_input]:border [&_input]:border-[#dce5de] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#45564b] [&_input]:outline-none [&_input]:placeholder:text-[#9aa69e] [&_input:focus]:border-[#8aab91] [&_input:focus]:ring-2 [&_input:focus]:ring-[#e5efe7] [&_select]:h-10 [&_select]:min-w-0 [&_select]:rounded-md [&_select]:border [&_select]:border-[#dce5de] [&_select]:bg-white [&_select]:px-3 [&_select]:text-sm [&_select]:text-[#45564b] [&_select:focus]:border-[#8aab91] [&_.button-primary]:h-10 [&_.button-primary]:text-sm [&_.button-primary]:font-medium [&_.button-secondary]:h-10 [&_.button-secondary]:text-sm"
                     onSubmit={(event) => void createCount(event)}
                   >
                     <strong>Start stock count</strong>
@@ -594,7 +613,7 @@ export default function InventoryPage() {
                     </select>
                     <div className="grid gap-2">
                       {countLineKeys.map((key, index) => (
-                        <div key={key} className="grid grid-cols-[minmax(0,1fr)_110px_auto] gap-2 max-[620px]:grid-cols-1">
+                        <div key={key} className="grid grid-cols-[minmax(0,1fr)_130px_auto] gap-2 max-[620px]:grid-cols-1">
                           <select name="product" required defaultValue="">
                             <option value="" disabled>Product {index + 1}</option>
                             {products.map((p) => <option value={p.id} key={p.id}>{p.name} {p.sku}</option>)}
@@ -603,19 +622,19 @@ export default function InventoryPage() {
                           {countLineKeys.length > 1 && <button type="button" className="grid size-8 cursor-pointer place-items-center rounded-md border border-line bg-white text-muted hover:bg-canvas" aria-label={`Remove product ${index + 1} from count`} onClick={() => setCountLineKeys((keys) => keys.filter((item) => item !== key))}>×</button>}
                         </div>
                       ))}
-                      <button type="button" className="w-fit cursor-pointer text-xs font-medium text-brand hover:underline" onClick={() => setCountLineKeys((keys) => [...keys, Math.max(...keys) + 1])}>+ Add another product</button>
+                      <button type="button" className="w-fit cursor-pointer text-sm font-medium text-brand hover:underline" onClick={() => setCountLineKeys((keys) => [...keys, Math.max(...keys) + 1])}>+ Add another product</button>
                     </div>
-                    <button
-                      className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-[#4e5e54] bg-white border border-[#e0e7e1] [&:hover]:bg-[#f8faf8] [&:hover]:[border-color:#ccd9ce]"
-                      disabled={busy === "create-count"}
-                    >
-                      {busy === "create-count" ? "Saving" : "Create count"}
-                    </button>
                     <input
                       name="reason"
                       placeholder="Count note (optional)"
                       maxLength={500}
                     />
+                    <button
+                      className="h-10 rounded-lg border border-brand bg-brand px-3 text-sm font-medium text-white shadow-[0_1px_2px_rgba(24,63,51,0.1)] transition-colors hover:bg-brand-dark disabled:opacity-60"
+                      disabled={busy === "create-count"}
+                    >
+                      {busy === "create-count" ? "Saving" : "Create count"}
+                    </button>
                   </form>
                 </>
               ) : (
@@ -981,6 +1000,7 @@ export default function InventoryPage() {
             </span>
           </footer>
         </div>
+        <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Stock action could not be completed" />
       </main>
     </div>
   );

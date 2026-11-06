@@ -573,8 +573,7 @@ export default function HomePage() {
           <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
             <DashboardPageHeading
               greeting={greeting}
-              userName={user.name}
-              businessName="your store"
+              businessName="OceanicToolsMonger"
               loading
               onRefresh={() => void refresh()}
               canExport={canSeeFinance(user.role)}
@@ -597,7 +596,6 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
           <DashboardPageHeading
             greeting={greeting}
-            userName={user.name}
             businessName={displayBusiness}
             loading={loading}
             onRefresh={() => void refresh()}
@@ -1276,7 +1274,7 @@ export default function HomePage() {
                     <DashboardIcon name="scan" size={16} />
                   </span>
                   <span>
-                    <strong>Cash shift variance</strong>
+                    <strong>Cash count difference</strong>
                     <small>Closed shifts | {dateLabel}</small>
                   </span>
                   <b
@@ -1427,12 +1425,12 @@ export default function HomePage() {
                     (shift) => shift.variance !== 0,
                   ) && (
                     <p className="text-sm text-[#929e96] py-2.5 px-1 m-0">
-                      No cash variances in this period.
+                      No cash count differences in this period.
                     </p>
                   )}
               </div>
               <div className="flex justify-between items-center [margin-top:11px] [padding-top:10px] [border-top:1px_solid_#edf1ed] text-sm text-[#7b887f] [&_strong]:text-sm [&_strong]:text-[#394a40]">
-                <span>Net variance for selected period</span>
+                <span>Net cash difference for selected period</span>
                 <strong>
                   {dashboard.reconciliation?.error
                     ? "Unavailable"
