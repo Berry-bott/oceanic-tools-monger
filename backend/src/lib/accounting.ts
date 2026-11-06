@@ -13,6 +13,7 @@ export const defaultAccounts = [
   { code: "2050", name: "Goods received not invoiced", type: "LIABILITY" },
   { code: "2100", name: "Tax payable", type: "LIABILITY" },
   { code: "2200", name: "Customer refunds payable", type: "LIABILITY" },
+  { code: "2300", name: "Customer instalments received", type: "LIABILITY" },
   { code: "3000", name: "Owner equity / opening balances", type: "EQUITY" },
   { code: "4000", name: "Sales revenue", type: "REVENUE" },
   { code: "4200", name: "Delivery revenue", type: "REVENUE" },

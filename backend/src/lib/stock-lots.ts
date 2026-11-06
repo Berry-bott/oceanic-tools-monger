@@ -12,7 +12,7 @@ export async function takeFefoLots(
   let remaining = new Prisma.Decimal(input.quantity);
   const now = input.now ?? new Date();
   const lots = await transaction.stockLot.findMany({
-    where: { productId: input.productId, branchId: input.branchId, ...(input.includeExpired ? {} : { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }) },
+    where: { productId: input.productId, branchId: input.branchId, condition: "GOOD", ...(input.includeExpired ? {} : { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }) },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
   const allocations: Allocation[] = [];
@@ -40,7 +40,7 @@ export async function reserveFefoLots(
   let remaining = new Prisma.Decimal(input.quantity);
   const now = input.now ?? new Date();
   const lots = await transaction.stockLot.findMany({
-    where: { productId: input.productId, branchId: input.branchId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    where: { productId: input.productId, branchId: input.branchId, condition: "GOOD", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
   for (const lot of lots) {
@@ -59,6 +59,7 @@ export async function reserveFefoLots(
 export async function consumeReservedLots(transaction: Transaction, reservationId: string) {
   const lots = await transaction.reservationLot.findMany({ where: { reservationId }, include: { stockLot: true } });
   return lots.map(({ stockLot, quantity }) => {
+    if (stockLot.condition !== "GOOD" || (stockLot.expiresAt && stockLot.expiresAt <= new Date())) throw new ApiError(409, "Reserved stock is damaged, quarantined, or expired. Release the reservation and choose another batch.", "RESERVATION_INVALID");
     if (stockLot.quantity.lessThan(quantity) || stockLot.reserved.lessThan(quantity)) throw new ApiError(409, "Reserved batch stock is no longer available.", "RESERVATION_INVALID");
     return { stockLotId: stockLot.id, quantity, unitCost: stockLot.unitCost };
   });

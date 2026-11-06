@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -56,6 +56,11 @@ enum SaleChannel {
   POS
   ONLINE
   MANUAL
+}
+
+enum CustomerType {
+  PERSONAL
+  COMPANY
 }
 
 enum SaleStatus {
@@ -124,6 +129,13 @@ enum StockCountStatus {
   REJECTED
 }
 
+enum StockCondition {
+  GOOD
+  DAMAGED
+  QUARANTINED
+  EXPIRED
+}
+
 enum DeliveryChannel {
   EMAIL
   SMS
@@ -137,102 +149,124 @@ enum DeliveryStatus {
   SUPPRESSED
 }
 
+enum InstallmentAgreementStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
 model Business {
-  id        String    @id @default(cuid())
-  name      String
-  storeSlug String    @unique @db.VarChar(80)
-  currency  String    @default("NGN") @db.VarChar(3)
-  timezone  String    @default("Africa/Lagos")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  users     User[]
-  branches  Branch[]
-  products  Product[]
-  categories Category[]
-  mediaAssets MediaAsset[]
-  suppliers Supplier[]
-  customers Customer[]
-  customerAccounts CustomerAccount[]
-  purchaseOrders PurchaseOrder[]
-  supplierInvoices SupplierInvoice[]
-  payments Payment[]
-  sales Sale[]
-  expenses Expense[]
-  cashShifts CashShift[]
-  accounts Account[]
-  journalEntries JournalEntry[]
-  auditLogs AuditLog[]
-  notifications Notification[]
-  reservations StockReservation[]
-  onlineOrders OnlineOrder[]
-  stockTransfers StockTransfer[]
-  stockCounts StockCount[]
-  productMerges ProductMerge[]
-  supplierReturns SupplierReturn[]
-  settlements GatewaySettlement[]
+  id                    String                 @id @default(cuid())
+  name                  String
+  storeSlug             String                 @unique @db.VarChar(80)
+  currency              String                 @default("NGN") @db.VarChar(3)
+  timezone              String                 @default("Africa/Lagos")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  users                 User[]
+  branches              Branch[]
+  products              Product[]
+  categories            Category[]
+  mediaAssets           MediaAsset[]
+  suppliers             Supplier[]
+  customers             Customer[]
+  customerAccounts      CustomerAccount[]
+  purchaseOrders        PurchaseOrder[]
+  supplierInvoices      SupplierInvoice[]
+  payments              Payment[]
+  sales                 Sale[]
+  expenses              Expense[]
+  cashShifts            CashShift[]
+  accounts              Account[]
+  journalEntries        JournalEntry[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  reservations          StockReservation[]
+  onlineOrders          OnlineOrder[]
+  stockTransfers        StockTransfer[]
+  stockCounts           StockCount[]
+  productMerges         ProductMerge[]
+  supplierReturns       SupplierReturn[]
+  settlements           GatewaySettlement[]
+  installmentAgreements InstallmentAgreement[]
+  installmentPayments   InstallmentPayment[]
+  installmentRefunds    InstallmentRefund[]
 }
 
 model Branch {
-  id        String         @id @default(cuid())
-  businessId String
-  name      String
-  isDefault Boolean        @default(false)
-  createdAt DateTime       @default(now())
-  business  Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  balances  StockBalance[]
-  assignedStaff User[] @relation("StaffAssignedBranch")
-  stockLots StockLot[]
-  movements StockMovement[]
-  purchaseOrders PurchaseOrder[]
-  goodsReceipts GoodsReceipt[]
-  sales Sale[]
-  onlineOrders OnlineOrder[]
-  transfersOut StockTransfer[] @relation("TransferSource")
-  transfersIn StockTransfer[] @relation("TransferDestination")
-  stockCounts StockCount[]
-  supplierReturns SupplierReturn[]
-  cashShifts CashShift[]
-  expenses Expense[]
-  reservations StockReservation[]
+  id                    String                 @id @default(cuid())
+  businessId            String
+  name                  String
+  isDefault             Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  business              Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  balances              StockBalance[]
+  assignedStaff         User[]                 @relation("StaffAssignedBranch")
+  stockLots             StockLot[]
+  movements             StockMovement[]
+  purchaseOrders        PurchaseOrder[]
+  goodsReceipts         GoodsReceipt[]
+  sales                 Sale[]
+  onlineOrders          OnlineOrder[]
+  transfersOut          StockTransfer[]        @relation("TransferSource")
+  transfersIn           StockTransfer[]        @relation("TransferDestination")
+  stockCounts           StockCount[]
+  supplierReturns       SupplierReturn[]
+  cashShifts            CashShift[]
+  expenses              Expense[]
+  reservations          StockReservation[]
+  installmentAgreements InstallmentAgreement[]
 
   @@unique([businessId, name])
   @@index([businessId])
 }
 
 model User {
-  id           String      @id @default(cuid())
-  businessId   String
-  branchId     String?
-  email        String
-  name         String
-  passwordHash String
-  role         UserRole    @default(STAFF)
-  isActive     Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  business     Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch       Branch?     @relation("StaffAssignedBranch", fields: [branchId], references: [id], onDelete: Restrict)
-  sessions     Session[]
-  movements    StockMovement[]
-  products     Product[]   @relation("ProductCreator")
-  createdPurchaseOrders PurchaseOrder[] @relation("PurchaseCreator")
-  approvedPurchaseOrders PurchaseOrder[] @relation("PurchaseApprover")
-  goodsReceipts GoodsReceipt[]
-  sales Sale[]
-  saleReturns SaleReturn[]
-  stockTransfersCreated StockTransfer[] @relation("TransferCreator")
-  stockTransfersApproved StockTransfer[] @relation("TransferApprover")
-  stockCountsCreated StockCount[] @relation("StockCountCreator")
-  stockCountsApproved StockCount[] @relation("StockCountApprover")
-  refunds Refund[]
-  cashShifts CashShift[]
-  expenses Expense[]
-  journalEntries JournalEntry[] @relation("JournalCreator")
-  auditLogs AuditLog[]
-  notifications Notification[]
-  productMerges ProductMerge[]
-  supplierReturns SupplierReturn[]
-  settlementsCreated GatewaySettlement[] @relation("SettlementCreator")
+  id                           String                 @id @default(cuid())
+  businessId                   String
+  branchId                     String?
+  email                        String
+  name                         String
+  passwordHash                 String
+  role                         UserRole               @default(STAFF)
+  isActive                     Boolean                @default(true)
+  createdAt                    DateTime               @default(now())
+  updatedAt                    DateTime               @updatedAt
+  business                     Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch                       Branch?                @relation("StaffAssignedBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  sessions                     Session[]
+  movements                    StockMovement[]
+  products                     Product[]              @relation("ProductCreator")
+  createdPurchaseOrders        PurchaseOrder[]        @relation("PurchaseCreator")
+  approvedPurchaseOrders       PurchaseOrder[]        @relation("PurchaseApprover")
+  goodsReceipts                GoodsReceipt[]
+  sales                        Sale[]
+  saleReturns                  SaleReturn[]
+  stockTransfersCreated        StockTransfer[]        @relation("TransferCreator")
+  stockTransfersApproved       StockTransfer[]        @relation("TransferApprover")
+  stockTransfersReceived       StockTransfer[]        @relation("TransferReceiver")
+  stockCountsCreated           StockCount[]           @relation("StockCountCreator")
+  stockCountsApproved          StockCount[]           @relation("StockCountApprover")
+  stockCountsPosted            StockCount[]           @relation("StockCountPoster")
+  refunds                      Refund[]
+  installmentAgreementsCreated InstallmentAgreement[]
+  installmentRefunds           InstallmentRefund[]
+  cashShifts                   CashShift[]
+  expenses                     Expense[]
+  journalEntries               JournalEntry[]         @relation("JournalCreator")
+  auditLogs                    AuditLog[]
+  notifications                Notification[]
+  productMerges                ProductMerge[]
+  supplierReturns              SupplierReturn[]
+  settlementsCreated           GatewaySettlement[]    @relation("SettlementCreator")
 
   // Login currently uses email alone; keep it globally unique until a business selector is introduced.
   @@unique([email])
@@ -240,13 +274,13 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  userId    String
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String         @id @default(cuid())
+  tokenHash     String         @unique
+  userId        String
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshTokens RefreshToken[]
 
   @@index([userId, expiresAt])
@@ -255,68 +289,69 @@ model Session {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
   sessionId String
   expiresAt DateTime
   usedAt    DateTime?
   revokedAt DateTime?
-  createdAt DateTime @default(now())
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, expiresAt])
   @@index([expiresAt])
 }
 
 model Product {
-  id             String       @id @default(cuid())
-  businessId     String
-  sku            String       @db.VarChar(80)
-  barcode        String?      @db.VarChar(80)
-  name           String       @db.VarChar(180)
-  normalizedName String       @db.VarChar(180)
-  description    String?
-  brand          String?      @db.VarChar(120)
-  model          String?      @db.VarChar(120)
-  category       String       @db.VarChar(100)
-  subcategory    String?      @db.VarChar(100)
-  categoryId     String?
-  subcategoryId  String?
-  unit           String       @default("piece") @db.VarChar(40)
-  costPrice      Decimal      @default(0) @db.Decimal(14, 2)
-  sellingPrice   Decimal      @db.Decimal(14, 2)
-  reorderLevel   Decimal      @default(0) @db.Decimal(14, 3)
-  state          ProductState @default(DRAFT)
-  isPublished    Boolean      @default(false)
-  imageUrl       String?
-  imagePublicId  String?
-  createdById    String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  business       Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  categoryRecord Category?   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  subcategoryRecord Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: Restrict)
-  createdBy      User         @relation("ProductCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  balances       StockBalance[]
-  stockLots      StockLot[]
-  mediaAssets    MediaAsset[]
-  productImages  ProductImage[]
-  specifications ProductSpecification[]
-  movements      StockMovement[]
-  purchaseOrderLines PurchaseOrderLine[]
-  receiptLines GoodsReceiptLine[]
-  saleLines SaleLine[]
-  saleReturnLines SaleReturnLine[]
-  onlineOrderLines OnlineOrderLine[]
-  transferLines StockTransferLine[]
-  countLines StockCountLine[]
-  reservations StockReservation[]
+  id                  String                     @id @default(cuid())
+  businessId          String
+  sku                 String                     @db.VarChar(80)
+  barcode             String?                    @db.VarChar(80)
+  name                String                     @db.VarChar(180)
+  normalizedName      String                     @db.VarChar(180)
+  description         String?
+  brand               String?                    @db.VarChar(120)
+  model               String?                    @db.VarChar(120)
+  category            String                     @db.VarChar(100)
+  subcategory         String?                    @db.VarChar(100)
+  categoryId          String?
+  subcategoryId       String?
+  unit                String                     @default("piece") @db.VarChar(40)
+  costPrice           Decimal                    @default(0) @db.Decimal(14, 2)
+  sellingPrice        Decimal                    @db.Decimal(14, 2)
+  reorderLevel        Decimal                    @default(0) @db.Decimal(14, 3)
+  state               ProductState               @default(DRAFT)
+  isPublished         Boolean                    @default(false)
+  imageUrl            String?
+  imagePublicId       String?
+  createdById         String
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  business            Business                   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  categoryRecord      Category?                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subcategoryRecord   Subcategory?               @relation(fields: [subcategoryId], references: [id], onDelete: Restrict)
+  createdBy           User                       @relation("ProductCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  balances            StockBalance[]
+  stockLots           StockLot[]
+  mediaAssets         MediaAsset[]
+  productImages       ProductImage[]
+  specifications      ProductSpecification[]
+  movements           StockMovement[]
+  purchaseOrderLines  PurchaseOrderLine[]
+  receiptLines        GoodsReceiptLine[]
+  saleLines           SaleLine[]
+  saleReturnLines     SaleReturnLine[]
+  onlineOrderLines    OnlineOrderLine[]
+  transferLines       StockTransferLine[]
+  countLines          StockCountLine[]
+  reservations        StockReservation[]
   supplierReturnLines SupplierReturnLine[]
-  mergedIntoId String?
-  mergedInto Product? @relation("ProductMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict)
-  mergedProducts Product[] @relation("ProductMerge")
-  mergesAsSource ProductMerge[] @relation("MergeSource")
-  mergesAsTarget ProductMerge[] @relation("MergeTarget")
+  installmentLines    InstallmentAgreementLine[]
+  mergedIntoId        String?
+  mergedInto          Product?                   @relation("ProductMerge", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedProducts      Product[]                  @relation("ProductMerge")
+  mergesAsSource      ProductMerge[]             @relation("MergeSource")
+  mergesAsTarget      ProductMerge[]             @relation("MergeTarget")
 
   @@unique([businessId, sku])
   @@unique([businessId, barcode])
@@ -327,26 +362,26 @@ model Product {
 }
 
 model Category {
-  id           String        @id @default(cuid())
-  businessId   String
-  name         String        @db.VarChar(100)
-  normalizedName String      @db.VarChar(100)
-  createdAt    DateTime      @default(now())
-  business     Business     @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  subcategories Subcategory[]
-  products     Product[]
+  id             String        @id @default(cuid())
+  businessId     String
+  name           String        @db.VarChar(100)
+  normalizedName String        @db.VarChar(100)
+  createdAt      DateTime      @default(now())
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  subcategories  Subcategory[]
+  products       Product[]
 
   @@unique([businessId, normalizedName])
   @@index([businessId, name])
 }
 
 model Subcategory {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   categoryId     String
-  name           String   @db.VarChar(100)
-  normalizedName String   @db.VarChar(100)
-  createdAt      DateTime @default(now())
-  category       Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name           String    @db.VarChar(100)
+  normalizedName String    @db.VarChar(100)
+  createdAt      DateTime  @default(now())
+  category       Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   products       Product[]
 
   @@unique([categoryId, normalizedName])
@@ -368,22 +403,22 @@ model ProductSpecification {
 }
 
 model MediaAsset {
-  id               String   @id @default(cuid())
+  id               String        @id @default(cuid())
   businessId       String
   productId        String?
-  ownerId          String?  @db.VarChar(255)
-  purpose          String   @db.VarChar(40)
-  resourceType     String   @db.VarChar(10)
-  folder           String   @db.VarChar(255)
-  secureUrl        String?  @db.Text
-  publicId         String   @unique @db.VarChar(255)
-  originalFilename String?  @db.VarChar(255)
-  mimeType         String?  @db.VarChar(120)
-  status           String   @default("UPLOADING") @db.VarChar(20)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  business         Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  product          Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  ownerId          String?       @db.VarChar(255)
+  purpose          String        @db.VarChar(40)
+  resourceType     String        @db.VarChar(10)
+  folder           String        @db.VarChar(255)
+  secureUrl        String?       @db.Text
+  publicId         String        @unique @db.VarChar(255)
+  originalFilename String?       @db.VarChar(255)
+  mimeType         String?       @db.VarChar(120)
+  status           String        @default("UPLOADING") @db.VarChar(20)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  business         Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  product          Product?      @relation(fields: [productId], references: [id], onDelete: Restrict)
   productImage     ProductImage?
 
   @@index([businessId, purpose, status])
@@ -420,23 +455,24 @@ model StockBalance {
 }
 
 model StockLot {
-  id                 String   @id @default(cuid())
-  productId          String
-  branchId           String
-  sourceReceiptLineId String?  @unique
-  batchNumber        String?  @db.VarChar(100)
-  expiresAt          DateTime?
-  unitCost           Decimal  @db.Decimal(14, 2)
-  quantity           Decimal  @default(0) @db.Decimal(14, 3)
-  reserved           Decimal  @default(0) @db.Decimal(14, 3)
-  origin             String   @default("OPENING") @db.VarChar(30)
-  createdAt          DateTime @default(now())
-  product            Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  branch             Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  sourceReceiptLine  GoodsReceiptLine? @relation(fields: [sourceReceiptLineId], references: [id], onDelete: Restrict)
-  saleAllocations    SaleLotAllocation[]
-  returnAllocations  ReturnLotAllocation[]
-  reservationLots    ReservationLot[]
+  id                  String                @id @default(cuid())
+  productId           String
+  branchId            String
+  sourceReceiptLineId String?               @unique
+  batchNumber         String?               @db.VarChar(100)
+  expiresAt           DateTime?
+  unitCost            Decimal               @db.Decimal(14, 2)
+  quantity            Decimal               @default(0) @db.Decimal(14, 3)
+  reserved            Decimal               @default(0) @db.Decimal(14, 3)
+  origin              String                @default("OPENING") @db.VarChar(30)
+  condition           StockCondition        @default(GOOD)
+  createdAt           DateTime              @default(now())
+  product             Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch              Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sourceReceiptLine   GoodsReceiptLine?     @relation(fields: [sourceReceiptLineId], references: [id], onDelete: Restrict)
+  saleAllocations     SaleLotAllocation[]
+  returnAllocations   ReturnLotAllocation[]
+  reservationLots     ReservationLot[]
 
   @@index([productId, branchId, expiresAt, createdAt])
 }
@@ -455,33 +491,33 @@ model SaleLotAllocation {
 }
 
 model ReturnLotAllocation {
-  id                String         @id @default(cuid())
-  saleReturnLineId  String
-  stockLotId        String
-  quantity          Decimal        @db.Decimal(14, 3)
-  unitCost          Decimal        @db.Decimal(14, 2)
-  saleReturnLine    SaleReturnLine @relation(fields: [saleReturnLineId], references: [id], onDelete: Restrict)
-  stockLot          StockLot       @relation(fields: [stockLotId], references: [id], onDelete: Restrict)
+  id               String         @id @default(cuid())
+  saleReturnLineId String
+  stockLotId       String
+  quantity         Decimal        @db.Decimal(14, 3)
+  unitCost         Decimal        @db.Decimal(14, 2)
+  saleReturnLine   SaleReturnLine @relation(fields: [saleReturnLineId], references: [id], onDelete: Restrict)
+  stockLot         StockLot       @relation(fields: [stockLotId], references: [id], onDelete: Restrict)
 
   @@index([saleReturnLineId])
 }
 
 model StockMovement {
-  id          String            @id @default(cuid())
-  productId   String
-  branchId    String
-  userId      String?
-  actorType   String            @default("USER") @db.VarChar(30)
-  type        StockMovementType
-  quantity    Decimal           @db.Decimal(14, 3)
-  unitCost    Decimal?          @db.Decimal(14, 2)
-  reference   String?
-  reason      String?
-  reversalOf  String?
-  createdAt   DateTime          @default(now())
-  product     Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  branch      Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  user        User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id         String            @id @default(cuid())
+  productId  String
+  branchId   String
+  userId     String?
+  actorType  String            @default("USER") @db.VarChar(30)
+  type       StockMovementType
+  quantity   Decimal           @db.Decimal(14, 3)
+  unitCost   Decimal?          @db.Decimal(14, 2)
+  reference  String?
+  reason     String?
+  reversalOf String?
+  createdAt  DateTime          @default(now())
+  product    Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  branch     Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  user       User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([productId, branchId, createdAt])
   @@index([branchId, createdAt])
@@ -489,174 +525,187 @@ model StockMovement {
 }
 
 model StockTransfer {
-  id                String         @id @default(cuid())
-  businessId        String
-  sourceBranchId    String
+  id                  String              @id @default(cuid())
+  businessId          String
+  sourceBranchId      String
   destinationBranchId String
-  createdById       String
-  approvedById      String?
-  reference         String         @unique @db.VarChar(50)
-  status            TransferStatus @default(DRAFT)
-  createdAt         DateTime       @default(now())
-  dispatchedAt      DateTime?
-  receivedAt        DateTime?
-  business          Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  sourceBranch      Branch         @relation("TransferSource", fields: [sourceBranchId], references: [id], onDelete: Restrict)
-  destinationBranch Branch         @relation("TransferDestination", fields: [destinationBranchId], references: [id], onDelete: Restrict)
-  createdBy         User           @relation("TransferCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy        User?          @relation("TransferApprover", fields: [approvedById], references: [id], onDelete: Restrict)
-  lines             StockTransferLine[]
+  createdById         String
+  approvedById        String?
+  receivedById        String?
+  reference           String              @unique @db.VarChar(50)
+  status              TransferStatus      @default(DRAFT)
+  notes               String?
+  expectedArrivalAt   DateTime?
+  createdAt           DateTime            @default(now())
+  dispatchedAt        DateTime?
+  receivedAt          DateTime?
+  business            Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sourceBranch        Branch              @relation("TransferSource", fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  destinationBranch   Branch              @relation("TransferDestination", fields: [destinationBranchId], references: [id], onDelete: Restrict)
+  createdBy           User                @relation("TransferCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy          User?               @relation("TransferApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  receivedBy          User?               @relation("TransferReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+  lines               StockTransferLine[]
 
   @@index([businessId, status, createdAt])
 }
 
 model StockTransferLine {
-  id         String        @id @default(cuid())
-  transferId String
-  productId  String
-  quantity   Decimal       @db.Decimal(14, 3)
-  transfer   StockTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
-  product    Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  lots       StockTransferLot[]
+  id                String             @id @default(cuid())
+  transferId        String
+  productId         String
+  quantity          Decimal            @db.Decimal(14, 3)
+  receivedQuantity  Decimal?           @db.Decimal(14, 3)
+  discrepancyReason String?
+  transfer          StockTransfer      @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  product           Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  lots              StockTransferLot[]
 
   @@index([transferId])
 }
 
 model StockTransferLot {
-  id                String            @id @default(cuid())
-  transferLineId    String
-  batchNumber       String?           @db.VarChar(100)
-  expiresAt         DateTime?
-  unitCost          Decimal           @db.Decimal(14, 2)
-  quantity          Decimal           @db.Decimal(14, 3)
-  transferLine      StockTransferLine @relation(fields: [transferLineId], references: [id], onDelete: Restrict)
+  id             String            @id @default(cuid())
+  transferLineId String
+  batchNumber    String?           @db.VarChar(100)
+  expiresAt      DateTime?
+  unitCost       Decimal           @db.Decimal(14, 2)
+  quantity       Decimal           @db.Decimal(14, 3)
+  transferLine   StockTransferLine @relation(fields: [transferLineId], references: [id], onDelete: Restrict)
 
   @@index([transferLineId])
 }
 
 model StockCount {
-  id           String          @id @default(cuid())
+  id           String           @id @default(cuid())
   businessId   String
   branchId     String
   createdById  String
   approvedById String?
-  reference    String          @unique @db.VarChar(50)
+  postedById   String?
+  reference    String           @unique @db.VarChar(50)
   status       StockCountStatus @default(DRAFT)
   reason       String?
-  createdAt    DateTime        @default(now())
+  createdAt    DateTime         @default(now())
   submittedAt  DateTime?
   approvedAt   DateTime?
   postedAt     DateTime?
-  business     Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch       Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy    User            @relation("StockCountCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy   User?           @relation("StockCountApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  business     Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch       Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy    User             @relation("StockCountCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?            @relation("StockCountApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  postedBy     User?            @relation("StockCountPoster", fields: [postedById], references: [id], onDelete: Restrict)
   lines        StockCountLine[]
 
   @@index([businessId, status, createdAt])
 }
 
 model StockCountLine {
-  id            String     @id @default(cuid())
-  stockCountId  String
-  productId     String
-  systemQuantity Decimal   @db.Decimal(14, 3)
-  countedQuantity Decimal  @db.Decimal(14, 3)
-  variance      Decimal    @db.Decimal(14, 3)
-  stockCount    StockCount @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
-  product       Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id              String     @id @default(cuid())
+  stockCountId    String
+  productId       String
+  systemQuantity  Decimal    @db.Decimal(14, 3)
+  countedQuantity Decimal    @db.Decimal(14, 3)
+  variance        Decimal    @db.Decimal(14, 3)
+  stockCount      StockCount @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  product         Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@unique([stockCountId, productId])
 }
 
 model Supplier {
-  id          String   @id @default(cuid())
-  businessId  String
-  name        String   @db.VarChar(180)
-  phone       String?  @db.VarChar(40)
-  email       String?  @db.VarChar(254)
-  address     String?
-  paymentTermsDays Int @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  purchaseOrders PurchaseOrder[]
-  invoices    SupplierInvoice[]
-  returns     SupplierReturn[]
+  id               String            @id @default(cuid())
+  businessId       String
+  name             String            @db.VarChar(180)
+  phone            String?           @db.VarChar(40)
+  email            String?           @db.VarChar(254)
+  address          String?
+  paymentTermsDays Int               @default(0)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  purchaseOrders   PurchaseOrder[]
+  invoices         SupplierInvoice[]
+  returns          SupplierReturn[]
 
   @@index([businessId, name])
 }
 
 model Customer {
-  id         String   @id @default(cuid())
-  businessId String
-  name       String   @db.VarChar(180)
-  phone      String?  @db.VarChar(40)
-  email      String?  @db.VarChar(254)
-  address    String?
-  creditLimit Decimal? @db.Decimal(14, 2)
-  creditDays Int @default(30)
-  emailRemindersAllowed Boolean @default(false)
-  smsRemindersAllowed Boolean @default(false)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  sales      Sale[]
-  onlineOrders OnlineOrder[]
-  account    CustomerAccount?
+  id                    String                 @id @default(cuid())
+  businessId            String
+  name                  String                 @db.VarChar(180)
+  type                  CustomerType           @default(PERSONAL)
+  companyName           String?                @db.VarChar(180)
+  contactPerson         String?                @db.VarChar(180)
+  isCreditor            Boolean                @default(false)
+  phone                 String?                @db.VarChar(40)
+  email                 String?                @db.VarChar(254)
+  address               String?
+  creditLimit           Decimal?               @db.Decimal(14, 2)
+  creditDays            Int                    @default(30)
+  emailRemindersAllowed Boolean                @default(false)
+  smsRemindersAllowed   Boolean                @default(false)
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  business              Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sales                 Sale[]
+  onlineOrders          OnlineOrder[]
+  account               CustomerAccount?
+  installmentAgreements InstallmentAgreement[]
 
   @@index([businessId, name])
   @@index([businessId, phone])
 }
 
 model CustomerAccount {
-  id           String   @id @default(cuid())
-  businessId   String
-  customerId   String   @unique
-  email        String   @db.VarChar(254)
-  passwordHash String
+  id              String                 @id @default(cuid())
+  businessId      String
+  customerId      String                 @unique
+  email           String                 @db.VarChar(254)
+  passwordHash    String
   emailVerifiedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  sessions     CustomerSession[]
-  tokens       CustomerAccountToken[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  business        Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  customer        Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sessions        CustomerSession[]
+  tokens          CustomerAccountToken[]
 
   @@unique([businessId, email])
   @@index([businessId, createdAt])
 }
 
 model CustomerAccountToken {
-  id                String   @id @default(cuid())
+  id                String          @id @default(cuid())
   customerAccountId String
-  tokenHash         String   @unique
-  purpose           String   @db.VarChar(30)
+  tokenHash         String          @unique
+  purpose           String          @db.VarChar(30)
   expiresAt         DateTime
   consumedAt        DateTime?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime        @default(now())
   customerAccount   CustomerAccount @relation(fields: [customerAccountId], references: [id], onDelete: Cascade)
 
   @@index([customerAccountId, purpose, expiresAt])
 }
 
 model EmailOutbox {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   businessId    String
-  kind          String   @db.VarChar(40)
-  destination   String   @db.VarChar(254)
-  subject       String   @db.VarChar(180)
+  kind          String    @db.VarChar(40)
+  destination   String    @db.VarChar(254)
+  subject       String    @db.VarChar(180)
   text          String
   html          String
-  status        String   @default("PENDING") @db.VarChar(20)
-  attempts      Int      @default(0)
-  nextAttemptAt DateTime @default(now())
+  status        String    @default("PENDING") @db.VarChar(20)
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
   sentAt        DateTime?
   lastError     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([status, nextAttemptAt])
   @@index([businessId, createdAt])
@@ -675,28 +724,28 @@ model CustomerSession {
 }
 
 model PurchaseOrder {
-  id          String        @id @default(cuid())
-  businessId  String
-  branchId    String
-  supplierId  String
-  createdById String
+  id           String              @id @default(cuid())
+  businessId   String
+  branchId     String
+  supplierId   String
+  createdById  String
   approvedById String?
-  number      String        @db.VarChar(40)
-  status      PurchaseStatus @default(DRAFT)
-  expectedAt  DateTime?
-  notes       String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  business    Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch      Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  supplier    Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  createdBy   User          @relation("PurchaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  approvedBy  User?         @relation("PurchaseApprover", fields: [approvedById], references: [id], onDelete: Restrict)
-  lines       PurchaseOrderLine[]
-  receipts    GoodsReceipt[]
-  invoices    SupplierInvoice[]
+  number       String              @db.VarChar(40)
+  status       PurchaseStatus      @default(DRAFT)
+  expectedAt   DateTime?
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  business     Business            @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch       Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  supplier     Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy    User                @relation("PurchaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?               @relation("PurchaseApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  lines        PurchaseOrderLine[]
+  receipts     GoodsReceipt[]
+  invoices     SupplierInvoice[]
 
   @@unique([businessId, number])
   @@index([businessId, status, createdAt])
@@ -704,14 +753,14 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderLine {
-  id              String   @id @default(cuid())
+  id              String             @id @default(cuid())
   purchaseOrderId String
   productId       String
-  orderedQuantity Decimal  @db.Decimal(14, 3)
-  unitCost        Decimal  @db.Decimal(14, 2)
-  createdAt       DateTime @default(now())
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderedQuantity Decimal            @db.Decimal(14, 3)
+  unitCost        Decimal            @db.Decimal(14, 2)
+  createdAt       DateTime           @default(now())
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  product         Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
   receiptLines    GoodsReceiptLine[]
 
   @@index([purchaseOrderId])
@@ -719,16 +768,16 @@ model PurchaseOrderLine {
 }
 
 model GoodsReceipt {
-  id              String   @id @default(cuid())
+  id              String             @id @default(cuid())
   purchaseOrderId String
   branchId        String
   receivedById    String
-  reference       String   @unique @db.VarChar(50)
+  reference       String             @unique @db.VarChar(50)
   notes           String?
-  receivedAt      DateTime @default(now())
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  receivedBy      User     @relation(fields: [receivedById], references: [id], onDelete: Restrict)
+  receivedAt      DateTime           @default(now())
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  branch          Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  receivedBy      User               @relation(fields: [receivedById], references: [id], onDelete: Restrict)
   lines           GoodsReceiptLine[]
   invoice         SupplierInvoice?
 
@@ -736,38 +785,38 @@ model GoodsReceipt {
 }
 
 model GoodsReceiptLine {
-  id              String   @id @default(cuid())
-  goodsReceiptId  String
+  id                  String            @id @default(cuid())
+  goodsReceiptId      String
   purchaseOrderLineId String
-  productId       String
-  acceptedQuantity Decimal @db.Decimal(14, 3)
-  rejectedQuantity Decimal @default(0) @db.Decimal(14, 3)
-  unitCost        Decimal @db.Decimal(14, 2)
-  batchNumber     String?
-  expiresAt       DateTime?
-  goodsReceipt    GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
-  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id], onDelete: Restrict)
-  product         Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-  stockLot        StockLot?
+  productId           String
+  acceptedQuantity    Decimal           @db.Decimal(14, 3)
+  rejectedQuantity    Decimal           @default(0) @db.Decimal(14, 3)
+  unitCost            Decimal           @db.Decimal(14, 2)
+  batchNumber         String?
+  expiresAt           DateTime?
+  goodsReceipt        GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
+  purchaseOrderLine   PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id], onDelete: Restrict)
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockLot            StockLot?
 
   @@index([goodsReceiptId])
 }
 
 model SupplierInvoice {
-  id              String   @id @default(cuid())
+  id              String                      @id @default(cuid())
   businessId      String
   supplierId      String
   purchaseOrderId String?
-  goodsReceiptId  String?  @unique
-  invoiceNumber   String   @db.VarChar(80)
-  totalAmount     Decimal  @db.Decimal(14, 2)
+  goodsReceiptId  String?                     @unique
+  invoiceNumber   String                      @db.VarChar(80)
+  totalAmount     Decimal                     @db.Decimal(14, 2)
   dueAt           DateTime?
-  issuedAt        DateTime @default(now())
-  createdAt       DateTime @default(now())
-  business        Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  goodsReceipt    GoodsReceipt? @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
+  issuedAt        DateTime                    @default(now())
+  createdAt       DateTime                    @default(now())
+  business        Business                    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  supplier        Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder   PurchaseOrder?              @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  goodsReceipt    GoodsReceipt?               @relation(fields: [goodsReceiptId], references: [id], onDelete: Restrict)
   allocations     SupplierPaymentAllocation[]
   returns         SupplierReturn[]
 
@@ -776,34 +825,35 @@ model SupplierInvoice {
 }
 
 model Sale {
-  id           String      @id @default(cuid())
-  businessId   String
-  branchId     String
-  userId       String?
-  actorType    String      @default("USER") @db.VarChar(30)
-  customerId   String?
-  number       String      @db.VarChar(40)
-  channel      SaleChannel @default(POS)
-  status       SaleStatus  @default(COMPLETED)
-  subtotal     Decimal     @db.Decimal(14, 2)
-  discount     Decimal     @default(0) @db.Decimal(14, 2)
-  tax          Decimal     @default(0) @db.Decimal(14, 2)
-  deliveryFee  Decimal     @default(0) @db.Decimal(14, 2)
-  total        Decimal     @db.Decimal(14, 2)
-  dueAt        DateTime?
-  idempotencyKey String?
-  createdAt    DateTime    @default(now())
-  business     Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch       Branch      @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  user         User?       @relation(fields: [userId], references: [id], onDelete: Restrict)
-  customer     Customer?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  lines        SaleLine[]
-  payments     SalePaymentAllocation[]
-  reservations StockReservation[]
-  returns      SaleReturn[]
-  refunds      Refund[]
-  cashShiftId  String?
-  cashShift    CashShift?  @relation(fields: [cashShiftId], references: [id], onDelete: Restrict)
+  id              String                  @id @default(cuid())
+  businessId      String
+  branchId        String
+  userId          String?
+  actorType       String                  @default("USER") @db.VarChar(30)
+  customerId      String?
+  number          String                  @db.VarChar(40)
+  channel         SaleChannel             @default(POS)
+  status          SaleStatus              @default(COMPLETED)
+  subtotal        Decimal                 @db.Decimal(14, 2)
+  discount        Decimal                 @default(0) @db.Decimal(14, 2)
+  tax             Decimal                 @default(0) @db.Decimal(14, 2)
+  deliveryFee     Decimal                 @default(0) @db.Decimal(14, 2)
+  total           Decimal                 @db.Decimal(14, 2)
+  dueAt           DateTime?
+  creditReference String?                 @db.VarChar(100)
+  idempotencyKey  String?
+  createdAt       DateTime                @default(now())
+  business        Business                @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch          Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  user            User?                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  customer        Customer?               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  lines           SaleLine[]
+  payments        SalePaymentAllocation[]
+  reservations    StockReservation[]
+  returns         SaleReturn[]
+  refunds         Refund[]
+  cashShiftId     String?
+  cashShift       CashShift?              @relation(fields: [cashShiftId], references: [id], onDelete: Restrict)
 
   @@unique([businessId, number])
   @@unique([businessId, idempotencyKey])
@@ -813,19 +863,19 @@ model Sale {
 }
 
 model SaleLine {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   saleId         String
   productId      String
-  productName    String   @db.VarChar(180)
-  sku            String   @db.VarChar(80)
-  quantity       Decimal  @db.Decimal(14, 3)
-  unitPrice      Decimal  @db.Decimal(14, 2)
-  unitCost       Decimal  @db.Decimal(14, 2)
-  discount       Decimal  @default(0) @db.Decimal(14, 2)
-  tax            Decimal  @default(0) @db.Decimal(14, 2)
-  lineTotal      Decimal  @db.Decimal(14, 2)
-  sale           Sale     @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  product        Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName    String              @db.VarChar(180)
+  sku            String              @db.VarChar(80)
+  quantity       Decimal             @db.Decimal(14, 3)
+  unitPrice      Decimal             @db.Decimal(14, 2)
+  unitCost       Decimal             @db.Decimal(14, 2)
+  discount       Decimal             @default(0) @db.Decimal(14, 2)
+  tax            Decimal             @default(0) @db.Decimal(14, 2)
+  lineTotal      Decimal             @db.Decimal(14, 2)
+  sale           Sale                @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product        Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
   returns        SaleReturnLine[]
   lotAllocations SaleLotAllocation[]
 
@@ -834,31 +884,127 @@ model SaleLine {
 }
 
 model Payment {
-  id              String        @id @default(cuid())
-  businessId      String
-  method          PaymentMethod
-  status          PaymentStatus @default(PENDING)
-  amount          Decimal       @db.Decimal(14, 2)
-  fee             Decimal       @default(0) @db.Decimal(14, 2)
-  provider        String?
-  providerReference String?
-  reference       String        @db.VarChar(80)
-  idempotencyKey  String?
-  paidAt          DateTime?
-  createdAt       DateTime      @default(now())
-  business        Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  saleAllocations SalePaymentAllocation[]
-  onlineOrder OnlineOrder? @relation(fields: [onlineOrderId], references: [id], onDelete: Restrict)
-  onlineOrderId String?
+  id                  String                      @id @default(cuid())
+  businessId          String
+  method              PaymentMethod
+  status              PaymentStatus               @default(PENDING)
+  amount              Decimal                     @db.Decimal(14, 2)
+  fee                 Decimal                     @default(0) @db.Decimal(14, 2)
+  provider            String?
+  providerReference   String?
+  reference           String                      @db.VarChar(80)
+  idempotencyKey      String?
+  paidAt              DateTime?
+  createdAt           DateTime                    @default(now())
+  business            Business                    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  saleAllocations     SalePaymentAllocation[]
+  onlineOrder         OnlineOrder?                @relation(fields: [onlineOrderId], references: [id], onDelete: Restrict)
+  onlineOrderId       String?
   supplierAllocations SupplierPaymentAllocation[]
-  expense         Expense?
-  providerEvents  PaymentProviderEvent[]
-  settlementLines GatewaySettlementLine[]
+  expense             Expense?
+  providerEvents      PaymentProviderEvent[]
+  settlementLines     GatewaySettlementLine[]
+  installmentPayment  InstallmentPayment?
 
   @@unique([businessId, reference])
   @@unique([businessId, idempotencyKey])
   @@unique([provider, providerReference])
   @@index([businessId, status, createdAt])
+}
+
+model InstallmentAgreement {
+  id               String                     @id @default(cuid())
+  businessId       String
+  branchId         String
+  customerId       String
+  createdById      String
+  number           String                     @db.VarChar(50)
+  status           InstallmentAgreementStatus @default(ACTIVE)
+  total            Decimal                    @db.Decimal(14, 2)
+  paidTotal        Decimal                    @default(0) @db.Decimal(14, 2)
+  installmentCount Int
+  createdAt        DateTime                   @default(now())
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  business         Business                   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch           Branch                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer         Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy        User                       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  lines            InstallmentAgreementLine[]
+  installments     InstallmentDue[]
+  payments         InstallmentPayment[]
+  refunds          InstallmentRefund[]
+  reservations     StockReservation[]
+
+  @@unique([businessId, number])
+  @@index([businessId, status, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model InstallmentAgreementLine {
+  id          String               @id @default(cuid())
+  agreementId String
+  productId   String
+  productName String               @db.VarChar(180)
+  sku         String               @db.VarChar(80)
+  quantity    Decimal              @db.Decimal(14, 3)
+  unitPrice   Decimal              @db.Decimal(14, 2)
+  unitCost    Decimal              @db.Decimal(14, 2)
+  lineTotal   Decimal              @db.Decimal(14, 2)
+  agreement   InstallmentAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  product     Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([agreementId])
+}
+
+model InstallmentDue {
+  id          String               @id @default(cuid())
+  agreementId String
+  sequence    Int
+  amount      Decimal              @db.Decimal(14, 2)
+  paidAmount  Decimal              @default(0) @db.Decimal(14, 2)
+  dueAt       DateTime
+  status      InstallmentStatus    @default(PENDING)
+  createdAt   DateTime             @default(now())
+  agreement   InstallmentAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  payments    InstallmentPayment[]
+
+  @@unique([agreementId, sequence])
+  @@index([status, dueAt])
+}
+
+model InstallmentPayment {
+  id             String               @id @default(cuid())
+  businessId     String
+  agreementId    String
+  installmentId  String
+  paymentId      String               @unique
+  amount         Decimal              @db.Decimal(14, 2)
+  refundedAmount Decimal              @default(0) @db.Decimal(14, 2)
+  createdAt      DateTime             @default(now())
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  agreement      InstallmentAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  installment    InstallmentDue       @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  payment        Payment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([agreementId, createdAt])
+}
+
+model InstallmentRefund {
+  id          String               @id @default(cuid())
+  businessId  String
+  agreementId String
+  userId      String
+  reference   String               @unique @db.VarChar(50)
+  amount      Decimal              @db.Decimal(14, 2)
+  method      PaymentMethod
+  reason      String
+  createdAt   DateTime             @default(now())
+  business    Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  agreement   InstallmentAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([agreementId, createdAt])
 }
 
 model SalePaymentAllocation {
@@ -875,59 +1021,59 @@ model SalePaymentAllocation {
 }
 
 model SupplierPaymentAllocation {
-  id               String   @id @default(cuid())
+  id                String          @id @default(cuid())
   supplierInvoiceId String
-  paymentId        String
-  amount           Decimal  @db.Decimal(14, 2)
-  createdAt        DateTime @default(now())
-  supplierInvoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id], onDelete: Restrict)
-  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  paymentId         String
+  amount            Decimal         @db.Decimal(14, 2)
+  createdAt         DateTime        @default(now())
+  supplierInvoice   SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id], onDelete: Restrict)
+  payment           Payment         @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 
   @@unique([supplierInvoiceId, paymentId])
   @@index([paymentId])
 }
 
 model PaymentProviderEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   paymentId   String?
   provider    String
-  eventId     String   @unique
+  eventId     String    @unique
   eventType   String
   payload     Json
-  receivedAt  DateTime @default(now())
+  receivedAt  DateTime  @default(now())
   processedAt DateTime?
-  payment     Payment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  payment     Payment?  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 
   @@index([provider, eventType, receivedAt])
 }
 
 model SaleReturn {
-  id         String   @id @default(cuid())
-  saleId     String
-  userId     String
-  reference  String   @unique @db.VarChar(50)
-  reason     String
-  total      Decimal  @db.Decimal(14, 2)
-  createdAt  DateTime @default(now())
-  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  lines      SaleReturnLine[]
-  refunds    Refund[]
+  id        String           @id @default(cuid())
+  saleId    String
+  userId    String
+  reference String           @unique @db.VarChar(50)
+  reason    String
+  total     Decimal          @db.Decimal(14, 2)
+  createdAt DateTime         @default(now())
+  sale      Sale             @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lines     SaleReturnLine[]
+  refunds   Refund[]
 
   @@index([saleId, createdAt])
 }
 
 model SaleReturnLine {
-  id           String   @id @default(cuid())
-  saleReturnId String
-  saleLineId   String
-  productId    String
-  quantity     Decimal  @db.Decimal(14, 3)
-  refundAmount Decimal  @db.Decimal(14, 2)
-  restock      Boolean  @default(true)
-  saleReturn   SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
-  saleLine     SaleLine @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  id             String                @id @default(cuid())
+  saleReturnId   String
+  saleLineId     String
+  productId      String
+  quantity       Decimal               @db.Decimal(14, 3)
+  refundAmount   Decimal               @db.Decimal(14, 2)
+  restock        Boolean               @default(true)
+  saleReturn     SaleReturn            @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
+  saleLine       SaleLine              @relation(fields: [saleLineId], references: [id], onDelete: Restrict)
+  product        Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
   lotAllocations ReturnLotAllocation[]
 
   @@index([saleReturnId])
@@ -935,42 +1081,45 @@ model SaleReturnLine {
 }
 
 model Refund {
-  id         String   @id @default(cuid())
-  saleId     String
+  id           String        @id @default(cuid())
+  saleId       String
   saleReturnId String?
-  userId     String
-  reference  String   @unique @db.VarChar(50)
-  amount     Decimal  @db.Decimal(14, 2)
-  method     PaymentMethod
-  reason     String
-  status     PaymentStatus @default(PENDING)
-  createdAt  DateTime @default(now())
-  sale       Sale     @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  saleReturn SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId       String
+  reference    String        @unique @db.VarChar(50)
+  amount       Decimal       @db.Decimal(14, 2)
+  method       PaymentMethod
+  reason       String
+  status       PaymentStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  sale         Sale          @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleReturn   SaleReturn?   @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([saleId, createdAt])
 }
 
 model StockReservation {
-  id         String            @id @default(cuid())
-  businessId String
-  branchId   String
-  productId  String
-  saleId     String?
-  onlineOrderId String?
-  quantity   Decimal           @db.Decimal(14, 3)
-  status     ReservationStatus @default(ACTIVE)
-  expiresAt  DateTime?
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  business   Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch     Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  product    Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  sale       Sale?             @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  onlineOrder OnlineOrder?     @relation(fields: [onlineOrderId], references: [id], onDelete: Restrict)
-  lots       ReservationLot[]
+  id                     String                @id @default(cuid())
+  businessId             String
+  branchId               String
+  productId              String
+  saleId                 String?
+  onlineOrderId          String?
+  installmentAgreementId String?
+  quantity               Decimal               @db.Decimal(14, 3)
+  status                 ReservationStatus     @default(ACTIVE)
+  expiresAt              DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  business               Business              @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch                 Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  product                Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sale                   Sale?                 @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  onlineOrder            OnlineOrder?          @relation(fields: [onlineOrderId], references: [id], onDelete: Restrict)
+  installmentAgreement   InstallmentAgreement? @relation(fields: [installmentAgreementId], references: [id], onDelete: Restrict)
+  lots                   ReservationLot[]
 
+  @@unique([installmentAgreementId, productId])
   @@index([businessId, status, expiresAt])
   @@index([productId, branchId, status])
 }
@@ -988,31 +1137,31 @@ model ReservationLot {
 }
 
 model OnlineOrder {
-  id             String           @id @default(cuid())
-  businessId     String
-  branchId       String
-  customerId     String?
-  number         String           @db.VarChar(40)
-  status         OnlineOrderStatus @default(PENDING_PAYMENT)
-  customerName   String           @db.VarChar(180)
-  customerEmail  String           @db.VarChar(254)
-  customerPhone  String?          @db.VarChar(40)
-  fulfillmentMethod String        @db.VarChar(30)
-  deliveryAddress String?
-  subtotal       Decimal          @db.Decimal(14, 2)
-  discount       Decimal          @default(0) @db.Decimal(14, 2)
-  tax            Decimal          @default(0) @db.Decimal(14, 2)
-  deliveryFee    Decimal          @default(0) @db.Decimal(14, 2)
-  total          Decimal          @db.Decimal(14, 2)
-  expiresAt      DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  business       Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch         Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  customer       Customer?        @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  lines          OnlineOrderLine[]
-  payments       Payment[]
-  reservations   StockReservation[]
+  id                String             @id @default(cuid())
+  businessId        String
+  branchId          String
+  customerId        String?
+  number            String             @db.VarChar(40)
+  status            OnlineOrderStatus  @default(PENDING_PAYMENT)
+  customerName      String             @db.VarChar(180)
+  customerEmail     String             @db.VarChar(254)
+  customerPhone     String?            @db.VarChar(40)
+  fulfillmentMethod String             @db.VarChar(30)
+  deliveryAddress   String?
+  subtotal          Decimal            @db.Decimal(14, 2)
+  discount          Decimal            @default(0) @db.Decimal(14, 2)
+  tax               Decimal            @default(0) @db.Decimal(14, 2)
+  deliveryFee       Decimal            @default(0) @db.Decimal(14, 2)
+  total             Decimal            @db.Decimal(14, 2)
+  expiresAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch            Branch             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  lines             OnlineOrderLine[]
+  payments          Payment[]
+  reservations      StockReservation[]
 
   @@unique([businessId, number])
   @@index([businessId, status, createdAt])
@@ -1020,49 +1169,49 @@ model OnlineOrder {
 }
 
 model OnlineOrderLine {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   orderId     String
   productId   String
-  productName String   @db.VarChar(180)
-  sku         String   @db.VarChar(80)
-  quantity    Decimal  @db.Decimal(14, 3)
-  unitPrice   Decimal  @db.Decimal(14, 2)
-  unitCost    Decimal  @db.Decimal(14, 2)
-  lineTotal   Decimal  @db.Decimal(14, 2)
+  productName String      @db.VarChar(180)
+  sku         String      @db.VarChar(80)
+  quantity    Decimal     @db.Decimal(14, 3)
+  unitPrice   Decimal     @db.Decimal(14, 2)
+  unitCost    Decimal     @db.Decimal(14, 2)
+  lineTotal   Decimal     @db.Decimal(14, 2)
   order       OnlineOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([orderId])
 }
 
 model CashShift {
-  id                String   @id @default(cuid())
-  businessId        String
-  branchId          String
-  userId            String
-  openingCash       Decimal  @db.Decimal(14, 2)
-  closingCash       Decimal? @db.Decimal(14, 2)
-  expectedClosingCash Decimal? @db.Decimal(14, 2)
-  openedAt          DateTime @default(now())
-  closedAt          DateTime?
-  business          Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch            Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  sales             Sale[]
-  movements         CashMovement[]
-  openKey           String?  @unique
+  id                  String         @id @default(cuid())
+  businessId          String
+  branchId            String
+  userId              String
+  openingCash         Decimal        @db.Decimal(14, 2)
+  closingCash         Decimal?       @db.Decimal(14, 2)
+  expectedClosingCash Decimal?       @db.Decimal(14, 2)
+  openedAt            DateTime       @default(now())
+  closedAt            DateTime?
+  business            Business       @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch              Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  user                User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sales               Sale[]
+  movements           CashMovement[]
+  openKey             String?        @unique
 
   @@index([businessId, branchId, openedAt])
   @@index([userId, closedAt])
 }
 
 model CashMovement {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   cashShiftId String
-  type        String   @db.VarChar(30)
-  amount      Decimal  @db.Decimal(14, 2)
+  type        String    @db.VarChar(30)
+  amount      Decimal   @db.Decimal(14, 2)
   reason      String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   cashShift   CashShift @relation(fields: [cashShiftId], references: [id], onDelete: Restrict)
 
   @@index([cashShiftId, createdAt])
@@ -1088,14 +1237,14 @@ model Expense {
 }
 
 model Account {
-  id         String   @id @default(cuid())
+  id         String        @id @default(cuid())
   businessId String
-  code       String   @db.VarChar(20)
-  name       String   @db.VarChar(120)
-  type       String   @db.VarChar(30)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  code       String        @db.VarChar(20)
+  name       String        @db.VarChar(120)
+  type       String        @db.VarChar(30)
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  business   Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
   lines      JournalLine[]
 
   @@unique([businessId, code])
@@ -1103,21 +1252,21 @@ model Account {
 }
 
 model JournalEntry {
-  id            String       @id @default(cuid())
-  businessId    String
-  createdById   String
-  reference     String       @db.VarChar(50)
-  sourceType    String?      @db.VarChar(40)
-  sourceId      String?
-  description   String
-  status        JournalStatus @default(DRAFT)
-  postingDate   DateTime
-  postedAt      DateTime?
-  reversedEntryId String?    @unique
-  createdAt     DateTime     @default(now())
-  business      Business     @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  createdBy     User         @relation("JournalCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  lines         JournalLine[]
+  id              String        @id @default(cuid())
+  businessId      String
+  createdById     String
+  reference       String        @db.VarChar(50)
+  sourceType      String?       @db.VarChar(40)
+  sourceId        String?
+  description     String
+  status          JournalStatus @default(DRAFT)
+  postingDate     DateTime
+  postedAt        DateTime?
+  reversedEntryId String?       @unique
+  createdAt       DateTime      @default(now())
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  createdBy       User          @relation("JournalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines           JournalLine[]
 
   @@unique([businessId, reference])
   @@index([businessId, postingDate, status])
@@ -1125,14 +1274,14 @@ model JournalEntry {
 }
 
 model JournalLine {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   journalEntryId String
   accountId      String
-  debit          Decimal  @default(0) @db.Decimal(14, 2)
-  credit         Decimal  @default(0) @db.Decimal(14, 2)
+  debit          Decimal      @default(0) @db.Decimal(14, 2)
+  credit         Decimal      @default(0) @db.Decimal(14, 2)
   description    String?
   journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
-  account        Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
   @@index([journalEntryId])
   @@index([accountId])
@@ -1157,20 +1306,20 @@ model AuditLog {
 }
 
 model Notification {
-  id         String   @id @default(cuid())
+  id         String                 @id @default(cuid())
   businessId String
   userId     String?
-  type       String   @db.VarChar(40)
-  severity   String   @db.VarChar(20)
-  title      String   @db.VarChar(180)
+  type       String                 @db.VarChar(40)
+  severity   String                 @db.VarChar(20)
+  title      String                 @db.VarChar(180)
   message    String
-  entityType String?  @db.VarChar(80)
+  entityType String?                @db.VarChar(80)
   entityId   String?
-  dedupeKey  String?  @unique
+  dedupeKey  String?                @unique
   readAt     DateTime?
-  createdAt  DateTime @default(now())
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  user       User?    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt  DateTime               @default(now())
+  business   Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  user       User?                  @relation(fields: [userId], references: [id], onDelete: Restrict)
   deliveries NotificationDelivery[]
 
   @@index([businessId, readAt, createdAt])
@@ -1178,20 +1327,20 @@ model Notification {
 }
 
 model NotificationDelivery {
-  id              String         @id @default(cuid())
-  notificationId  String
-  channel         DeliveryChannel
-  destination     String         @db.VarChar(254)
-  status          DeliveryStatus @default(PENDING)
-  provider        String?
+  id                String          @id @default(cuid())
+  notificationId    String
+  channel           DeliveryChannel
+  destination       String          @db.VarChar(254)
+  status            DeliveryStatus  @default(PENDING)
+  provider          String?
   providerMessageId String?
-  attempts        Int            @default(0)
-  nextAttemptAt   DateTime       @default(now())
-  sentAt          DateTime?
-  lastError       String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  notification    Notification   @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+  attempts          Int             @default(0)
+  nextAttemptAt     DateTime        @default(now())
+  sentAt            DateTime?
+  lastError         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  notification      Notification    @relation(fields: [notificationId], references: [id], onDelete: Restrict)
 
   @@index([status, nextAttemptAt])
   @@index([notificationId, channel])
@@ -1216,21 +1365,21 @@ model ProductMerge {
 }
 
 model SupplierReturn {
-  id                String   @id @default(cuid())
+  id                String               @id @default(cuid())
   businessId        String
   branchId          String
   supplierId        String
   supplierInvoiceId String?
   userId            String
-  reference         String   @unique @db.VarChar(50)
-  creditAmount      Decimal  @db.Decimal(14, 2)
+  reference         String               @unique @db.VarChar(50)
+  creditAmount      Decimal              @db.Decimal(14, 2)
   reason            String
-  createdAt         DateTime @default(now())
-  business          Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  branch            Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  supplier          Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  invoice           SupplierInvoice? @relation(fields: [supplierInvoiceId], references: [id], onDelete: Restrict)
-  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt         DateTime             @default(now())
+  business          Business             @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  branch            Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  supplier          Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  invoice           SupplierInvoice?     @relation(fields: [supplierInvoiceId], references: [id], onDelete: Restrict)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
   lines             SupplierReturnLine[]
 
   @@index([businessId, createdAt])
@@ -1238,31 +1387,31 @@ model SupplierReturn {
 }
 
 model SupplierReturnLine {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   supplierReturnId String
   productId        String
-  quantity         Decimal  @db.Decimal(14, 3)
-  unitCost         Decimal  @db.Decimal(14, 2)
+  quantity         Decimal        @db.Decimal(14, 3)
+  unitCost         Decimal        @db.Decimal(14, 2)
   supplierReturn   SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Restrict)
-  product          Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([supplierReturnId])
   @@index([productId])
 }
 
 model GatewaySettlement {
-  id          String   @id @default(cuid())
+  id          String                  @id @default(cuid())
   businessId  String
   createdById String
   provider    String
-  reference   String   @db.VarChar(80)
-  grossAmount Decimal  @db.Decimal(14, 2)
-  feeAmount   Decimal  @db.Decimal(14, 2)
-  netAmount   Decimal  @db.Decimal(14, 2)
+  reference   String                  @db.VarChar(80)
+  grossAmount Decimal                 @db.Decimal(14, 2)
+  feeAmount   Decimal                 @db.Decimal(14, 2)
+  netAmount   Decimal                 @db.Decimal(14, 2)
   settledAt   DateTime
-  createdAt   DateTime @default(now())
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  createdBy   User     @relation("SettlementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime                @default(now())
+  business    Business                @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  createdBy   User                    @relation("SettlementCreator", fields: [createdById], references: [id], onDelete: Restrict)
   lines       GatewaySettlementLine[]
 
   @@unique([businessId, provider, reference])
@@ -1270,15 +1419,14 @@ model GatewaySettlement {
 }
 
 model GatewaySettlementLine {
-  id           String   @id @default(cuid())
+  id           String            @id @default(cuid())
   settlementId String
   paymentId    String
-  grossAmount  Decimal  @db.Decimal(14, 2)
-  feeAmount    Decimal  @db.Decimal(14, 2)
+  grossAmount  Decimal           @db.Decimal(14, 2)
+  feeAmount    Decimal           @db.Decimal(14, 2)
   settlement   GatewaySettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
-  payment      Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  payment      Payment           @relation(fields: [paymentId], references: [id], onDelete: Restrict)
 
   @@unique([paymentId])
   @@index([settlementId])
 }
-

@@ -18,6 +18,7 @@ const destructivePatterns = [
 ];
 const unsafeNotNull = /\bADD\s+COLUMN\b[^;]*\bNOT\s+NULL\b(?![^;]*\bDEFAULT\b)/i;
 const flagged = [];
+const encodingErrors = [];
 
 for (const file of files) {
   let sql;
@@ -26,9 +27,16 @@ for (const file of files) {
   } catch {
     continue;
   }
+  if (sql.charCodeAt(0) === 0xfeff) encodingErrors.push(file);
   if (destructivePatterns.some((pattern) => pattern.test(sql)) || unsafeNotNull.test(sql)) {
     flagged.push(file);
   }
+}
+
+if (encodingErrors.length) {
+  console.error("Migration SQL must be UTF-8 without a byte order mark:");
+  for (const file of encodingErrors) console.error(`- ${file}`);
+  process.exit(1);
 }
 
 if (flagged.length) {

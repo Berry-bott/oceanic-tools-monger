@@ -9,6 +9,7 @@ import { useBusiness } from "@/hooks/queries/use-business";
 import { useOnlineOrders } from "@/hooks/queries/use-online-orders";
 import { useTransitionOnlineOrder } from "@/hooks/mutations/use-order-mutations";
 import { useBranchStore } from "@/stores/branch.store";
+import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 
 type User = { id: string; name: string; email: string; role: string };
 type Business = { currency: string };
@@ -174,11 +175,7 @@ export default function OnlineOrdersPage() {
   }
 
   if (!user)
-    return (
-      <main className="grid min-h-screen place-items-center text-sm text-muted">
-        Loading online orders...
-      </main>
-    );
+    return <AdminPageSkeleton />;
   if (user.role !== "OWNER" && user.role !== "STAFF") {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-6 text-center text-foreground">
@@ -319,9 +316,7 @@ export default function OnlineOrdersPage() {
           </div>
 
           {loading && !orders.length ? (
-            <div className="p-12 text-center text-sm text-muted">
-              Loading orders...
-            </div>
+            <AdminTableSkeleton columns={5} rows={6} />
           ) : !filteredOrders.length ? (
             <div className="p-12 text-center">
               <p className="font-normal">No matching orders</p>

@@ -9,6 +9,8 @@ import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useUpdateProductState } from "@/hooks/mutations/use-product-mutations";
 import type { Product } from "@/services/products/product.service";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
+import { AdminEmptyState } from "@/components/admin-empty-state";
+import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 import { FourDotLoader } from "@/components/four-dot-loader";
 
 type Role = "OWNER" | "STAFF";
@@ -129,14 +131,7 @@ export default function ProductsPage() {
   }
 
   if (!user)
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-2.5 text-[#718077] text-sm">
-        <span className="h-[35px] w-[35px] rounded-[10px] bg-brand text-white grid [place-items:center] font-normal">
-          O
-        </span>
-        <span>Loading your catalogue</span>
-      </main>
-    );
+    return <AdminPageSkeleton />;
 
   return (
     <div className="min-h-screen">
@@ -284,32 +279,14 @@ export default function ProductsPage() {
                 </button>
               </div>
             ) : loading && !products.length ? (
-              <div className="min-h-[220px] p-[30px] flex flex-col items-center justify-center text-center text-[#8c9990] text-sm gap-2 [&_strong]:text-sm [&_strong]:text-[#3b4c41] [&_p]:mt-0 mx-0 mb-[5px] [&_p]:max-w-[380px] [&_p]:leading-[1.55]">
-                  <span className="inline-flex items-center gap-2"><FourDotLoader className="text-brand" />Loading products</span>
-              </div>
+              <AdminTableSkeleton columns={5} rows={6} />
             ) : visibleProducts.length === 0 ? (
-              <div className="min-h-[220px] p-[30px] flex flex-col items-center justify-center text-center text-[#8c9990] text-sm gap-2 [&_strong]:text-sm [&_strong]:text-[#3b4c41] [&_p]:mt-0 mx-0 mb-[5px] [&_p]:max-w-[380px] [&_p]:leading-[1.55]">
-                <strong>
-                  {search || stockFilter !== "ALL" || category !== "ALL"
-                    ? "No matching products"
-                    : "Your catalogue is empty"}
-                </strong>
-                <p>
-                  {search || stockFilter !== "ALL" || category !== "ALL"
-                    ? "Try changing your search or filters."
-                    : canManage(user.role)
-                      ? "Add your first product to start tracking stock and sales."
-                      : "Products added to your business will appear here."}
-                </p>
-                {canManage(user.role) && !products.length && (
-                  <Link
-                    href="/admin/products/new"
-                    className="h-[35px] cursor-pointer px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark"
-                  >
-                    Add product
-                  </Link>
-                )}
-              </div>
+              <AdminEmptyState
+                icon="box"
+                title={search || stockFilter !== "ALL" || category !== "ALL" ? "No matching products" : "Your catalogue is empty"}
+                description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canManage(user.role) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
+                action={canManage(user.role) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
+              />
             ) : (
               <>
                 <div className="overflow-auto">

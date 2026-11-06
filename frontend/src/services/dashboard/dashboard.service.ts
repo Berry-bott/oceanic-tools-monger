@@ -1,11 +1,24 @@
-import { apiRequest } from "@/lib/api";
+import { ApiRequestError, apiRequest } from "@/lib/api";
 
-type Captured<T> = { data: T } | { error: string };
+type Captured<T> = { data: T } | { error: string; errorCode?: string; requestId?: string };
 async function capture<T>(request: Promise<T>): Promise<Captured<T>> {
   try {
     return { data: await request };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "The data could not be loaded." };
+    if (error instanceof ApiRequestError) {
+      const message = error.code === "DATABASE_SCHEMA_OUTDATED"
+        ? "The database needs its latest schema update."
+        : error.code === "DATABASE_UNAVAILABLE"
+          ? "The database is temporarily unavailable. Try again shortly."
+          : error.status >= 500
+            ? "The server could not load this information."
+            : error.message;
+      return { error: message, errorCode: error.code, requestId: error.requestId };
+    }
+    if (error instanceof TypeError || (error instanceof Error && /failed to fetch|networkerror|fetch failed/i.test(error.message))) {
+      return { error: "Cannot reach the server. Check your internet connection and try again.", errorCode: "NETWORK_ERROR" };
+    }
+    return { error: "This information could not be loaded. Try again.", errorCode: "UNKNOWN_ERROR" };
   }
 }
 

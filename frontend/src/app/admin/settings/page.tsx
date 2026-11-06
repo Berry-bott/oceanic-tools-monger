@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { useSettingsOverview } from "@/hooks/queries/use-settings-overview";
 import {
   createBranch as createBranchRequest,
@@ -116,14 +117,7 @@ export default function SettingsPage() {
   }
 
   if (!user)
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-2.5 text-[#718077] text-sm">
-        <span className="h-[35px] w-[35px] rounded-[10px] bg-brand text-white grid [place-items:center] font-normal">
-          O
-        </span>
-        <span>Loading settings</span>
-      </main>
-    );
+    return <AdminPageSkeleton variant="form" />;
   if (user.role !== "OWNER")
     return (
       <main className="min-h-screen grid [align-content:center] [justify-items:center] gap-3 text-center p-6 [&_h1]:text-[22px] [&_h1]:m-0 [&_p]:text-sm [&_p]:text-[#75827a]">

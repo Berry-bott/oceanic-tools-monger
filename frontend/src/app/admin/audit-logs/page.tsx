@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
+import { AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 
 type AuditValue = Record<string, unknown> | null;
 type AuditEntry = {
@@ -166,7 +167,7 @@ export default function AuditLogsPage() {
             {query.error.message}
           </p>
         ) : query.isLoading ? (
-          <p className="p-5 text-sm text-muted">Loading audit history...</p>
+          <AdminTableSkeleton columns={5} rows={6} />
         ) : !entries.length ? (
           <p className="p-8 text-center text-sm text-muted">
             No audit records found.

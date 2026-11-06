@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { DashboardSummaryCard } from "@/components/admin-dashboard-widgets";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { useFinanceOverview } from "@/hooks/queries/use-finance-overview";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBranches } from "@/hooks/queries/use-branches";
@@ -246,14 +247,7 @@ export default function FinancePage() {
   }
 
   if (!user)
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-2.5 text-[#718077] text-sm">
-        <span className="h-[35px] w-[35px] rounded-[10px] bg-brand text-white grid [place-items:center] font-normal">
-          O
-        </span>
-        <span>Loading finance</span>
-      </main>
-    );
+    return <AdminPageSkeleton />;
   if (!financeRoles(user.role))
     return (
       <main className="min-h-screen grid [align-content:center] [justify-items:center] gap-3 text-center p-6 [&_h1]:text-[22px] [&_h1]:m-0 [&_p]:text-sm [&_p]:text-[#75827a]">

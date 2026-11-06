@@ -13,7 +13,7 @@ export const suppliersRouter = Router();
 export const purchasesRouter = Router();
 const supplierSchema = z.object({ name: z.string().trim().min(1).max(180), phone: z.string().trim().max(40).optional(), email: z.email().optional(), address: z.string().trim().max(1000).optional(), paymentTermsDays: z.coerce.number().int().min(0).max(365).default(0) });
 const purchaseSchema = z.object({ branchId: z.string(), supplierId: z.string(), expectedAt: z.coerce.date().optional(), notes: z.string().max(2000).optional(), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitCost: z.coerce.number().min(0) })).min(1).max(500) });
-const receiveSchema = z.object({ notes: z.string().max(2000).optional(), invoice: z.object({ invoiceNumber: z.string().trim().min(1).max(80), totalAmount: z.coerce.number().positive(), dueAt: z.coerce.date().optional() }).optional(), lines: z.array(z.object({ purchaseOrderLineId: z.string(), acceptedQuantity: z.coerce.number().min(0), rejectedQuantity: z.coerce.number().min(0).default(0), unitCost: z.coerce.number().min(0), batchNumber: z.string().max(100).optional(), expiresAt: z.coerce.date().optional() })).min(1).max(500) });
+const receiveSchema = z.object({ notes: z.string().max(2000).optional(), invoice: z.object({ invoiceNumber: z.string().trim().min(1).max(80), totalAmount: z.coerce.number().positive(), dueAt: z.coerce.date().optional(), amountPaid: z.coerce.number().min(0).default(0), paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]).optional(), paymentReference: z.string().trim().max(80).optional() }).optional(), lines: z.array(z.object({ purchaseOrderLineId: z.string(), acceptedQuantity: z.coerce.number().min(0), rejectedQuantity: z.coerce.number().min(0).default(0), unitCost: z.coerce.number().min(0), batchNumber: z.string().max(100).optional(), expiresAt: z.coerce.date().optional() })).min(1).max(500) });
 const makeReference = (prefix: string) => `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
 suppliersRouter.use(requireAuth);
@@ -48,7 +48,7 @@ purchasesRouter.get("/", async (request, response) => {
   const status = typeof request.query.status === "string" ? request.query.status : undefined;
   const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const data = await prisma.purchaseOrder.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(status ? { status: status as never } : {}) }, include: { supplier: { select: { id: true, name: true } }, branch: { select: { id: true, name: true } }, lines: { include: { product: { select: { id: true, name: true, sku: true } }, receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } }, receipts: { select: { id: true, reference: true, receivedAt: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+  const data = await prisma.purchaseOrder.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(status ? { status: status as never } : {}) }, include: { supplier: { select: { id: true, name: true } }, branch: { select: { id: true, name: true } }, lines: { include: { product: { select: { id: true, name: true, sku: true } }, receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } }, receipts: { select: { id: true, reference: true, receivedAt: true } }, invoices: { include: { allocations: { include: { payment: { select: { status: true } } } } } } }, orderBy: { createdAt: "desc" }, take: 100 });
   response.json({ data });
 });
 
@@ -99,6 +99,8 @@ purchasesRouter.post("/:purchaseOrderId/receive", requireRoles("OWNER", "STAFF")
   if (!parsed.success) throw new ApiError(400, "Check the received quantities and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const input = parsed.data;
+  if (input.invoice && input.invoice.amountPaid > 0 && (!input.invoice.paymentMethod || !input.invoice.paymentReference)) throw new ApiError(400, "Add the payment method and reference for the amount already paid.", "PAYMENT_DETAILS_REQUIRED");
+  if (input.invoice && input.invoice.amountPaid > input.invoice.totalAmount) throw new ApiError(400, "Amount paid cannot be more than the supplier invoice.", "PAYMENT_EXCEEDS_INVOICE");
   const po = await prisma.purchaseOrder.findFirst({
     where: { id: request.params.purchaseOrderId as string, businessId: auth.businessId },
     include: { lines: { include: { receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } } },
@@ -132,7 +134,12 @@ purchasesRouter.post("/:purchaseOrderId/receive", requireRoles("OWNER", "STAFF")
           await transaction.product.update({ where: { id: poLine.productId }, data: { costPrice: nextCost } });
         }
       }
-      if (input.invoice) await transaction.supplierInvoice.create({ data: { businessId: auth.businessId, supplierId: po.supplierId, purchaseOrderId: po.id, goodsReceiptId: created.id, invoiceNumber: input.invoice.invoiceNumber, totalAmount: input.invoice.totalAmount, dueAt: input.invoice.dueAt } });
+      const supplierInvoice = input.invoice ? await transaction.supplierInvoice.create({ data: { businessId: auth.businessId, supplierId: po.supplierId, purchaseOrderId: po.id, goodsReceiptId: created.id, invoiceNumber: input.invoice.invoiceNumber, totalAmount: input.invoice.totalAmount, dueAt: input.invoice.dueAt } }) : null;
+      if (supplierInvoice && input.invoice && input.invoice.amountPaid > 0) {
+        const payment = await transaction.payment.create({ data: { businessId: auth.businessId, method: input.invoice.paymentMethod!, status: "SUCCEEDED", amount: input.invoice.amountPaid, reference: input.invoice.paymentReference!, paidAt: new Date(), supplierAllocations: { create: { supplierInvoiceId: supplierInvoice.id, amount: input.invoice.amountPaid } } } });
+        await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "SUPPLIER_PAYMENT", sourceId: payment.id, description: `Payment to supplier invoice ${supplierInvoice.invoiceNumber}`, lines: [{ code: "2000", debit: input.invoice.amountPaid, description: "Reduce accounts payable" }, { code: input.invoice.paymentMethod === "CASH" ? "1000" : "1010", credit: input.invoice.amountPaid, description: "Supplier payment" }] });
+        await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "SUPPLIER_PAYMENT_RECORDED", entityType: "Payment", entityId: payment.id, after: { invoiceId: supplierInvoice.id, amount: input.invoice.amountPaid, method: input.invoice.paymentMethod } });
+      }
       const receivedValue = Number(input.lines.reduce((sum, line) => sum + line.acceptedQuantity * line.unitCost, 0).toFixed(2));
       if (receivedValue > 0) {
         const ledgerLines: LedgerLine[] = [{ code: "1200", debit: receivedValue, description: "Accepted goods received" }];

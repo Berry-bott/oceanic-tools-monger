@@ -6,6 +6,9 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
+import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
+import { AdminDialogPanel } from "@/components/admin-motion";
+import { AdminEmptyState } from "@/components/admin-empty-state";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import {
   categoryKeys,
@@ -144,7 +147,7 @@ export default function CategoriesPage() {
   }
 
   if (userQuery.isPending) {
-    return <main className="grid min-h-80 place-items-center"><span className="inline-flex items-center gap-3 text-sm text-muted"><FourDotLoader className="text-brand" />Loading categories...</span></main>;
+    return <AdminPageSkeleton variant="form" />;
   }
 
   if (!userQuery.data?.user) {
@@ -182,9 +185,9 @@ export default function CategoriesPage() {
 
       <section aria-labelledby="categories-heading">
         <div className="mb-3"><h2 id="categories-heading" className="m-0 text-lg font-semibold text-ink">Your categories</h2><p className="mb-0 mt-1 text-sm text-muted">Edit names or manage subcategories.</p></div>
-        {categoriesQuery.isLoading ? <div className="flex items-center gap-3 rounded-xl border border-line bg-white p-6 text-sm text-muted"><FourDotLoader className="text-brand" />Loading categories...</div> : null}
+        {categoriesQuery.isLoading ? <div className="overflow-hidden rounded-xl border border-line bg-white"><AdminTableSkeleton columns={3} rows={4} /></div> : null}
         {categoriesQuery.isError && <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800"><p className="mb-3 mt-0">Categories could not be loaded.</p><button type="button" className={`${secondaryButton} h-9`} onClick={() => void categoriesQuery.refetch()}>Try again</button></div>}
-        {!categoriesQuery.isLoading && !categoriesQuery.isError && categories.length === 0 && <div className="grid justify-items-center gap-2 rounded-xl border border-dashed border-line bg-white p-8 text-center"><span className="grid size-11 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="folder" size={21} /></span><strong className="text-sm font-medium text-ink">No categories yet</strong><span className="text-sm text-muted">Add your first category above.</span></div>}
+        {!categoriesQuery.isLoading && !categoriesQuery.isError && categories.length === 0 && <div className="rounded-[14px] border border-dashed border-line bg-white"><AdminEmptyState icon="folder" title="No categories yet" description="Add your first category above to organise products." /></div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {categories.map((category) => (
             <article key={category.id} className="grid content-start gap-3 rounded-xl border border-line bg-white p-4 shadow-sm">
@@ -229,13 +232,13 @@ export default function CategoriesPage() {
         </div>
       </section>
 
-      {deleteTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-[#14201e]/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
-        <section role="alertdialog" aria-modal="true" aria-labelledby="delete-category-title" className="w-full max-w-sm rounded-2xl border border-line bg-white p-5 shadow-2xl">
+      {deleteTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
+        <AdminDialogPanel role="alertdialog" aria-modal="true" aria-labelledby="delete-category-title" onEscape={() => setDeleteTarget(null)} className="w-full max-w-sm rounded-[14px] border border-line bg-white p-4 shadow-2xl">
           <span className="mb-4 grid size-11 place-items-center rounded-xl bg-red-50 text-red-700"><AdminUiIcon name="trash" size={20} /></span>
           <h2 id="delete-category-title" className="m-0 text-lg font-semibold text-ink">Delete {deleteTarget.type}?</h2>
           <p className="mb-0 mt-2 text-sm leading-6 text-muted"><strong className="font-medium text-ink">{deleteTarget.name}</strong> can only be deleted if nothing is using it.</p>
           <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleting} className={`${secondaryButton} cursor-pointer disabled:cursor-wait`} onClick={() => setDeleteTarget(null)}>Cancel</button><button type="button" disabled={deleting} className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-700 bg-red-700 px-4 text-sm text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60" onClick={() => void confirmDelete()}>{deleting ? <><FourDotLoader />Deleting...</> : <><AdminUiIcon name="trash" size={15} />Delete</>}</button></div>
-        </section>
+        </AdminDialogPanel>
       </div>}
     </main>
   );

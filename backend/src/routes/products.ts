@@ -17,7 +17,7 @@ const createProductSchema = z.object({
   barcode: z.string().trim().max(80).optional().or(z.literal("")).transform((value) => value?.toLocaleUpperCase("en-US")),
   name: z.string().trim().min(1).max(180),
   description: z.string().trim().max(5000).optional(),
-  brand: z.string().trim().max(120).optional().or(z.literal("")),
+  brand: z.string().trim().min(1).max(120),
   model: z.string().trim().max(120).optional().or(z.literal("")),
   specifications: z.array(z.object({ name: z.string().trim().min(1).max(100), value: z.string().trim().min(1).max(500) })).max(50).default([]),
   quantity: z.coerce.number().min(0).max(1_000_000),
@@ -28,7 +28,7 @@ const createProductSchema = z.object({
   subcategoryId: z.string().min(1).optional(),
   subcategory: z.string().trim().min(1).max(100).optional(),
   unit: z.string().trim().min(1).max(40).default("piece"),
-  costPrice: z.coerce.number().min(0).default(0),
+  costPrice: z.coerce.number().min(0),
   sellingPrice: z.coerce.number().min(0),
   reorderLevel: z.coerce.number().min(0).default(0),
 });
@@ -426,6 +426,7 @@ productsRouter.post("/import/validate", requireRoles(...inventoryRoles), async (
       : null;
     if (category && row.data.subcategory && !subcategory) errors.push(`Subcategory "${row.data.subcategory}" does not exist under ${row.data.category}. Create it before importing products.`);
     if (duplicate) errors.push(`SKU or barcode already belongs to ${duplicate.name} (${duplicate.sku}).`);
+    if (row.data.sellingPrice < row.data.costPrice) errors.push("Selling price cannot be below cost price.");
     if (skuSeen.has(skuKey)) errors.push("SKU is repeated in this file.");
     if (barcodeKey && barcodeSeen.has(barcodeKey)) errors.push("Barcode is repeated in this file.");
     if (possibleName && !row.data.duplicateOverrideReason) errors.push(`Possible duplicate: ${possibleName.name} (${possibleName.sku}). Add a duplicate override reason if these are distinct products.`);
@@ -446,6 +447,7 @@ productsRouter.post("/import/commit", requireRoles(...inventoryRoles), async (re
   const barcodeSet = new Set<string>();
   const categorySelections: { category: { id: string; name: string }; subcategory: { id: string; name: string } | null }[] = [];
   for (const row of parsed.data.rows) {
+    if (row.sellingPrice < row.costPrice) throw new ApiError(400, "An imported product has a selling price below cost price.", "SELLING_PRICE_BELOW_COST", { sku: row.sku });
     if (skuSet.has(row.sku.toLowerCase()) || (row.barcode && barcodeSet.has(row.barcode.toLowerCase()))) throw new ApiError(409, "The import contains repeated SKUs or barcodes.", "DUPLICATE_IMPORT_IDENTIFIER");
     skuSet.add(row.sku.toLowerCase());
     if (row.barcode) barcodeSet.add(row.barcode.toLowerCase());
@@ -530,6 +532,7 @@ productsRouter.post("/", requireRoles(...inventoryRoles), async (request, respon
   if (!parsed.success) throw new ApiError(400, "Check the product details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const data = parsed.data;
+  if (data.sellingPrice < data.costPrice) throw new ApiError(400, "Selling price cannot be below cost price. Staff can bargain down to the cost price when making a sale.", "SELLING_PRICE_BELOW_COST");
   const category = data.categoryId ? await prisma.category.findFirst({ where: { id: data.categoryId, businessId: auth.businessId }, select: { id: true, name: true } }) : null;
   if (!category) throw new ApiError(400, "Create and choose a category before adding this product.", "PRODUCT_CATEGORY_REQUIRED");
   const subcategory = data.subcategoryId ? await prisma.subcategory.findFirst({ where: { id: data.subcategoryId, categoryId: category.id }, select: { id: true, name: true } }) : null;
@@ -615,9 +618,12 @@ productsRouter.patch("/:productId", requireRoles(...inventoryRoles), async (requ
   if (!parsed.success || Object.keys(parsed.data ?? {}).length === 0) throw new ApiError(400, "Provide at least one valid product field.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const productId = request.params.productId as string;
-  const current = await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId }, select: { id: true, name: true, normalizedName: true, isPublished: true } });
+  const current = await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId }, select: { id: true, name: true, normalizedName: true, isPublished: true, costPrice: true, sellingPrice: true } });
   if (!current) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const data = parsed.data;
+  const nextCostPrice = data.costPrice ?? Number(current.costPrice);
+  const nextSellingPrice = data.sellingPrice ?? Number(current.sellingPrice);
+  if (nextSellingPrice < nextCostPrice) throw new ApiError(400, "Selling price cannot be below cost price. Staff can bargain down to the cost price when making a sale.", "SELLING_PRICE_BELOW_COST");
   let categoryUpdate: { categoryId?: string | null; category?: string; subcategoryId?: string | null; subcategory?: string | null } = {};
   if (data.categoryId !== undefined || data.subcategoryId !== undefined || data.category !== undefined) {
     const currentProduct = await prisma.product.findUnique({ where: { id: productId }, select: { categoryId: true, subcategoryId: true } });
@@ -677,6 +683,7 @@ productsRouter.post("/:productId/adjustments", requireRoles(...inventoryRoles), 
   const auth = response.locals.auth as AuthContext;
   const productId = request.params.productId as string;
   const { branchId, quantity, reason } = parsed.data;
+  if (auth.role === "STAFF" && (!auth.branchId || auth.branchId !== branchId)) throw new ApiError(403, "You can only adjust stock in your assigned branch.", "BRANCH_ACCESS_DENIED");
   const product = await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId }, select: { id: true, costPrice: true } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const branch = await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } });
@@ -725,7 +732,10 @@ productsRouter.get("/:productId/movements", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, select: { id: true } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
-  const movements = await prisma.stockMovement.findMany({ where: { productId: product.id, branch: { businessId: auth.businessId }, ...(typeof request.query.branchId === "string" ? { branchId: request.query.branchId } : {}) }, include: { branch: { select: { name: true } }, user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 200 });
+  const requestedBranchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
+  if (auth.role === "STAFF" && (!auth.branchId || (requestedBranchId && requestedBranchId !== auth.branchId))) throw new ApiError(403, "You can only view stock movements in your assigned branch.", "BRANCH_ACCESS_DENIED");
+  const branchId = auth.role === "STAFF" ? auth.branchId : requestedBranchId;
+  const movements = await prisma.stockMovement.findMany({ where: { productId: product.id, branch: { businessId: auth.businessId }, ...(branchId ? { branchId } : {}) }, include: { branch: { select: { name: true } }, user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 200 });
   response.json({ data: movements });
 });
 

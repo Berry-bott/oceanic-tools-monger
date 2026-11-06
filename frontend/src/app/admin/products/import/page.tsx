@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import { useBranches } from "@/hooks/queries/use-branches";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { commitProductImport, parseProductImport, productKeys, validateProductImport } from "@/services/products/product.service";
 
 type ImportRow = Record<string, unknown>;
@@ -48,6 +49,7 @@ export default function ProductImportPage() {
     finally { setBusy(false); }
   }
 
+  if (userQuery.isPending) return <AdminPageSkeleton variant="form" />;
   if (!userQuery.data || !canManage(userQuery.data.user.role)) return <main className="p-8 text-sm text-muted">You do not have access to import products.</main>;
   const branches = branchesQuery.data?.data ?? [];
 

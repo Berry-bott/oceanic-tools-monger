@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
@@ -9,6 +10,9 @@ import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBranches } from "@/hooks/queries/use-branches";
 import { useProducts } from "@/hooks/queries/use-products";
 import { usePurchasingOverview } from "@/hooks/queries/use-purchasing-overview";
+import { AdminDialogPanel } from "@/components/admin-motion";
+import { AdminUiIcon } from "@/components/admin-ui-icon";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import {
   createPurchaseOrder,
   createSupplier as createSupplierRequest,
@@ -33,6 +37,7 @@ type Supplier = {
   overdue: number;
   _count: { purchaseOrders: number };
 };
+type OrderLineDraft = { productId: string; quantity: string; unitCost: string };
 type POLine = {
   id: string;
   product: Product;
@@ -53,6 +58,7 @@ type Purchase = {
   branch: { id: string; name: string };
   lines: POLine[];
   receipts: { id: string; reference: string; receivedAt: string }[];
+  invoices?: { totalAmount: number | string; dueAt?: string | null; allocations: { amount: number | string; payment: { status: string } }[] }[];
 };
 const manager = (role?: string) =>
   role === "OWNER" || role === "STAFF";
@@ -85,6 +91,10 @@ export default function PurchasingPage() {
   const [busy, setBusy] = useState("");
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [orderLineDrafts, setOrderLineDrafts] = useState<OrderLineDraft[]>([{ productId: "", quantity: "1", unitCost: "" }]);
+  const [receivingOrder, setReceivingOrder] = useState<Purchase | null>(null);
+  const [amountPaid, setAmountPaid] = useState(0);
+  const [receiptTotal, setReceiptTotal] = useState(0);
 
   const reload = useCallback(async () => {
     await Promise.all([purchasingQuery.refetch(), invalidateAdminSummaries(queryClient)]);
@@ -147,21 +157,22 @@ export default function PurchasingPage() {
     setBusy("purchase");
     setActionError("");
     const form = new FormData(event.currentTarget);
+    const orderLines = orderLineDrafts.filter((line) => line.productId).map((line) => ({ productId: line.productId, quantity: Number(line.quantity), unitCost: Number(line.unitCost) }));
+    if (!orderLines.length || orderLines.some((line) => !Number.isFinite(line.quantity) || line.quantity <= 0 || !Number.isFinite(line.unitCost) || line.unitCost < 0)) {
+      setActionError("Add at least one item and enter a valid quantity and cost price for each item.");
+      setBusy("");
+      return;
+    }
     try {
       await createPurchaseOrder({
           supplierId: form.get("supplierId"),
           branchId: form.get("branchId"),
           expectedAt: form.get("expectedAt") || undefined,
           notes: form.get("notes") || undefined,
-          lines: [
-            {
-              productId: form.get("productId"),
-              quantity: Number(form.get("quantity")),
-              unitCost: Number(form.get("unitCost")),
-            },
-          ],
+          lines: orderLines,
       });
       setOrderOpen(false);
+      setOrderLineDrafts([{ productId: "", quantity: "1", unitCost: "" }]);
       setNotice("Supplier order created as a draft.");
       await reload();
     } catch (e) {
@@ -174,68 +185,63 @@ export default function PurchasingPage() {
   }
 
   async function receiveOrder(order: Purchase) {
-    const line = order.lines.find((candidate) => {
-      const received = candidate.receiptLines.reduce(
-        (sum, row) => sum + n(row.acceptedQuantity) + n(row.rejectedQuantity),
-        0,
-      );
-      return received < n(candidate.orderedQuantity);
-    });
-    if (!line) {
-      setActionError(
-        "There are no outstanding quantities to receive on this order.",
-      );
-      return;
-    }
-    const alreadyReceived = line.receiptLines.reduce(
-      (sum, row) => sum + n(row.acceptedQuantity) + n(row.rejectedQuantity),
-      0,
-    );
-    const outstanding = Math.max(0, n(line.orderedQuantity) - alreadyReceived);
-    const input = window.prompt(
-      `Accept quantity for ${line.product.name} (${outstanding} outstanding):`,
-      String(outstanding),
-    );
-    if (input === null) return;
-    const accepted = Number(input);
-    if (!Number.isFinite(accepted) || accepted < 0 || accepted > outstanding) {
-      setActionError(`Enter a quantity between 0 and ${outstanding}.`);
-      return;
-    }
-    setBusy(order.id);
+    setActionError("");
+    setAmountPaid(0);
+    setReceiptTotal(order.lines.reduce((sum, line) => {
+      const received = line.receiptLines.reduce((total, row) => total + n(row.acceptedQuantity) + n(row.rejectedQuantity), 0);
+      return sum + Math.max(0, n(line.orderedQuantity) - received) * n(line.unitCost);
+    }, 0));
+    setReceivingOrder(order);
+  }
+
+  async function recordReceipt(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!receivingOrder) return;
+    setBusy(receivingOrder.id);
     setActionError("");
     setNotice("");
+    const form = new FormData(event.currentTarget);
+    const lines = receivingOrder.lines.flatMap((line) => {
+      const quantity = Number(form.get(`quantity-${line.id}`));
+      if (quantity <= 0) return [];
+      return [{ purchaseOrderLineId: line.id, acceptedQuantity: quantity, rejectedQuantity: 0, unitCost: Number(form.get(`cost-${line.id}`)) }];
+    });
+    const invoiceTotal = lines.reduce((sum, line) => sum + line.acceptedQuantity * line.unitCost, 0);
+    const paid = Number(form.get("amountPaid") || 0);
+    if (!lines.length) {
+      setActionError("Enter a quantity received for at least one item.");
+      setBusy("");
+      return;
+    }
+    if (paid > invoiceTotal) {
+      setActionError("Payment cannot be more than the received goods total.");
+      setBusy("");
+      return;
+    }
     try {
-      await receivePurchaseOrder(order.id, {
-          lines: [
-            {
-              purchaseOrderLineId: line.id,
-              acceptedQuantity: accepted,
-              rejectedQuantity: 0,
-              unitCost: n(line.unitCost),
-            },
-          ],
+      await receivePurchaseOrder(receivingOrder.id, {
+        lines,
+        invoice: {
+          invoiceNumber: form.get("invoiceNumber") || receivingOrder.number,
+          totalAmount: invoiceTotal,
+          amountPaid: paid,
+          dueAt: form.get("dueAt") || undefined,
+          paymentMethod: paid > 0 ? form.get("paymentMethod") : undefined,
+          paymentReference: paid > 0 ? form.get("paymentReference") : undefined,
+        },
       });
-      setNotice("Goods receipt recorded and inventory updated.");
+      setReceivingOrder(null);
+      setNotice(`Items received. Supplier bill: ${money(invoiceTotal)}; paid: ${money(paid)}; balance left: ${money(invoiceTotal - paid)}.`);
       await reload();
     } catch (e) {
-      setActionError(
-        e instanceof Error ? e.message : "Goods receipt could not be saved.",
-      );
+      setActionError(e instanceof Error ? e.message : "Goods receipt could not be saved.");
     } finally {
       setBusy("");
     }
   }
 
   if (!user)
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-2.5 text-[#718077] text-sm">
-        <span className="h-[35px] w-[35px] rounded-[10px] bg-brand text-white grid [place-items:center] font-normal">
-          O
-        </span>
-        <span>Loading purchasing</span>
-      </main>
-    );
+    return <AdminPageSkeleton />;
   const canManage = manager(user.role);
   const openOrders = orders.filter((order) =>
     ["DRAFT", "SUBMITTED", "APPROVED", "PARTIALLY_RECEIVED"].includes(
@@ -278,6 +284,7 @@ export default function PurchasingPage() {
                   className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
                   onClick={() => {
                     setActionError("");
+                    setOrderLineDrafts([{ productId: "", quantity: "1", unitCost: "" }]);
                     setOrderOpen(true);
                   }}
                   disabled={
@@ -354,20 +361,30 @@ export default function PurchasingPage() {
               </div>
             </div>
             <div className="overflow-auto">
-              <table className="w-full [border-collapse:collapse] [min-width:850px] text-left [&_th]:h-[39px] [&_th]:px-[13px] [&_th]:bg-[#fafbfa] [&_th]:text-[#8c9990] [&_th]:text-sm [&_th]:font-normal [&_th]:tracking-[.55px] [&_th]:whitespace-nowrap [&_th:first-child]:[padding-left:18px] [&_td:first-child]:[padding-left:18px] [&_td]:h-[61px] [&_td]:[border-top:1px_solid_#f0f3f0] [&_td]:py-2 px-[13px] [&_td]:text-[#5c6b61] [&_td]:text-sm [&_td]:whitespace-nowrap [&_td>strong]:text-sm [&_td>strong]:text-[#3d4e43] [&_td>strong]:font-normal">
+              <table className="w-full [border-collapse:collapse] [min-width:1180px] text-left [&_th]:h-[39px] [&_th]:px-[13px] [&_th]:bg-[#fafbfa] [&_th]:text-[#8c9990] [&_th]:text-sm [&_th]:font-normal [&_th]:tracking-[.55px] [&_th]:whitespace-nowrap [&_th:first-child]:[padding-left:18px] [&_td:first-child]:[padding-left:18px] [&_td]:h-[61px] [&_td]:[border-top:1px_solid_#f0f3f0] [&_td]:py-2 px-[13px] [&_td]:text-[#5c6b61] [&_td]:text-sm [&_td]:whitespace-nowrap [&_td>strong]:text-sm [&_td>strong]:text-[#3d4e43] [&_td>strong]:font-normal">
                 <thead>
                   <tr>
                     <th>ORDER</th>
                     <th>SUPPLIER</th>
                     <th>BRANCH</th>
                     <th>ITEMS</th>
+                    <th>ORDER TOTAL</th>
+                    <th>PAID</th>
+                    <th>BALANCE LEFT</th>
+                    <th>DATE DUE</th>
                     <th>EXPECTED</th>
                     <th>STATUS</th>
                     <th>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((order) => (
+                  {orders.map((order) => {
+                        const invoiceTotal = order.invoices?.reduce((sum, invoice) => sum + n(invoice.totalAmount), 0) ?? 0;
+                        const paidTotal = order.invoices?.reduce((sum, invoice) => sum + invoice.allocations.filter((allocation) => allocation.payment.status === "SUCCEEDED").reduce((paid, allocation) => paid + n(allocation.amount), 0), 0) ?? 0;
+                        const orderTotal = order.lines.reduce((sum, line) => sum + n(line.orderedQuantity) * n(line.unitCost), 0);
+                        const dueDates = order.invoices?.flatMap((invoice) => invoice.dueAt ? [invoice.dueAt] : []) ?? [];
+                        const dueDate = dueDates.sort()[0];
+                        return (
                     <tr key={order.id}>
                       <td>
                         <strong>{order.number}</strong>
@@ -381,10 +398,14 @@ export default function PurchasingPage() {
                         {order.lines
                           .map(
                             (line) =>
-                              `${line.product.name}  ${n(line.orderedQuantity)}`,
+                              `${line.product.name} - ${n(line.orderedQuantity)} x ${money(n(line.unitCost))}`,
                           )
                           .join(", ")}
                       </td>
+                      <td><strong>{money(invoiceTotal || orderTotal)}</strong></td>
+                      <td>{money(paidTotal)}</td>
+                      <td>{money(Math.max(0, invoiceTotal - paidTotal))}</td>
+                      <td>{dueDate ? date(dueDate) : "-"}</td>
                       <td>{order.expectedAt ? date(order.expectedAt) : ""}</td>
                       <td>
                         <span
@@ -433,7 +454,8 @@ export default function PurchasingPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                        );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -496,18 +518,19 @@ export default function PurchasingPage() {
           </footer>
         </div>
       </main>
-      {supplierOpen && (
+      {supplierOpen && createPortal((
         <div
-          className="fixed [inset:0] bg-[#14201e66] [backdrop-filter:blur(2px)] z-[70] grid [place-items:center] p-5"
+          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-[#14201e66] p-4 [backdrop-filter:blur(2px)]"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setSupplierOpen(false);
           }}
         >
-          <section
-            className="[width:min(100%,485px)] [max-height:min(90vh,750px)] overflow-auto bg-white rounded-xl shadow-[0_24px_70px_#17251f42] p-[21px] [&_form]:grid [&_form]:gap-3 max-[620px]:p-[17px]"
+          <AdminDialogPanel
+            className="[width:min(100%,485px)] [max-height:min(90vh,750px)] overflow-auto rounded-[14px] border border-line bg-white shadow-[0_24px_70px_#17251f42] p-4 [&_form]:grid [&_form]:gap-3"
             role="dialog"
             aria-modal="true"
             aria-labelledby="supplier-title"
+            onEscape={() => setSupplierOpen(false)}
           >
             <div className="flex justify-between items-start [margin-bottom:18px] [&>div]:flex [&>div]:gap-2.5 [&>div]:items-center [&_h2]:text-sm [&_h2]:mt-0 mx-0 mb-1 [&_h2]:tracking-[-.3px] [&_p]:text-sm [&_p]:text-[#89948b] [&_p]:m-0">
               <div>
@@ -518,10 +541,11 @@ export default function PurchasingPage() {
                 </div>
               </div>
               <button
-                className="[border:0] bg-transparent text-[#76837b] h-[32px] w-[32px] grid [place-items:center] rounded-lg [&:hover]:bg-[#f1f6f2] [&:hover]:text-[#28644c]"
+                type="button"
+                className="grid size-8 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#76837b] transition-colors hover:bg-[#f1f6f2] hover:text-[#28644c]"
                 onClick={() => setSupplierOpen(false)}
                 aria-label="Close"
-              ></button>
+              ><AdminUiIcon name="close" size={15} /></button>
             </div>
             <form onSubmit={(event) => void createSupplier(event)}>
               <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
@@ -573,35 +597,37 @@ export default function PurchasingPage() {
                 </button>
               </div>
             </form>
-          </section>
+          </AdminDialogPanel>
         </div>
-      )}
-      {orderOpen && (
+      ), document.body)}
+      {orderOpen && createPortal((
         <div
-          className="fixed [inset:0] bg-[#14201e66] [backdrop-filter:blur(2px)] z-[70] grid [place-items:center] p-5"
+          className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 [backdrop-filter:blur(2px)]"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setOrderOpen(false);
           }}
         >
-          <section
-            className="[width:min(100%,485px)] [max-height:min(90vh,750px)] overflow-auto bg-white rounded-xl shadow-[0_24px_70px_#17251f42] p-[21px] [&_form]:grid [&_form]:gap-3 max-[620px]:p-[17px]"
+          <AdminDialogPanel
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4 [&_form]:grid [&_form]:gap-4 [&_input]:w-full [&_input]:min-w-0 [&_select]:w-full [&_select]:min-w-0"
             role="dialog"
             aria-modal="true"
             aria-labelledby="po-title"
+            onEscape={() => setOrderOpen(false)}
           >
-            <div className="flex justify-between items-start [margin-bottom:18px] [&>div]:flex [&>div]:gap-2.5 [&>div]:items-center [&_h2]:text-sm [&_h2]:mt-0 mx-0 mb-1 [&_h2]:tracking-[-.3px] [&_p]:text-sm [&_p]:text-[#89948b] [&_p]:m-0">
+            <div className="mb-1 flex items-start justify-between gap-4 [&>div]:flex [&>div]:items-center [&>div]:gap-3 [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:tracking-[-.3px] [&_p]:m-0 [&_p]:mt-1 [&_p]:text-sm [&_p]:text-[#89948b]">
               <div>
-                <span className="w-[37px] h-[37px] grid [place-items:center] bg-[#edf5f0] text-[#2a6a51] rounded-xl"></span>
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f0] text-[#2a6a51]"><AdminUiIcon name="box" size={19} /></span>
                 <div>
                   <h2 id="po-title">Create supplier order</h2>
-                  <p>Stock changes after you record the items received.</p>
+                  <p>Add the goods you are ordering, with the quantity and cost per unit.</p>
                 </div>
               </div>
               <button
-                className="[border:0] bg-transparent text-[#76837b] h-[32px] w-[32px] grid [place-items:center] rounded-lg [&:hover]:bg-[#f1f6f2] [&:hover]:text-[#28644c]"
+                type="button"
+                className="grid size-8 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#76837b] transition-colors hover:bg-[#f1f6f2] hover:text-[#28644c]"
                 onClick={() => setOrderOpen(false)}
                 aria-label="Close"
-              ></button>
+              ><AdminUiIcon name="close" size={15} /></button>
             </div>
             <form onSubmit={(event) => void createOrder(event)}>
               <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
@@ -630,40 +656,14 @@ export default function PurchasingPage() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
-                Product
-                <select name="productId" required defaultValue="">
-                  <option value="" disabled>
-                    Select product
-                  </option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.sku}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
-                <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
-                  Quantity
-                  <input
-                    name="quantity"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    required
-                  />
-                </label>
-                <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
-                  Unit cost
-                  <input
-                    name="unitCost"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </label>
+              <div className="grid gap-3 rounded-xl border border-[#e6ece7] bg-[#fafcfb] p-3.5 max-[620px]:p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><strong className="text-sm font-semibold text-[#35453b]">Goods in this order</strong><p className="mb-0 mt-1 text-xs text-[#89948b]">Choose products and enter the incoming quantity and cost per unit.</p></div><button type="button" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#dce7de] bg-white px-3 text-sm font-medium text-brand transition-colors hover:bg-[#f1f7f2]" onClick={() => setOrderLineDrafts((lines) => [...lines, { productId: "", quantity: "1", unitCost: "" }])}><AdminUiIcon name="plus" size={15} />Add item</button></div>
+                {orderLineDrafts.map((line, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_130px_160px_40px] items-end gap-2 rounded-lg border border-[#e5ebe6] bg-white p-3 max-[620px]:grid-cols-2 max-[620px]:p-2.5">
+                  <label className="grid gap-1.5 text-sm text-[#536159] max-[620px]:col-span-2">Product<select required value={line.productId} onChange={(event) => setOrderLineDrafts((current) => current.map((entry, i) => i === index ? { ...entry, productId: event.target.value, unitCost: String(products.find((product) => product.id === event.target.value)?.costPrice ?? entry.unitCost) } : entry))} className="h-10 rounded-md border border-[#dfe6e0] bg-white px-2.5 text-[#34413a]"><option value="">Select product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select></label>
+                  <label className="grid gap-1.5 text-sm text-[#536159]">Quantity<input required type="number" min="0.001" step="0.001" value={line.quantity} onChange={(event) => setOrderLineDrafts((current) => current.map((entry, i) => i === index ? { ...entry, quantity: event.target.value } : entry))} className="h-10 rounded-md border border-[#dfe6e0] px-2.5 text-[#34413a]" /></label>
+                  <label className="grid gap-1.5 text-sm text-[#536159]">Cost price<input required type="number" min="0" step="0.01" value={line.unitCost} onChange={(event) => setOrderLineDrafts((current) => current.map((entry, i) => i === index ? { ...entry, unitCost: event.target.value } : entry))} className="h-10 rounded-md border border-[#dfe6e0] px-2.5 text-[#34413a]" /></label>
+                  <button type="button" aria-label={`Remove item ${index + 1}`} title="Remove item" disabled={orderLineDrafts.length === 1} onClick={() => setOrderLineDrafts((current) => current.filter((_, i) => i !== index))} className="h-10 rounded-lg border border-[#e0e7e1] bg-white text-[#8e5c52] transition-colors hover:bg-[#fff5f2] disabled:opacity-40 max-[620px]:col-span-2 max-[620px]:justify-self-end max-[620px]:w-10"><AdminUiIcon name="trash" size={15} /></button>
+                </div>)}
               </div>
               <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
                 <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac] [&_select]:h-[39px] [&_select]:border border-[#dfe6e0] [&_select]:rounded-md [&_select]:px-2.5 [&_select]:text-[#34413a] [&_select]:bg-white [&_select]:text-sm">
@@ -696,7 +696,58 @@ export default function PurchasingPage() {
                 </button>
               </div>
             </form>
-          </section>
+          </AdminDialogPanel>
+        </div>
+      ), document.body)}
+      {receivingOrder && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setReceivingOrder(null); }}>
+          <AdminDialogPanel className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-[14px] border border-line bg-white p-4 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="receipt-title" onEscape={() => setReceivingOrder(null)}>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="receipt-title" className="m-0 text-lg font-semibold text-[#1a2a22]">Receive stock and record supplier bill</h2>
+                <p className="mb-0 mt-1 text-sm text-[#75827a]">{receivingOrder.supplier.name} · Order {receivingOrder.number}. Enter the quantities that arrived and their cost price.</p>
+              </div>
+              <button type="button" aria-label="Close" className="grid size-9 cursor-pointer place-items-center rounded-lg border border-line bg-white text-[#75827a] transition-colors hover:bg-[#f4f7f4]" onClick={() => setReceivingOrder(null)}><AdminUiIcon name="close" size={15} /></button>
+            </div>
+            <form onSubmit={(event) => void recordReceipt(event)} onChange={(event) => {
+              const form = new FormData(event.currentTarget);
+              const nextTotal = receivingOrder.lines.reduce((sum, line) => sum + Number(form.get(`quantity-${line.id}`) || 0) * Number(form.get(`cost-${line.id}`) || 0), 0);
+              setReceiptTotal(nextTotal);
+              setAmountPaid(Number(form.get("amountPaid") || 0));
+            }} className="grid gap-4">
+              <div className="overflow-auto rounded-lg border border-line">
+                <table className="w-full min-w-[650px] border-collapse text-left text-sm">
+                  <thead className="bg-[#f7f9f7] text-xs text-[#75827a]"><tr><th className="p-3">Item</th><th className="p-3">Ordered</th><th className="p-3">Still due</th><th className="p-3">Received now</th><th className="p-3">Cost price</th></tr></thead>
+                  <tbody>{receivingOrder.lines.map((line) => {
+                    const received = line.receiptLines.reduce((sum, row) => sum + n(row.acceptedQuantity) + n(row.rejectedQuantity), 0);
+                    const remaining = Math.max(0, n(line.orderedQuantity) - received);
+                    return <tr key={line.id} className="border-t border-line">
+                      <td className="p-3"><strong className="font-medium text-[#35453b]">{line.product.name}</strong><small className="mt-1 block text-xs text-[#929d95]">{line.product.sku}</small></td>
+                      <td className="p-3">{n(line.orderedQuantity)}</td><td className="p-3">{remaining}</td>
+                      <td className="p-3"><input aria-label={`Received quantity for ${line.product.name}`} name={`quantity-${line.id}`} type="number" min="0" max={remaining} step="0.001" defaultValue={remaining} className="h-9 w-28 rounded-md border border-[#dfe6e0] px-2" /></td>
+                      <td className="p-3"><input aria-label={`Cost price for ${line.product.name}`} name={`cost-${line.id}`} type="number" min="0" step="0.01" defaultValue={n(line.unitCost)} className="h-9 w-36 rounded-md border border-[#dfe6e0] px-2" /></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
+                <label className="grid gap-1.5 text-sm text-[#536159]">Supplier invoice number<input name="invoiceNumber" required maxLength={80} placeholder="Enter the number on the supplier bill" className="h-10 rounded-md border border-[#dfe6e0] px-3" /></label>
+                <label className="grid gap-1.5 text-sm text-[#536159]">Date payment is due<input name="dueAt" type="date" className="h-10 rounded-md border border-[#dfe6e0] px-3" /></label>
+                <label className="grid gap-1.5 text-sm text-[#536159]">Payment made now<input name="amountPaid" type="number" min="0" max={receiptTotal} step="0.01" value={amountPaid} onChange={(event) => setAmountPaid(Number(event.target.value))} className="h-10 rounded-md border border-[#dfe6e0] px-3" /></label>
+                <div className="rounded-lg bg-[#f5f8f5] p-3 text-sm text-[#536159]">Bill total <strong className="float-right text-[#26372d]">{money(receiptTotal)}</strong><br /><span className="mt-2 block">Balance left <strong className="float-right text-[#26372d]">{money(Math.max(0, receiptTotal - amountPaid))}</strong></span></div>
+              </div>
+              {amountPaid > 0 && <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
+                <label className="grid gap-1.5 text-sm text-[#536159]">Payment method<select name="paymentMethod" required className="h-10 rounded-md border border-[#dfe6e0] bg-white px-3"><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CARD">Card</option><option value="OTHER">Other</option></select></label>
+                <label className="grid gap-1.5 text-sm text-[#536159]">Payment reference<input name="paymentReference" required maxLength={80} placeholder="Receipt or transfer reference" className="h-10 rounded-md border border-[#dfe6e0] px-3" /></label>
+              </div>}
+              <p className="m-0 text-xs text-[#829087]">Stock is added only for quantities recorded as received. Any unpaid amount stays as a supplier balance.</p>
+              {actionError && <p role="alert" className="m-0 text-sm text-[#b44f44]">{actionError}</p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" className="h-9 rounded-lg border border-[#e0e7e1] bg-white px-4 text-sm text-[#4e5e54] hover:bg-[#f8faf8]" onClick={() => setReceivingOrder(null)}>Cancel</button>
+                <button disabled={busy === receivingOrder.id} className="h-9 rounded-lg border border-brand bg-brand px-4 text-sm text-white hover:bg-brand-dark disabled:opacity-60">{busy === receivingOrder.id ? "Saving receipt…" : "Save received items and bill"}</button>
+              </div>
+            </form>
+          </AdminDialogPanel>
         </div>
       )}
     </div>

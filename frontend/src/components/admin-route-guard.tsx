@@ -94,7 +94,7 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-6 text-center text-foreground">
         <section className="max-w-md">
-          <h1 className="text-xl font-bold">{serverError ? "The server had a problem" : "Can&apos;t reach the server"}</h1>
+          <h1 className="text-xl font-bold">{serverError ? "The server had a problem" : "Cannot reach the server"}</h1>
           <p className="mt-2 text-sm text-muted">
             {serverError
               ? "Your sign-in is still saved. Please try again shortly."

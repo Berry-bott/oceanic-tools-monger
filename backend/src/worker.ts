@@ -180,6 +180,34 @@ async function queueDebtReminders() {
   }
 }
 
+async function refreshOverdueInstallments() {
+  const now = new Date();
+  const installments = await prisma.installmentDue.findMany({
+    where: { dueAt: { lt: now }, status: { in: ["PENDING", "PARTIALLY_PAID"] }, agreement: { status: "ACTIVE" } },
+    include: { agreement: { include: { customer: true, business: { select: { currency: true } } } } },
+    take: 1000,
+  });
+  for (const installment of installments) {
+    const outstanding = Math.max(0, Number(installment.amount) - Number(installment.paidAmount));
+    if (outstanding <= 0) continue;
+    const updated = await prisma.installmentDue.updateMany({ where: { id: installment.id, status: { in: ["PENDING", "PARTIALLY_PAID"] }, dueAt: { lt: now } }, data: { status: "OVERDUE" } });
+    if (!updated.count) continue;
+    const customer = installment.agreement.customer;
+    const channels = [
+      ...(customer.email && customer.emailRemindersAllowed ? [{ channel: "EMAIL" as const, destination: customer.email, provider: "RESEND" }] : []),
+      ...(customer.phone && customer.smsRemindersAllowed ? [{ channel: "SMS" as const, destination: customer.phone, provider: "TERMII" }] : []),
+    ];
+    const dueLabel = installment.dueAt.toISOString().slice(0, 10);
+    const key = `INSTALLMENT-OVERDUE:${installment.id}:${dueLabel}`;
+    const message = `${customer.name} has an overdue payment of ${outstanding.toLocaleString("en-NG")} ${installment.agreement.business.currency} for agreement ${installment.agreement.number}, instalment ${installment.sequence}.`;
+    await prisma.notification.upsert({
+      where: { dedupeKey: key },
+      create: { businessId: installment.agreement.businessId, type: "INSTALLMENT", severity: "WARNING", title: "Instalment payment overdue", message, entityType: "Customer", entityId: customer.id, dedupeKey: key, deliveries: { create: channels } },
+      update: { readAt: null, message },
+    });
+  }
+}
+
 async function cleanExpiredAdminSessions() {
   const now = new Date();
   await prisma.refreshToken.deleteMany({ where: { expiresAt: { lte: now } } });
@@ -218,6 +246,8 @@ async function sweep() {
     await refreshOverdueAlerts();
     currentTask = "queueDebtReminders";
     await queueDebtReminders();
+    currentTask = "refreshOverdueInstallments";
+    await refreshOverdueInstallments();
     currentTask = "dispatchDeliveries";
     await dispatchDeliveries();
     currentTask = "dispatchEmailOutbox";

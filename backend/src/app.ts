@@ -15,6 +15,8 @@ import { salesRouter } from "./routes/sales.js";
 import { onlineOrdersRouter, paystackWebhookRouter, storeRouter } from "./routes/store.js";
 import { accountingRouter, expensesRouter, paymentsRouter } from "./routes/finance.js";
 import { auditRouter, notificationsRouter } from "./routes/notifications.js";
+import { installmentsRouter } from "./routes/installments.js";
+import { creditorsRouter } from "./routes/creditors.js";
 import { reportsRouter } from "./routes/reports.js";
 import { inventoryWorkflowRouter } from "./routes/inventory-workflows.js";
 import { branchesRouter, businessRouter, usersRouter } from "./routes/admin.js";
@@ -33,7 +35,7 @@ app.use((request, response, next) => {
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
   credentials: true,
-  allowedHeaders: ["Content-Type", "X-Oceanic-Workspace"],
+  allowedHeaders: ["Content-Type", "X-Oceanic-Workspace", "Idempotency-Key"],
   exposedHeaders: ["X-Request-Id"],
 }));
 app.use("/api/v1/webhooks", express.raw({ type: "application/json", limit: "1mb" }), paystackWebhookRouter);
@@ -75,6 +77,8 @@ app.use("/api/v1/suppliers", suppliersRouter);
 app.use("/api/v1/purchases", purchasesRouter);
 app.use("/api/v1/customers", customersRouter);
 app.use("/api/v1/sales", salesRouter);
+app.use("/api/v1/installments", installmentsRouter);
+app.use("/api/v1/creditors", creditorsRouter);
 app.use("/api/v1/business", businessRouter);
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1/branches", branchesRouter);

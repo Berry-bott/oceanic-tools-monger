@@ -14,25 +14,57 @@ const inventoryRoles = ["OWNER", "STAFF"] as const;
 const ref = (prefix: string) => `${prefix}-${randomUUID().slice(0, 10).toUpperCase()}`;
 inventoryWorkflowRouter.use(requireAuth);
 
+function scopeBranch(auth: AuthContext, requestedBranchId?: string) {
+  if (auth.role === "OWNER") return requestedBranchId;
+  if (!auth.branchId) throw new ApiError(403, "Your staff account is not assigned to a branch.", "STAFF_BRANCH_REQUIRED");
+  if (requestedBranchId && requestedBranchId !== auth.branchId) throw new ApiError(403, "You can only access stock for your assigned branch.", "BRANCH_ACCESS_DENIED");
+  return auth.branchId;
+}
+
+function requireBranchAccess(auth: AuthContext, branchId: string) {
+  if (auth.role === "STAFF" && (!auth.branchId || auth.branchId !== branchId)) throw new ApiError(403, "You can only access stock for your assigned branch.", "BRANCH_ACCESS_DENIED");
+}
+
 inventoryWorkflowRouter.get("/summary", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
+  const branchId = scopeBranch(auth, typeof request.query.branchId === "string" ? request.query.branchId : undefined);
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const [balances, expiringWithin30Days] = await Promise.all([
-    prisma.stockBalance.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) } }, include: { product: { select: { id: true, name: true, sku: true, category: true, unit: true, imageUrl: true, reorderLevel: true, costPrice: true } }, branch: { select: { name: true } } } }),
-    prisma.stockLot.count({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, quantity: { gt: 0 }, expiresAt: { gte: new Date(), lte: new Date(Date.now() + 30 * 86_400_000) } } }),
+  const [balances, stockLots, expiringWithin30Days] = await Promise.all([
+    prisma.stockBalance.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) } }, include: { product: { select: { id: true, name: true, sku: true, category: true, unit: true, imageUrl: true, reorderLevel: true, costPrice: true } }, branch: { select: { id: true, name: true } } } }),
+    prisma.stockLot.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, quantity: { gt: 0 }, condition: "GOOD", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { productId: true, branchId: true, quantity: true, reserved: true } }),
+    prisma.stockLot.count({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, quantity: { gt: 0 }, condition: "GOOD", expiresAt: { gte: new Date(), lte: new Date(Date.now() + 30 * 86_400_000) } } }),
   ]);
+  const sellableByBalance = new Map<string, { available: number; reserved: number }>();
+  for (const lot of stockLots) {
+    const key = `${lot.productId}:${lot.branchId}`;
+    const totals = sellableByBalance.get(key) ?? { available: 0, reserved: 0 };
+    totals.available += Math.max(0, Number(lot.quantity) - Number(lot.reserved));
+    totals.reserved += Number(lot.reserved);
+    sellableByBalance.set(key, totals);
+  }
   const canSeeCost = ["OWNER", "STAFF"].includes(auth.role);
-  const rows = balances.map(({ product, branch, onHand, reserved }) => ({ productId: product.id, name: product.name, sku: product.sku, category: product.category, unit: product.unit, imageUrl: product.imageUrl, branch: branch.name, onHand: Number(onHand), reserved: Number(reserved), available: Number(onHand) - Number(reserved), reorderLevel: Number(product.reorderLevel), unitCost: Number(product.costPrice), inventoryValue: Number(onHand) * Number(product.costPrice) }));
+  const rows = balances.map(({ product, branch, onHand, updatedAt }) => {
+    const sellable = sellableByBalance.get(`${product.id}:${branch.id}`) ?? { available: 0, reserved: 0 };
+    return { productId: product.id, name: product.name, sku: product.sku, category: product.category, unit: product.unit, imageUrl: product.imageUrl, branchId: branch.id, branch: branch.name, onHand: Number(onHand), reserved: sellable.reserved, available: sellable.available, reorderLevel: Number(product.reorderLevel), updatedAt, unitCost: Number(product.costPrice), inventoryValue: Number(onHand) * Number(product.costPrice) };
+  });
   const data = rows.map(({ unitCost, inventoryValue, ...row }) => ({ ...row, ...(canSeeCost ? { unitCost, inventoryValue } : {}) }));
+  const products = new Map<string, { available: number; reorderLevel: number }>();
+  for (const row of rows) {
+    const product = products.get(row.productId) ?? { available: 0, reorderLevel: row.reorderLevel };
+    product.available += row.available;
+    products.set(row.productId, product);
+  }
+  const productStatuses = [...products.values()];
   const summary = {
     balanceCount: rows.length,
     productCount: new Set(rows.map((row) => row.productId)).size,
+    availableProductCount: new Set(rows.filter((row) => row.available > 0).map((row) => row.productId)).size,
     onHandUnits: rows.reduce((sum, row) => sum + row.onHand, 0),
     reservedUnits: rows.reduce((sum, row) => sum + row.reserved, 0),
     availableUnits: rows.reduce((sum, row) => sum + row.available, 0),
-    lowStockCount: rows.filter((row) => row.available > 0 && row.available <= row.reorderLevel).length,
-    outOfStockCount: rows.filter((row) => row.available <= 0).length,
+    availableByUnit: [...rows.reduce((totals, row) => totals.set(row.unit, (totals.get(row.unit) ?? 0) + row.available), new Map<string, number>())].map(([unit, quantity]) => ({ unit, quantity })),
+    lowStockCount: productStatuses.filter((product) => product.available > 0 && product.available <= product.reorderLevel).length,
+    outOfStockCount: productStatuses.filter((product) => product.available <= 0).length,
     expiringWithin30Days,
     ...(canSeeCost ? { inventoryValue: rows.reduce((sum, row) => sum + row.inventoryValue, 0) } : {}),
   };
@@ -43,7 +75,8 @@ inventoryWorkflowRouter.get("/", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const pagination = z.object({ branchId: z.string().optional(), search: z.string().trim().max(180).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(200).default(50) }).safeParse(request.query);
   if (!pagination.success) throw new ApiError(400, "Check the inventory filters and pagination.", "VALIDATION_ERROR", pagination.error.issues);
-  const { branchId, search, page, limit } = pagination.data;
+  const { search, page, limit } = pagination.data;
+  const branchId = scopeBranch(auth, pagination.data.branchId);
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
   const where = { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, ...(search ? { product: { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { sku: { contains: search, mode: "insensitive" as const } }, { barcode: { contains: search, mode: "insensitive" as const } }] } } : {}) };
   const [total, data] = await Promise.all([
@@ -58,7 +91,8 @@ inventoryWorkflowRouter.get("/movements", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const pagination = z.object({ branchId: z.string().optional(), productId: z.string().optional(), type: z.enum(["OPENING_STOCK", "PURCHASE_RECEIPT", "SALE", "CUSTOMER_RETURN", "SUPPLIER_RETURN", "TRANSFER_IN", "TRANSFER_OUT", "DAMAGE", "EXPIRY", "THEFT", "ADJUSTMENT"]).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(200).default(50) }).safeParse(request.query);
   if (!pagination.success) throw new ApiError(400, "Check the stock movement filters and pagination.", "VALIDATION_ERROR", pagination.error.issues);
-  const { branchId, productId, type, page, limit } = pagination.data;
+  const { productId, type, page, limit } = pagination.data;
+  const branchId = scopeBranch(auth, pagination.data.branchId);
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
   if (productId && !await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId } })) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const where = { product: { businessId: auth.businessId }, ...(branchId ? { branchId } : {}), ...(productId ? { productId } : {}), ...(type ? { type } : {}) };
@@ -69,21 +103,41 @@ inventoryWorkflowRouter.get("/movements", async (request, response) => {
   response.json({ data, meta: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
+inventoryWorkflowRouter.patch("/lots/:lotId/condition", requireRoles(...inventoryRoles), async (request, response) => {
+  const parsed = z.object({ condition: z.enum(["GOOD", "DAMAGED", "QUARANTINED", "EXPIRED"]), reason: z.string().trim().min(3).max(500) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Choose the stock condition and explain why it changed.", "VALIDATION_ERROR", parsed.error.issues);
+  const auth = response.locals.auth as AuthContext;
+  const lot = await prisma.stockLot.findFirst({ where: { id: request.params.lotId as string, branch: { businessId: auth.businessId } }, include: { product: { select: { name: true } }, branch: { select: { id: true, name: true } } } });
+  if (!lot) throw new ApiError(404, "Stock batch not found.", "STOCK_LOT_NOT_FOUND");
+  requireBranchAccess(auth, lot.branchId);
+  if (parsed.data.condition === "GOOD" && lot.expiresAt && lot.expiresAt <= new Date()) throw new ApiError(409, "An expired batch cannot be marked as good stock.", "EXPIRED_LOT_CANNOT_BE_SELLABLE");
+  if (lot.condition !== parsed.data.condition && lot.reserved.greaterThan(0)) throw new ApiError(409, "Release active reservations before changing this batch condition.", "LOT_HAS_RESERVATIONS");
+  const updated = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.stockLot.update({ where: { id: lot.id }, data: { condition: parsed.data.condition } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_LOT_CONDITION_CHANGED", entityType: "StockLot", entityId: lot.id, before: { condition: lot.condition }, after: { condition: parsed.data.condition, reason: parsed.data.reason, product: lot.product.name, branch: lot.branch.name } });
+    return result;
+  });
+  response.json({ data: updated });
+});
+
 inventoryWorkflowRouter.get("/lots", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const filter = z.object({ branchId: z.string(), productId: z.string().optional(), includeDepleted: z.enum(["true", "false"]).transform((value) => value === "true").optional().default(false) }).safeParse(request.query);
   if (!filter.success) throw new ApiError(400, "Check the batch filters.", "VALIDATION_ERROR", filter.error.issues);
-  const branch = await prisma.branch.findFirst({ where: { id: filter.data.branchId, businessId: auth.businessId }, select: { id: true } });
+  const branchId = scopeBranch(auth, filter.data.branchId);
+  if (!branchId) throw new ApiError(400, "Select a branch to view stock batches.", "BRANCH_REQUIRED");
+  const branch = await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } });
   if (!branch) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
   if (filter.data.productId && !await prisma.product.findFirst({ where: { id: filter.data.productId, businessId: auth.businessId } })) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
-  const lots = await prisma.stockLot.findMany({ where: { branchId: branch.id, ...(filter.data.productId ? { productId: filter.data.productId } : {}), ...(filter.data.includeDepleted ? {} : { quantity: { gt: 0 } }) }, include: { product: { select: { id: true, sku: true, name: true } } }, orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }], take: 1000 });
+  const lots = await prisma.stockLot.findMany({ where: { branchId: branch.id, ...(filter.data.productId ? { productId: filter.data.productId } : {}), ...(filter.data.includeDepleted ? {} : { quantity: { gt: 0 } }) }, include: { product: { select: { id: true, sku: true, name: true, unit: true } } }, orderBy: [{ expiresAt: "asc" }, { createdAt: "asc" }], take: 1000 });
   const canSeeCost = ["OWNER", "STAFF"].includes(auth.role);
-  response.json({ data: lots.map((lot) => ({ id: lot.id, product: lot.product, branchId: lot.branchId, batchNumber: lot.batchNumber, expiresAt: lot.expiresAt, quantity: lot.quantity, reserved: lot.reserved, available: lot.quantity.sub(lot.reserved), origin: lot.origin, ...(canSeeCost ? { unitCost: lot.unitCost } : {}) })) });
+  response.json({ data: lots.map((lot) => ({ id: lot.id, product: lot.product, branchId: lot.branchId, batchNumber: lot.batchNumber, expiresAt: lot.expiresAt, quantity: lot.quantity, reserved: lot.reserved, available: lot.condition === "GOOD" && (!lot.expiresAt || lot.expiresAt > new Date()) ? lot.quantity.sub(lot.reserved) : new Prisma.Decimal(0), condition: lot.expiresAt && lot.expiresAt <= new Date() ? "EXPIRED" : lot.condition, origin: lot.origin, ...(canSeeCost ? { unitCost: lot.unitCost } : {}) })) });
 });
 
 inventoryWorkflowRouter.get("/transfers", async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const data = await prisma.stockTransfer.findMany({ where: { businessId: auth.businessId }, include: { sourceBranch: { select: { name: true } }, destinationBranch: { select: { name: true } }, lines: { include: { product: { select: { name: true, sku: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 });
+  const branchId = scopeBranch(auth);
+  const data = await prisma.stockTransfer.findMany({ where: { businessId: auth.businessId, ...(branchId ? { OR: [{ sourceBranchId: branchId }, { destinationBranchId: branchId }] } : {}) }, include: { sourceBranch: { select: { name: true } }, destinationBranch: { select: { name: true } }, createdBy: { select: { name: true, email: true } }, approvedBy: { select: { name: true, email: true } }, receivedBy: { select: { name: true, email: true } }, lines: { include: { product: { select: { name: true, sku: true, unit: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 });
   response.json({ data });
 });
 
@@ -99,6 +153,7 @@ inventoryWorkflowRouter.post("/transfers", requireRoles(...inventoryRoles), asyn
     prisma.product.count({ where: { businessId: auth.businessId, id: { in: parsed.data.lines.map((line) => line.productId) } } }),
   ]);
   if (!source || !destination || productCount !== parsed.data.lines.length) throw new ApiError(404, "A branch or product was not found in this business.", "TRANSFER_REFERENCE_NOT_FOUND");
+  if (auth.role === "STAFF" && (!auth.branchId || auth.branchId !== source.id)) throw new ApiError(403, "You can only start a transfer from your assigned branch.", "BRANCH_ACCESS_DENIED");
   const transfer = await prisma.$transaction(async (transaction) => {
     const created = await transaction.stockTransfer.create({ data: { businessId: auth.businessId, sourceBranchId: source.id, destinationBranchId: destination.id, createdById: auth.userId, reference: ref("TRF"), lines: { create: parsed.data.lines } }, include: { lines: true } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_TRANSFER_CREATED", entityType: "StockTransfer", entityId: created.id, after: { reference: created.reference, lineCount: created.lines.length } });
@@ -111,6 +166,7 @@ inventoryWorkflowRouter.post("/transfers/:transferId/dispatch", requireRoles(...
   const auth = response.locals.auth as AuthContext;
   const transfer = await prisma.stockTransfer.findFirst({ where: { id: request.params.transferId as string, businessId: auth.businessId }, include: { lines: true } });
   if (!transfer) throw new ApiError(404, "Transfer not found.", "TRANSFER_NOT_FOUND");
+  requireBranchAccess(auth, transfer.sourceBranchId);
   if (transfer.status !== "DRAFT") throw new ApiError(409, "Only draft transfers can be dispatched.", "INVALID_TRANSFER_TRANSITION");
   const result = await prisma.$transaction(async (transaction) => {
     for (const line of transfer.lines) {
@@ -133,21 +189,47 @@ inventoryWorkflowRouter.post("/transfers/:transferId/dispatch", requireRoles(...
 });
 
 inventoryWorkflowRouter.post("/transfers/:transferId/receive", requireRoles(...inventoryRoles), async (request, response) => {
+  const parsed = z.object({ lines: z.array(z.object({ lineId: z.string(), receivedQuantity: z.coerce.number().min(0), discrepancyReason: z.string().trim().max(500).optional() })).min(1).max(200) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Enter the quantity received for every transfer item.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
-  const transfer = await prisma.stockTransfer.findFirst({ where: { id: request.params.transferId as string, businessId: auth.businessId }, include: { lines: true } });
+  const transfer = await prisma.stockTransfer.findFirst({ where: { id: request.params.transferId as string, businessId: auth.businessId }, include: { lines: { include: { product: { select: { costPrice: true } } } } } });
   if (!transfer) throw new ApiError(404, "Transfer not found.", "TRANSFER_NOT_FOUND");
+  requireBranchAccess(auth, transfer.destinationBranchId);
   if (transfer.status !== "IN_TRANSIT") throw new ApiError(409, "Only in-transit transfers can be received.", "INVALID_TRANSFER_TRANSITION");
+  const submittedLines = new Map(parsed.data.lines.map((line) => [line.lineId, line]));
+  if (submittedLines.size !== transfer.lines.length || transfer.lines.some((line) => !submittedLines.has(line.id))) throw new ApiError(400, "Enter a received quantity for every transfer item exactly once.", "TRANSFER_RECEIPT_LINES_MISMATCH");
+  for (const line of transfer.lines) {
+    const received = submittedLines.get(line.id)!;
+    if (received.receivedQuantity !== Number(line.quantity) && !received.discrepancyReason?.trim()) throw new ApiError(400, "Explain why the received quantity differs from the sent quantity.", "TRANSFER_DISCREPANCY_REASON_REQUIRED", { lineId: line.id });
+  }
   const result = await prisma.$transaction(async (transaction) => {
+    let shortageValue = 0;
+    let extraValue = 0;
     for (const line of transfer.lines) {
-      await transaction.stockBalance.upsert({ where: { productId_branchId: { productId: line.productId, branchId: transfer.destinationBranchId } }, create: { productId: line.productId, branchId: transfer.destinationBranchId, onHand: line.quantity }, update: { onHand: { increment: line.quantity } } });
+      const receivedLine = submittedLines.get(line.id)!;
+      const receivedQuantity = new Prisma.Decimal(receivedLine.receivedQuantity);
+      const sentQuantity = new Prisma.Decimal(line.quantity);
+      if (receivedQuantity.greaterThan(0)) await transaction.stockBalance.upsert({ where: { productId_branchId: { productId: line.productId, branchId: transfer.destinationBranchId } }, create: { productId: line.productId, branchId: transfer.destinationBranchId, onHand: receivedQuantity }, update: { onHand: { increment: receivedQuantity } } });
       const transferLots = await transaction.stockTransferLot.findMany({ where: { transferLineId: line.id } });
       const transferred = transferLots.reduce((sum, lot) => sum.add(lot.quantity), new Prisma.Decimal(0));
       if (!transferred.equals(line.quantity)) throw new ApiError(409, "In-transit batch quantities do not match the transfer quantity.", "TRANSFER_LOT_MISMATCH");
-      for (const lot of transferLots) await transaction.stockLot.create({ data: { productId: line.productId, branchId: transfer.destinationBranchId, batchNumber: lot.batchNumber, expiresAt: lot.expiresAt, unitCost: lot.unitCost, quantity: lot.quantity, origin: "TRANSFER" } });
-      await transaction.stockMovement.create({ data: { productId: line.productId, branchId: transfer.destinationBranchId, userId: auth.userId, type: "TRANSFER_IN", quantity: line.quantity, reference: transfer.reference } });
+      let remainingToReceive = receivedQuantity;
+      for (const lot of transferLots) {
+        if (remainingToReceive.lessThanOrEqualTo(0)) break;
+        const receivedFromLot = Prisma.Decimal.min(remainingToReceive, lot.quantity);
+        await transaction.stockLot.create({ data: { productId: line.productId, branchId: transfer.destinationBranchId, batchNumber: lot.batchNumber, expiresAt: lot.expiresAt, unitCost: lot.unitCost, quantity: receivedFromLot, origin: "TRANSFER" } });
+        remainingToReceive = remainingToReceive.minus(receivedFromLot);
+      }
+      if (remainingToReceive.greaterThan(0)) await transaction.stockLot.create({ data: { productId: line.productId, branchId: transfer.destinationBranchId, unitCost: line.product.costPrice, quantity: remainingToReceive, origin: "ADJUSTMENT" } });
+      if (receivedQuantity.greaterThan(0)) await transaction.stockMovement.create({ data: { productId: line.productId, branchId: transfer.destinationBranchId, userId: auth.userId, type: "TRANSFER_IN", quantity: receivedQuantity, reference: transfer.reference, reason: receivedLine.discrepancyReason } });
+      if (receivedQuantity.lessThan(sentQuantity)) shortageValue += Number(sentQuantity.minus(receivedQuantity)) * Number(line.product.costPrice);
+      if (receivedQuantity.greaterThan(sentQuantity)) extraValue += Number(receivedQuantity.minus(sentQuantity)) * Number(line.product.costPrice);
+      await transaction.stockTransferLine.update({ where: { id: line.id }, data: { receivedQuantity, discrepancyReason: receivedLine.discrepancyReason || null } });
     }
-    const updated = await transaction.stockTransfer.update({ where: { id: transfer.id }, data: { status: "RECEIVED", receivedAt: new Date() } });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_TRANSFER_RECEIVED", entityType: "StockTransfer", entityId: transfer.id, before: { status: "IN_TRANSIT" }, after: { status: "RECEIVED" } });
+    if (shortageValue > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "STOCK_TRANSFER_SHORTAGE", sourceId: transfer.id, description: `Short items received on transfer ${transfer.reference}`, lines: [{ code: "6000", debit: shortageValue }, { code: "1200", credit: shortageValue }] });
+    if (extraValue > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "STOCK_TRANSFER_EXTRA", sourceId: transfer.id, description: `Extra items received on transfer ${transfer.reference}`, lines: [{ code: "1200", debit: extraValue }, { code: "4900", credit: extraValue }] });
+    const updated = await transaction.stockTransfer.update({ where: { id: transfer.id }, data: { status: "RECEIVED", receivedById: auth.userId, receivedAt: new Date() } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_TRANSFER_RECEIVED", entityType: "StockTransfer", entityId: transfer.id, before: { status: "IN_TRANSIT" }, after: { status: "RECEIVED", lines: transfer.lines.map((line) => ({ productId: line.productId, sent: line.quantity.toString(), received: submittedLines.get(line.id)!.receivedQuantity, discrepancyReason: submittedLines.get(line.id)!.discrepancyReason })) } });
     return updated;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   response.json({ data: result });
@@ -155,7 +237,8 @@ inventoryWorkflowRouter.post("/transfers/:transferId/receive", requireRoles(...i
 
 inventoryWorkflowRouter.get("/counts", async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
-  response.json({ data: await prisma.stockCount.findMany({ where: { businessId: auth.businessId }, include: { branch: { select: { name: true } }, lines: { include: { product: { select: { name: true, sku: true, costPrice: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 }) });
+  const branchId = scopeBranch(auth);
+  response.json({ data: await prisma.stockCount.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}) }, include: { branch: { select: { name: true } }, createdBy: { select: { name: true, email: true } }, approvedBy: { select: { name: true, email: true } }, postedBy: { select: { name: true, email: true } }, lines: { include: { product: { select: { name: true, sku: true, unit: true, costPrice: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 }) });
 });
 
 inventoryWorkflowRouter.post("/counts", requireRoles(...inventoryRoles), async (request, response) => {
@@ -163,6 +246,7 @@ inventoryWorkflowRouter.post("/counts", requireRoles(...inventoryRoles), async (
   if (!parsed.success) throw new ApiError(400, "Check the branch and counted quantities.", "VALIDATION_ERROR", parsed.error.issues);
   if (new Set(parsed.data.lines.map((line) => line.productId)).size !== parsed.data.lines.length) throw new ApiError(400, "Each product can appear only once in a stock count.", "DUPLICATE_COUNT_LINE");
   const auth = response.locals.auth as AuthContext;
+  requireBranchAccess(auth, parsed.data.branchId);
   const branch = await prisma.branch.findFirst({ where: { id: parsed.data.branchId, businessId: auth.businessId } });
   if (!branch) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
   const products = await prisma.product.findMany({ where: { businessId: auth.businessId, id: { in: parsed.data.lines.map((line) => line.productId) } }, include: { balances: { where: { branchId: branch.id } } } });
@@ -173,7 +257,11 @@ inventoryWorkflowRouter.post("/counts", requireRoles(...inventoryRoles), async (
     const systemQuantity = Number(product.balances[0]?.onHand ?? 0);
     return { productId: line.productId, systemQuantity, countedQuantity: line.countedQuantity, variance: line.countedQuantity - systemQuantity };
   });
-  const count = await prisma.stockCount.create({ data: { businessId: auth.businessId, branchId: branch.id, createdById: auth.userId, reference: ref("CNT"), reason: parsed.data.reason, lines: { create: lines } }, include: { lines: true } });
+  const count = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.stockCount.create({ data: { businessId: auth.businessId, branchId: branch.id, createdById: auth.userId, reference: ref("CNT"), reason: parsed.data.reason, lines: { create: lines } }, include: { lines: true } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_COUNT_CREATED", entityType: "StockCount", entityId: created.id, after: { reference: created.reference, branch: branch.name, lineCount: lines.length, reason: parsed.data.reason } });
+    return created;
+  });
   response.status(201).json({ data: count });
 });
 
@@ -181,8 +269,13 @@ inventoryWorkflowRouter.post("/counts/:countId/submit", requireRoles(...inventor
   const auth = response.locals.auth as AuthContext;
   const count = await prisma.stockCount.findFirst({ where: { id: request.params.countId as string, businessId: auth.businessId } });
   if (!count) throw new ApiError(404, "Stock count not found.", "STOCK_COUNT_NOT_FOUND");
+  requireBranchAccess(auth, count.branchId);
   if (count.status !== "DRAFT") throw new ApiError(409, "Only draft stock counts can be submitted.", "INVALID_COUNT_TRANSITION");
-  const updated = await prisma.stockCount.update({ where: { id: count.id }, data: { status: "SUBMITTED", submittedAt: new Date() } });
+  const updated = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.stockCount.update({ where: { id: count.id }, data: { status: "SUBMITTED", submittedAt: new Date() } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_COUNT_SUBMITTED", entityType: "StockCount", entityId: count.id, after: { status: "SUBMITTED" } });
+    return result;
+  });
   response.json({ data: updated });
 });
 
@@ -190,7 +283,13 @@ inventoryWorkflowRouter.post("/counts/:countId/approve", requireRoles("OWNER", "
   const auth = response.locals.auth as AuthContext;
   const count = await prisma.stockCount.findFirst({ where: { id: request.params.countId as string, businessId: auth.businessId } });
   if (!count || count.status !== "SUBMITTED") throw new ApiError(409, "A submitted stock count was not found.", "INVALID_COUNT_TRANSITION");
-  const updated = await prisma.stockCount.update({ where: { id: count.id }, data: { status: "APPROVED", approvedById: auth.userId, approvedAt: new Date() } });
+  requireBranchAccess(auth, count.branchId);
+  if (count.createdById === auth.userId) throw new ApiError(403, "The person who started a stock count cannot approve it.", "COUNT_SELF_APPROVAL");
+  const updated = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.stockCount.update({ where: { id: count.id }, data: { status: "APPROVED", approvedById: auth.userId, approvedAt: new Date() } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_COUNT_APPROVED", entityType: "StockCount", entityId: count.id, before: { status: "SUBMITTED" }, after: { status: "APPROVED" } });
+    return result;
+  });
   response.json({ data: updated });
 });
 
@@ -198,6 +297,7 @@ inventoryWorkflowRouter.post("/counts/:countId/post", requireRoles("OWNER", "STA
   const auth = response.locals.auth as AuthContext;
   const count = await prisma.stockCount.findFirst({ where: { id: request.params.countId as string, businessId: auth.businessId, status: "APPROVED" }, include: { lines: { include: { product: { select: { costPrice: true } } } } } });
   if (!count) throw new ApiError(404, "Approved stock count not found.", "APPROVED_COUNT_NOT_FOUND");
+  requireBranchAccess(auth, count.branchId);
   const posted = await prisma.$transaction(async (transaction) => {
     let losses = 0;
     let gains = 0;
@@ -228,7 +328,7 @@ inventoryWorkflowRouter.post("/counts/:countId/post", requireRoles("OWNER", "STA
     }
     if (losses > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "STOCK_COUNT", sourceId: count.id, description: `Stock count ${count.reference} shrinkage`, lines: [{ code: "6000", debit: losses }, { code: "1200", credit: losses }] });
     if (gains > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "STOCK_COUNT", sourceId: `${count.id}:gain`, description: `Stock count ${count.reference} gain`, lines: [{ code: "1200", debit: gains }, { code: "4900", credit: gains }] });
-    const result = await transaction.stockCount.update({ where: { id: count.id }, data: { status: "POSTED", postedAt: new Date() } });
+    const result = await transaction.stockCount.update({ where: { id: count.id }, data: { status: "POSTED", postedById: auth.userId, postedAt: new Date() } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_COUNT_POSTED", entityType: "StockCount", entityId: count.id, after: { reference: count.reference, lossValue: losses, gainValue: gains } });
     return result;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

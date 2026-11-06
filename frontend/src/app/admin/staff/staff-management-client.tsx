@@ -7,6 +7,8 @@ import { useStaffMembers } from "@/hooks/queries/use-staff-members";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import type { StaffMember } from "@/services/staff/staff.service";
 import { useBranches } from "@/hooks/queries/use-branches";
+import { AdminDialogPanel } from "@/components/admin-motion";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 
 function LoadingMark() {
   return <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" />;
@@ -100,7 +102,7 @@ export default function StaffManagementClient() {
   }
 
   if (currentUser.isPending) {
-    return <main className="grid min-h-[60vh] place-items-center text-sm text-muted"><span className="flex items-center gap-2"><LoadingMark /> Loading staff access...</span></main>;
+    return <AdminPageSkeleton />;
   }
 
   if (!isOwner) {
@@ -121,7 +123,7 @@ export default function StaffManagementClient() {
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
         <article className="rounded-xl border border-line bg-white p-4 shadow-sm">
           <span className="text-sm text-muted">Active staff</span>
-          <strong className="mt-2 block text-2xl font-normal text-[#26372d]">{staffQuery.isLoading ? "Loading..." : activeCount}</strong>
+          <strong className="mt-2 block text-2xl font-normal text-[#26372d]">{staffQuery.isLoading ? <span className="inline-block h-7 w-12 animate-pulse rounded-md bg-[#edf1ed]" aria-label="Loading staff count" /> : activeCount}</strong>
         </article>
         <article className="rounded-xl border border-line bg-white p-4 shadow-sm">
           <span className="text-sm text-muted">Staff access</span>
@@ -195,8 +197,8 @@ export default function StaffManagementClient() {
         </section>
       </div>
 
-      {editing && <div className="fixed inset-0 z-50 grid place-items-center bg-[#14201e66] p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null); }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="edit-staff-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+      {editing && <div className="fixed inset-0 z-50 grid place-items-center bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null); }}>
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="edit-staff-title" onEscape={() => setEditing(null)} className="w-full max-w-md rounded-[14px] border border-line bg-white p-4 shadow-xl">
           <h2 id="edit-staff-title" className="m-0 text-xl font-bold text-[#26372d]">Edit staff details</h2>
           <p className="mb-4 mt-1 text-sm text-muted">Update the name and assigned branch for {editing.email}.</p>
           <form className="grid gap-4" onSubmit={(event) => void saveName(event)}>
@@ -204,7 +206,7 @@ export default function StaffManagementClient() {
             <label className="grid gap-1.5 text-sm text-[#536159]">Assigned branch<select className="h-11 rounded-lg border border-line bg-white px-3 text-sm" value={editBranchId} onChange={(event) => setEditBranchId(event.target.value)} required>{(branchQuery.data?.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
             <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-line px-4 py-2 text-sm">Cancel</button><button type="submit" disabled={updateStaff.isPending} className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-60">{updateStaff.isPending ? <><LoadingMark /> Saving...</> : "Save changes"}</button></div>
           </form>
-        </section>
+        </AdminDialogPanel>
       </div>}
     </main>
   );

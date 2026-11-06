@@ -1,7 +1,8 @@
 import { apiRequest } from "@/lib/api";
 
 export type CurrentUser = {
-  id?: string;
+  id: string;
+  businessId: string;
   name?: string;
   email?: string;
   role: string;

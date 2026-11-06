@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { statusPill } from "@/lib/ui";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { downloadWeeklyPerformance } from "@/services/reports/report.service";
@@ -15,9 +16,11 @@ import {
   DashboardFilters,
   DashboardIcon,
   DashboardMetricCard,
+  DashboardOverviewSkeleton,
   DashboardPageHeading,
   DashboardSalesChart,
 } from "@/components/admin-dashboard-widgets";
+import { AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 
 type Role = "OWNER" | "STAFF";
 type User = {
@@ -172,7 +175,7 @@ type Notification = {
   entityType?: string;
   entityId?: string;
 };
-type Result<T> = { data?: T; error?: string };
+type Result<T> = { data?: T; error?: string; errorCode?: string; requestId?: string };
 type HomeData = {
   business?: Result<{ data: Business }>;
   branches?: Result<{ data: Branch[] }>;
@@ -332,10 +335,36 @@ export default function HomePage() {
         ? { data: branchesQuery.data }
         : undefined,
   };
+  const dashboardIssueLabels: Record<string, string> = {
+    branches: "Branches",
+    sales: "Sales",
+    movements: "Stock movements",
+    purchases: "Purchases",
+    receipts: "Purchase report",
+    notifications: "Notifications",
+    business: "Business details",
+    period: "Sales report",
+    previous: "Previous-period comparison",
+    today: "Today’s summary",
+    inventory: "Stock levels",
+    receivables: "Customer balances",
+    payables: "Supplier balances",
+    reconciliation: "Cash reconciliation",
+    orders: "Online orders",
+  };
+  const dashboardIssues = Object.entries(dashboard).flatMap(([key, result]) => {
+    if (!result || !("error" in result) || !result.error) return [];
+    return [{
+      section: dashboardIssueLabels[key] ?? "Dashboard information",
+      message: result.error,
+      errorCode: "errorCode" in result ? result.errorCode : undefined,
+      requestId: "requestId" in result ? result.requestId : undefined,
+    }];
+  });
   const loading = dashboardQuery.isFetching || branchesQuery.isFetching;
   const refresh = useCallback(async () => {
-    await dashboardQuery.refetch();
-  }, [dashboardQuery.refetch]);
+    await Promise.all([dashboardQuery.refetch(), branchesQuery.refetch()]);
+  }, [dashboardQuery.refetch, branchesQuery.refetch]);
 
   useEffect(() => {
     const businessTimezone = dashboard.business?.data?.data.timezone;
@@ -533,6 +562,32 @@ export default function HomePage() {
     );
   if (!user) return null;
 
+  const initialDashboardLoading =
+    !dashboardQuery.data &&
+    (branchesQuery.isPending || dashboardQuery.isPending);
+
+  if (initialDashboardLoading) {
+    return (
+      <div className="min-h-screen">
+        <main className="min-h-screen" id="overview">
+          <div className="mx-auto w-full max-w-screen-2xl px-4 py-6 sm:px-6 lg:px-8">
+            <DashboardPageHeading
+              greeting={greeting}
+              userName={user.name}
+              businessName="your store"
+              loading
+              onRefresh={() => void refresh()}
+              canExport={canSeeFinance(user.role)}
+              onExport={() => void exportReport()}
+              workspaceLabel={isStaffWorkspace ? "STAFF WORKSPACE" : "BUSINESS OVERVIEW"}
+            />
+            <DashboardOverviewSkeleton />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   const displayBusiness = business?.name ?? "Your business";
   const unreadCount = dashboard.notifications?.data?.unreadCount ?? 0;
 
@@ -577,20 +632,34 @@ export default function HomePage() {
               </button>
             </div>
           )}
-          {(dashboard.branches?.error ||
-            dashboard.sales?.error ||
-            dashboard.inventory?.error) && (
-            <div
-              className="flex items-center gap-2 border border-[#f0dfb7] bg-[#fff9eb] text-[#86692d] rounded-lg py-[9px] px-3 mt-0 mx-0 mb-[13px] text-sm [&_svg]:text-[#c29239]"
-              role="status"
-            >
-              <DashboardIcon name="alert" size={17} />
-              <span>
-                Some dashboard sections could not load. Data that failed is
-                marked below instead of being shown as zero.
-              </span>
-            </div>
-          )}
+          {dashboardIssues.length > 0 && (() => {
+            const schemaIssue = dashboardIssues.find((issue) => issue.errorCode === "DATABASE_SCHEMA_OUTDATED");
+            const networkIssue = dashboardIssues.find((issue) => issue.errorCode === "NETWORK_ERROR");
+            const databaseIssue = dashboardIssues.find((issue) => issue.errorCode === "DATABASE_UNAVAILABLE");
+            const requestId = dashboardIssues.find((issue) => issue.requestId)?.requestId;
+            const message = schemaIssue
+              ? "The database needs its latest schema migration before this information can load. Apply the pending migration, then try again."
+              : networkIssue
+                ? "The API cannot be reached. Check your internet connection and confirm the API is running."
+                : databaseIssue
+                  ? "The API cannot connect to the database right now. Try again shortly."
+                  : "The server could not load this information. Try again shortly.";
+            const sections = [...new Set(dashboardIssues.map((issue) => issue.section))];
+            return (
+              <section className="mb-4 flex items-start gap-3 rounded-xl border border-[#e7c9be] bg-[#fff8f5] p-4 text-[#713f32]" role="alert" aria-live="polite">
+                <span className="mt-0.5 text-[#b86b59]"><DashboardIcon name="alert" size={19} /></span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="m-0 text-sm font-semibold">Some dashboard information could not load</h2>
+                  <p className="mb-0 mt-1 text-sm leading-relaxed">{message}</p>
+                  <p className="mb-0 mt-2 text-xs text-[#85584c]">Affected: {sections.join(", ")}.</p>
+                  {requestId && <p className="mb-0 mt-1 text-xs text-[#85584c]">Reference: {requestId}</p>}
+                </div>
+                <button type="button" disabled={loading} onClick={() => void refresh()} className="shrink-0 rounded-lg border border-[#dfb8aa] bg-white px-3 py-2 text-sm font-medium text-[#713f32] hover:bg-[#fff1eb] disabled:cursor-wait disabled:opacity-60">
+                  {loading ? "Trying..." : "Try again"}
+                </button>
+              </section>
+            );
+          })()}
 
           <section className="mt-[3px] mx-0 mb-4" aria-label="Quick actions">
             <div className="flex items-center justify-between mb-2 [&_h2]:text-sm [&_h2]:m-0 [&_h2]:font-bold [&_p]:text-sm [&_p]:text-[#89958e] [&_p]:mt-[3px] mx-0 mb-0">
@@ -1298,9 +1367,7 @@ export default function HomePage() {
                           colSpan={7}
                           className="h-[90px] text-center text-[#97a199]"
                         >
-                          {loading
-                            ? "Loading activity..."
-                            : "No recent activity is available."}
+                          {loading ? <span className="block text-left"><AdminTableSkeleton columns={4} rows={4} /></span> : "No recent activity is available."}
                         </td>
                       </tr>
                     )}
@@ -1393,6 +1460,7 @@ export default function HomePage() {
                   : dashboard.period?.error
               }
             />
+            <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(260px,1fr)] items-start gap-5 max-[900px]:grid-cols-1">
             <div className="grid">
               {canSeeFinance(user.role) &&
                 (report?.topProducts ?? []).map((product, index) => (
@@ -1432,10 +1500,40 @@ export default function HomePage() {
               {canSeeFinance(user.role) &&
                 !report &&
                 !dashboard.period?.error && (
-                  <p className="text-sm text-[#929e96] py-2.5 px-1 m-0">
-                    Loading product performance...
-                  </p>
+                  <div className="grid gap-3 py-2" role="status" aria-label="Loading product performance" aria-busy="true">
+                    {Array.from({ length: 3 }, (_, index) => <div key={index} className="flex items-center justify-between gap-3"><span className="h-3 w-2/3 animate-pulse rounded-md bg-[#edf1ed]" /><span className="h-3 w-16 animate-pulse rounded-md bg-[#edf1ed]" /></div>)}
+                  </div>
                 )}
+            </div>
+            {canSeeFinance(user.role) && Boolean(report?.topProducts.length) && (
+              <div className="min-w-0 rounded-lg border border-[#edf1ed] bg-[#fbfcfb] p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="m-0 text-xs font-semibold text-[#536159]">Revenue by item</h3>
+                    <p className="mb-0 mt-1 text-xs text-[#929e96]">Net sales value</p>
+                  </div>
+                  <DashboardIcon name="chart" size={15} />
+                </div>
+                <div className="h-[250px] min-w-0" role="img" aria-label="Pie chart showing revenue by best-selling item">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Tooltip formatter={(value) => money(Number(value ?? 0), currency)} cursor={{ fill: "#f1f6f2" }} />
+                      <Pie data={report?.topProducts ?? []} dataKey="revenue" nameKey="product" cx="50%" cy="50%" outerRadius={88} innerRadius={42} paddingAngle={2}>
+                        {(report?.topProducts ?? []).map((product, index) => <Cell key={product.productId} fill={["#34765a", "#55966f", "#80ae8f", "#a8c5ae", "#cbdccf"][index % 5]} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid gap-1.5" aria-label="Revenue legend">
+                  {(report?.topProducts ?? []).map((product, index) => (
+                    <div key={product.productId} className="flex min-w-0 items-center justify-between gap-2 text-xs">
+                      <span className="flex min-w-0 items-center gap-2 text-[#75827a]"><i className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: ["#34765a", "#55966f", "#80ae8f", "#a8c5ae", "#cbdccf"][index % 5] }} /><span className="truncate">{product.product}</span></span>
+                      <strong className="shrink-0 font-medium tabular-nums text-[#35453b]">{money(product.revenue, currency)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             </div>
           </section>
 
@@ -1603,4 +1701,3 @@ export default function HomePage() {
     </div>
   );
 }
-

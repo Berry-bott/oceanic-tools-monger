@@ -135,7 +135,8 @@ reportsRouter.get("/weekly-performance", async (request, response) => {
   const paymentBreakdown = new Map<string, number>();
   const channelBreakdown = new Map<string, number>();
   const dailyBreakdown = new Map<string, { date: string; netSales: number; grossProfit: number }>();
-  const productBreakdown = new Map<string, { productId: string; product: string; sku: string; quantity: number; revenue: number; grossProfit: number }>();
+  const productBreakdown = new Map<string, { productId: string; product: string; sku: string; quantity: number; revenue: number; costOfGoodsSold: number; grossProfit: number; lossMakingSales: number; lossOnLossMakingSales: number }>();
+  const lossMakingSaleIds = new Map<string, Set<string>>();
   for (const sale of sales) {
     const channelReturns = sale.returns.reduce((sum, returned) => sum + (Number(sale.total) > 0 ? Number(returned.total) * (Number(sale.subtotal) - Number(sale.discount)) / Number(sale.total) : 0), 0);
     const saleNetSales = Number(sale.subtotal) - Number(sale.discount) - channelReturns;
@@ -149,23 +150,35 @@ reportsRouter.get("/weekly-performance", async (request, response) => {
     for (const line of sale.lines) {
       const returnedLines = sale.returns.flatMap((returned) => returned.lines).filter((returnedLine) => returnedLine.saleLineId === line.id);
       const returnedQuantity = returnedLines.reduce((sum, returnedLine) => sum + Number(returnedLine.quantity), 0);
-      const returnedValue = returnedLines.reduce((sum, returnedLine) => sum + Number(returnedLine.refundAmount), 0);
-      const returnedCost = returnedLines.filter((returnedLine) => returnedLine.restock).reduce((sum, returnedLine) => sum + Number(returnedLine.quantity) * Number(line.unitCost), 0);
+      const restockedQuantity = returnedLines.filter((returnedLine) => returnedLine.restock).reduce((sum, returnedLine) => sum + Number(returnedLine.quantity), 0);
       const key = line.productId;
-      const product = productBreakdown.get(key) ?? { productId: key, product: line.productName, sku: line.sku, quantity: 0, revenue: 0, grossProfit: 0 };
+      const product = productBreakdown.get(key) ?? { productId: key, product: line.productName, sku: line.sku, quantity: 0, revenue: 0, costOfGoodsSold: 0, grossProfit: 0, lossMakingSales: 0, lossOnLossMakingSales: 0 };
+      const lineQuantity = Number(line.quantity);
       const netQuantity = Number(line.quantity) - returnedQuantity;
-      const netRevenue = Math.max(0, Number(line.lineTotal) - returnedValue);
+      const discountMultiplier = Number(sale.subtotal) > 0 ? Math.max(0, (Number(sale.subtotal) - Number(sale.discount)) / Number(sale.subtotal)) : 1;
+      const netRevenue = lineQuantity > 0 ? Math.max(0, Number(line.lineTotal) * discountMultiplier * netQuantity / lineQuantity) : 0;
+      const retainedCost = Math.max(0, (lineQuantity - restockedQuantity) * Number(line.unitCost));
+      const lineGrossProfit = netRevenue - retainedCost;
       product.quantity += netQuantity;
       product.revenue += netRevenue;
-      product.grossProfit += netRevenue - (Number(line.quantity) * Number(line.unitCost) - returnedCost);
+      product.costOfGoodsSold += retainedCost;
+      product.grossProfit += lineGrossProfit;
+      if (lineGrossProfit < 0) {
+        const saleIds = lossMakingSaleIds.get(key) ?? new Set<string>();
+        saleIds.add(sale.id);
+        lossMakingSaleIds.set(key, saleIds);
+        product.lossMakingSales = saleIds.size;
+        product.lossOnLossMakingSales += Math.abs(lineGrossProfit);
+      }
       productBreakdown.set(key, product);
     }
   }
   for (const payment of customerPayments) for (const allocation of payment.saleAllocations) paymentBreakdown.set(payment.method, (paymentBreakdown.get(payment.method) ?? 0) + Number(allocation.amount));
-  const report = { period: { from: range.fromDate, to: range.toDate, timezone: business.timezone }, currency: business.currency, salesCount: sales.length, grossSales, discounts, salesReturns, netSales, cashCollected, cogs, grossProfit, grossMargin: netSales > 0 ? grossProfit / netSales : 0, operatingExpenses, gatewayFees, netProfit: grossProfit - operatingExpenses - gatewayFees, byDay: [...dailyBreakdown.values()].sort((a, b) => a.date.localeCompare(b.date)), byChannel: [...channelBreakdown].map(([channel, amount]) => ({ channel, amount })), byPaymentMethod: [...paymentBreakdown].map(([method, amount]) => ({ method, amount })), topProducts: [...productBreakdown.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5) };
+  const products = [...productBreakdown.values()];
+  const report = { period: { from: range.fromDate, to: range.toDate, timezone: business.timezone }, currency: business.currency, salesCount: sales.length, grossSales, discounts, salesReturns, netSales, cashCollected, cogs, grossProfit, grossMargin: netSales > 0 ? grossProfit / netSales : 0, operatingExpenses, gatewayFees, netProfit: grossProfit - operatingExpenses - gatewayFees, byDay: [...dailyBreakdown.values()].sort((a, b) => a.date.localeCompare(b.date)), byChannel: [...channelBreakdown].map(([channel, amount]) => ({ channel, amount })), byPaymentMethod: [...paymentBreakdown].map(([method, amount]) => ({ method, amount })), topProducts: [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 5), lossProducts: products.filter((product) => product.lossMakingSales > 0).sort((a, b) => b.lossOnLossMakingSales - a.lossOnLossMakingSales) };
   if (request.query.format !== undefined && request.query.format !== "json") {
-    const metricRows = Object.entries(report).filter(([key]) => !["period", "byDay", "byChannel", "byPaymentMethod", "topProducts"].includes(key)).map(([metric, value]) => ({ metric, value }));
-    const exportRows = [...metricRows, ...report.byDay.map((entry) => ({ metric: `day:${entry.date}:netSales`, value: entry.netSales })), ...report.byDay.map((entry) => ({ metric: `day:${entry.date}:grossProfit`, value: entry.grossProfit })), ...report.byChannel.map((entry) => ({ metric: `channel:${entry.channel}`, value: entry.amount })), ...report.byPaymentMethod.map((entry) => ({ metric: `payment:${entry.method}`, value: entry.amount })), ...report.topProducts.map((entry) => ({ metric: `topProduct:${entry.sku}`, value: { product: entry.product, quantity: entry.quantity, revenue: entry.revenue, grossProfit: entry.grossProfit } }))];
+    const metricRows = Object.entries(report).filter(([key]) => !["period", "byDay", "byChannel", "byPaymentMethod", "topProducts", "lossProducts"].includes(key)).map(([metric, value]) => ({ metric, value }));
+    const exportRows = [...metricRows, ...report.byDay.map((entry) => ({ metric: `day:${entry.date}:netSales`, value: entry.netSales })), ...report.byDay.map((entry) => ({ metric: `day:${entry.date}:grossProfit`, value: entry.grossProfit })), ...report.byChannel.map((entry) => ({ metric: `channel:${entry.channel}`, value: entry.amount })), ...report.byPaymentMethod.map((entry) => ({ metric: `payment:${entry.method}`, value: entry.amount })), ...report.topProducts.map((entry) => ({ metric: `topProduct:${entry.sku}`, value: { product: entry.product, quantity: entry.quantity, revenue: entry.revenue, grossProfit: entry.grossProfit } })), ...report.lossProducts.map((entry) => ({ metric: `lossProduct:${entry.sku}`, value: { product: entry.product, quantity: entry.quantity, revenue: entry.revenue, costOfGoodsSold: entry.costOfGoodsSold, grossProfit: entry.grossProfit, lossMakingSales: entry.lossMakingSales, lossOnLossMakingSales: entry.lossOnLossMakingSales } }))];
     await respondReportExport(response, request.query.format, exportRows, `weekly-performance-${range.fromDate}-${range.toDate}.csv`, "Weekly performance");
     return;
   }
@@ -219,6 +232,47 @@ reportsRouter.get("/inventory-valuation", async (request, response) => {
   else response.json({ data, totalValue: data.reduce((sum, row) => sum + row.inventoryValue, 0) });
 });
 
+reportsRouter.get("/stock-operations", async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const filter = z.object({ branchId: z.string().optional() }).safeParse(request.query);
+  if (!filter.success) throw new ApiError(400, "Check the stock report filters.", "VALIDATION_ERROR", filter.error.issues);
+  const branchId = auth.role === "STAFF" ? auth.branchId : filter.data.branchId;
+  if (auth.role === "STAFF" && !branchId) throw new ApiError(403, "Your staff account is not assigned to a branch.", "STAFF_BRANCH_REQUIRED");
+  if (filter.data.branchId && auth.role === "STAFF" && filter.data.branchId !== auth.branchId) throw new ApiError(403, "You can only view reports for your assigned branch.", "BRANCH_ACCESS_DENIED");
+  if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
+  const branchScope = { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) };
+  const [balances, lots, movements, transfers, counts] = await Promise.all([
+    prisma.stockBalance.findMany({ where: { branch: branchScope }, include: { product: { select: { id: true, name: true, sku: true, category: true, unit: true, reorderLevel: true } }, branch: { select: { id: true, name: true } } }, orderBy: [{ branch: { name: "asc" } }, { product: { name: "asc" } }] }),
+    prisma.stockLot.findMany({ where: { branch: branchScope, quantity: { gt: 0 } }, include: { product: { select: { name: true, sku: true, unit: true } }, branch: { select: { name: true } } }, orderBy: [{ branch: { name: "asc" } }, { expiresAt: "asc" }], take: 10000 }),
+    prisma.stockMovement.findMany({ where: { product: { businessId: auth.businessId }, ...(branchId ? { branchId } : {}) }, include: { product: { select: { name: true, sku: true, unit: true } }, branch: { select: { name: true } }, user: { select: { name: true, email: true } } }, orderBy: { createdAt: "desc" }, take: 5000 }),
+    prisma.stockTransfer.findMany({ where: { businessId: auth.businessId, ...(branchId ? { OR: [{ sourceBranchId: branchId }, { destinationBranchId: branchId }] } : {}) }, include: { sourceBranch: { select: { name: true } }, destinationBranch: { select: { name: true } }, createdBy: { select: { name: true, email: true } }, approvedBy: { select: { name: true, email: true } }, receivedBy: { select: { name: true, email: true } }, lines: { include: { product: { select: { name: true, sku: true, unit: true } } } } }, orderBy: { createdAt: "desc" }, take: 2000 }),
+    prisma.stockCount.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}) }, include: { branch: { select: { name: true } }, createdBy: { select: { name: true, email: true } }, approvedBy: { select: { name: true, email: true } }, postedBy: { select: { name: true, email: true } }, lines: { include: { product: { select: { name: true, sku: true, unit: true } } } } }, orderBy: { createdAt: "desc" }, take: 2000 }),
+  ]);
+  const now = new Date();
+  const sellableLots = new Map<string, number>();
+  for (const lot of lots) {
+    if (lot.condition !== "GOOD" || (lot.expiresAt && lot.expiresAt <= now)) continue;
+    const key = `${lot.productId}:${lot.branchId}`;
+    sellableLots.set(key, (sellableLots.get(key) ?? 0) + Math.max(0, Number(lot.quantity) - Number(lot.reserved)));
+  }
+  const stockRows = balances.map((balance) => {
+    const available = sellableLots.get(`${balance.productId}:${balance.branchId}`) ?? 0;
+    const reorderLevel = Number(balance.product.reorderLevel);
+    return { section: "Stock by branch", branch: balance.branch.name, product: balance.product.name, sku: balance.product.sku, category: balance.product.category, unit: balance.product.unit, onHand: Number(balance.onHand), reserved: Number(balance.reserved), available, reorderLevel, stockStatus: available <= 0 ? "out of stock" : reorderLevel > 0 && available <= reorderLevel ? "low stock" : "in stock", updatedAt: balance.updatedAt.toISOString() };
+  });
+  const rows: Record<string, unknown>[] = [
+    ...stockRows,
+    ...movements.map((movement) => ({ section: "Stock movement", branch: movement.branch.name, product: movement.product.name, sku: movement.product.sku, unit: movement.product.unit, changeType: movement.type, quantity: Number(movement.quantity), reference: movement.reference, reason: movement.reason, recordedBy: movement.user?.name, recordedByEmail: movement.user?.email, date: movement.createdAt.toISOString() })),
+    ...transfers.flatMap((transfer) => transfer.lines.map((line) => ({ section: "Branch transfer", reference: transfer.reference, status: transfer.status, fromBranch: transfer.sourceBranch.name, toBranch: transfer.destinationBranch.name, product: line.product.name, sku: line.product.sku, unit: line.product.unit, sent: Number(line.quantity), arrived: line.receivedQuantity === null ? null : Number(line.receivedQuantity), difference: line.receivedQuantity === null ? null : Number(line.receivedQuantity) - Number(line.quantity), reason: line.discrepancyReason, startedBy: transfer.createdBy.name, approvedBy: transfer.approvedBy?.name, receivedBy: transfer.receivedBy?.name, date: transfer.createdAt.toISOString() }))),
+    ...counts.flatMap((count) => count.lines.map((line) => ({ section: "Stock count", reference: count.reference, status: count.status, branch: count.branch.name, product: line.product.name, sku: line.product.sku, unit: line.product.unit, systemQuantity: Number(line.systemQuantity), physicalQuantity: Number(line.countedQuantity), difference: Number(line.variance), reason: count.reason, countedBy: count.createdBy.name, approvedBy: count.approvedBy?.name, postedBy: count.postedBy?.name, date: count.createdAt.toISOString() }))),
+    ...lots.filter((lot) => lot.condition !== "GOOD" || (lot.expiresAt && lot.expiresAt <= now)).map((lot) => ({ section: "Damaged or quarantined batch", branch: lot.branch.name, product: lot.product.name, sku: lot.product.sku, batch: lot.batchNumber, unit: lot.product.unit, quantity: Number(lot.quantity), reserved: Number(lot.reserved), condition: lot.expiresAt && lot.expiresAt <= now ? "EXPIRED" : lot.condition, expiryDate: lot.expiresAt?.toISOString() ?? null, origin: lot.origin })),
+    ...lots.map((lot) => ({ section: "Batch", branch: lot.branch.name, product: lot.product.name, sku: lot.product.sku, batch: lot.batchNumber, unit: lot.product.unit, quantity: Number(lot.quantity), reserved: Number(lot.reserved), condition: lot.expiresAt && lot.expiresAt <= now ? "EXPIRED" : lot.condition, expiryDate: lot.expiresAt?.toISOString() ?? null, origin: lot.origin })),
+  ];
+  const summary = { productBranchBalances: stockRows.length, lowStockItems: stockRows.filter((row) => row.stockStatus === "low stock").length, outOfStockItems: stockRows.filter((row) => row.stockStatus === "out of stock").length, movements: movements.length, transfers: transfers.length, transferDifferences: transfers.flatMap((transfer) => transfer.lines).filter((line) => line.receivedQuantity !== null && !line.receivedQuantity.equals(line.quantity)).length, countDifferences: counts.flatMap((count) => count.lines).filter((line) => !line.variance.isZero()).length, damagedOrQuarantinedBatches: lots.filter((lot) => lot.condition !== "GOOD" || (lot.expiresAt && lot.expiresAt <= now)).length, batches: lots.length };
+  if (await respondReportExport(response, request.query.format, rows, "stock-operations.csv", "Stock operations")) return;
+  response.json({ data: rows, summary, branchId: branchId ?? null });
+});
+
 reportsRouter.get("/receivables-aging", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const sales = await prisma.sale.findMany({ where: { businessId: auth.businessId, customerId: { not: null }, status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } }, returns: { select: { total: true } }, customer: { select: { name: true } } } });
@@ -255,6 +309,89 @@ reportsRouter.get("/payables-aging", async (request, response) => {
   }).filter(Boolean);
   if (await respondReportExport(response, request.query.format, rows.filter((row): row is NonNullable<typeof row> => row !== null), "payables-aging.csv", "Payables aging")) return;
   else response.json({ data: rows, buckets, totalOutstanding: Object.values(buckets).reduce((sum, amount) => sum + amount, 0) });
+});
+
+reportsRouter.get("/customer-payments", async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: auth.businessId }, select: { timezone: true, currency: true } });
+  const range = parseRange(request.query, business.timezone);
+  if (range.branchId && !await prisma.branch.findFirst({ where: { id: range.branchId, businessId: auth.businessId } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      businessId: auth.businessId,
+      status: "SUCCEEDED",
+      paidAt: { gte: range.start, lt: range.end },
+      saleAllocations: { some: { sale: { businessId: auth.businessId, ...(range.branchId ? { branchId: range.branchId } : {}) } } },
+    },
+    include: {
+      saleAllocations: {
+        where: { sale: { businessId: auth.businessId, ...(range.branchId ? { branchId: range.branchId } : {}) } },
+        include: { sale: { include: { customer: { select: { name: true } }, branch: { select: { name: true } } } } },
+      },
+    },
+    orderBy: { paidAt: "desc" },
+  });
+
+  const rows = payments.flatMap((payment) => payment.saleAllocations.map((allocation) => ({
+    date: payment.paidAt?.toISOString() ?? "",
+    customer: allocation.sale.customer?.name ?? "Walk-in customer",
+    sale: allocation.sale.number,
+    branch: allocation.sale.branch.name,
+    method: payment.method,
+    reference: payment.reference,
+    amount: Number(allocation.amount),
+  })));
+  const totalReceived = rows.reduce((sum, row) => sum + row.amount, 0);
+  if (await respondReportExport(response, request.query.format, rows, `customer-payments-${range.fromDate}-${range.toDate}.csv`, "Customer payments")) return;
+  response.json({ data: rows, summary: { paymentCount: payments.length, allocationCount: rows.length, totalReceived, currency: business.currency }, period: { from: range.fromDate, to: range.toDate, timezone: business.timezone } });
+});
+
+reportsRouter.get("/supplier-balances", async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: auth.businessId }, select: { currency: true } });
+  const invoices = await prisma.supplierInvoice.findMany({
+    where: { businessId: auth.businessId },
+    include: { supplier: { select: { id: true, name: true } }, allocations: { include: { payment: { select: { status: true } } } }, returns: { select: { creditAmount: true } } },
+  });
+  const now = Date.now();
+  const suppliers = new Map<string, { supplier: string; invoiceCount: number; totalBilled: number; totalPaid: number; credits: number; outstanding: number; current: number; days1to30: number; days31to60: number; days61to90: number; over90: number }>();
+
+  for (const invoice of invoices) {
+    const paid = invoice.allocations.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0);
+    const credits = invoice.returns.reduce((sum, entry) => sum + Number(entry.creditAmount), 0);
+    const billed = Number(invoice.totalAmount);
+    const outstanding = Math.max(0, billed - paid - credits);
+    const row = suppliers.get(invoice.supplierId) ?? { supplier: invoice.supplier.name, invoiceCount: 0, totalBilled: 0, totalPaid: 0, credits: 0, outstanding: 0, current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90: 0 };
+    row.totalBilled += billed;
+    row.totalPaid += paid;
+    row.credits += credits;
+    row.outstanding += outstanding;
+    if (outstanding > 0) {
+      row.invoiceCount += 1;
+      const days = invoice.dueAt ? Math.max(0, Math.floor((now - invoice.dueAt.getTime()) / 86_400_000)) : 0;
+      const bucket = days === 0 ? "current" : days <= 30 ? "days1to30" : days <= 60 ? "days31to60" : days <= 90 ? "days61to90" : "over90";
+      row[bucket] += outstanding;
+    }
+    suppliers.set(invoice.supplierId, row);
+  }
+
+  const data = [...suppliers.values()].sort((a, b) => b.outstanding - a.outstanding);
+  const summary = data.reduce((totals, row) => ({
+    supplierCount: totals.supplierCount + Number(row.outstanding > 0),
+    totalBilled: totals.totalBilled + row.totalBilled,
+    totalPaid: totals.totalPaid + row.totalPaid,
+    credits: totals.credits + row.credits,
+    totalOutstanding: totals.totalOutstanding + row.outstanding,
+    current: totals.current + row.current,
+    days1to30: totals.days1to30 + row.days1to30,
+    days31to60: totals.days31to60 + row.days31to60,
+    days61to90: totals.days61to90 + row.days61to90,
+    over90: totals.over90 + row.over90,
+  }), { supplierCount: 0, totalBilled: 0, totalPaid: 0, credits: 0, totalOutstanding: 0, current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90: 0 });
+
+  if (await respondReportExport(response, request.query.format, data, "supplier-balances.csv", "Supplier balances")) return;
+  response.json({ data, summary: { ...summary, currency: business.currency } });
 });
 
 reportsRouter.get("/purchase-cohort", async (request, response) => {

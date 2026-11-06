@@ -1,13 +1,17 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { createPortal } from "react-dom";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBusiness } from "@/hooks/queries/use-business";
 import { useCustomers } from "@/hooks/queries/use-customers";
 import { useCustomerStatement } from "@/hooks/queries/use-customer-statement";
+import { AdminEmptyState } from "@/components/admin-empty-state";
+import { AdminUiIcon } from "@/components/admin-ui-icon";
+import { AdminDialogPanel } from "@/components/admin-motion";
+import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 import {
   getCustomerStatement,
   customerKeys,
@@ -186,6 +190,13 @@ export default function CustomersPage() {
     setCreating(true);
   }
 
+  function closeCustomerForm() {
+    if (busy === "customer") return;
+    setCreating(false);
+    setEditing(false);
+    setError("");
+  }
+
   async function saveCustomer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy("customer");
@@ -301,25 +312,33 @@ export default function CustomersPage() {
   }
 
   if (!user)
-    return (
-      <main className="grid min-h-screen place-items-center bg-background text-sm text-muted">
-        Loading customers...
-      </main>
-    );
+    return <AdminPageSkeleton />;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-7 sm:px-8">
-        <section>
-          <p className="mb-2 text-sm font-normal uppercase tracking-[.14em] text-brand">
-            Customer accounts
-          </p>
-          <h1 className="text-2xl font-normal tracking-tight">Customers</h1>
-          <p className="mt-1 text-sm text-muted">
-            Contact details, balances, statements, and reminder consent.
-          </p>
+        <section className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-sm font-normal uppercase tracking-[.14em] text-brand">
+              Customer accounts
+            </p>
+            <h1 className="text-2xl font-normal tracking-tight">Customers</h1>
+            <p className="mt-1 text-sm text-muted">
+              Contact details, balances, statements, and reminder consent.
+            </p>
+          </div>
+          {canManage && !creating && !editing && (
+            <button
+              type="button"
+              onClick={startCreate}
+              className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-4 text-sm text-white transition-colors hover:bg-brand-dark"
+            >
+              <AdminUiIcon name="plus" size={16} />
+              Add customer
+            </button>
+          )}
         </section>
-        {pageError && (
+        {pageError && !creating && !editing && (
           <div
             role="alert"
             className="flex items-center justify-between gap-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
@@ -375,32 +394,52 @@ export default function CustomersPage() {
           </article>
         </section>
 
-        {(creating || editing) && (
-          <section className="rounded-lg border border-line bg-white p-5">
-            <div className="mb-4 flex items-start justify-between">
+        {(creating || editing) && typeof document !== "undefined" && createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[#14201e]/60 p-4 backdrop-blur-sm sm:p-6"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeCustomerForm();
+            }}
+          >
+          <AdminDialogPanel
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-form-title"
+            onEscape={closeCustomerForm}
+            className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#e4eae5] bg-white shadow-[0_24px_70px_rgba(12,25,25,.28)] sm:max-h-[calc(100dvh-3rem)]"
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#edf1ed] bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
               <div>
-                <h2 className="font-normal">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[.14em] text-brand">
+                  Customer accounts
+                </p>
+                <h2 id="customer-form-title" className="m-0 text-xl font-semibold tracking-tight text-[#1a2a22]">
                   {creating ? "Add customer" : "Edit customer"}
                 </h2>
-                <p className="mt-1 text-xs text-muted">
+                <p className="mb-0 mt-1 text-sm text-muted">
                   Get the customer&apos;s permission before sending text or
                   email reminders.
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setCreating(false);
-                  setEditing(false);
-                }}
-                className="text-sm text-muted"
+                type="button"
+                aria-label="Close customer form"
+                disabled={busy === "customer"}
+                onClick={closeCustomerForm}
+                className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-[10px] border border-line bg-white text-muted hover:bg-canvas disabled:cursor-wait disabled:opacity-50"
               >
-                Close
+                <AdminUiIcon name="close" size={15} />
               </button>
             </div>
             <form
               onSubmit={(event) => void saveCustomer(event)}
-              className="grid gap-4 sm:grid-cols-2"
+              className="grid gap-5 p-5 sm:grid-cols-2 sm:p-7"
             >
+              <section className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <h3 className="m-0 text-sm font-semibold text-[#35453b]">Contact details</h3>
+                  <p className="mb-0 mt-1 text-xs text-muted">Add the customer&apos;s name and preferred contact information.</p>
+                </div>
               <label className="grid gap-1 text-xs font-normal">
                 Name
                 <input
@@ -458,6 +497,12 @@ export default function CustomersPage() {
                   className="h-10 rounded-md border border-line px-3 text-sm"
                 />
               </label>
+              </section>
+              <section className="grid gap-4 rounded-xl border border-[#e7ece8] bg-[#fbfcfb] p-4 sm:col-span-2 sm:grid-cols-2 sm:p-5">
+                <div className="sm:col-span-2">
+                  <h3 className="m-0 text-sm font-semibold text-[#35453b]">Credit and reminders</h3>
+                  <p className="mb-0 mt-1 text-xs text-muted">Set account terms and only enable reminders when the customer has given consent.</p>
+                </div>
               <label className="grid gap-1 text-xs font-normal">
                 Max amount customer can owe
                 <input
@@ -515,26 +560,29 @@ export default function CustomersPage() {
                   Permission to send text reminders
                 </label>
               </div>
-              <div className="flex justify-end gap-2 sm:col-span-2">
+              </section>
+              {error && <p role="alert" className="m-0 text-sm text-[#b44f44] sm:col-span-2">{error}</p>}
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-[#edf1ed] bg-white/95 px-5 py-4 backdrop-blur sm:col-span-2 sm:-mx-7 sm:-mb-7 sm:px-7">
                 <button
                   type="button"
-                  onClick={() => {
-                    setCreating(false);
-                    setEditing(false);
-                  }}
-                  className="rounded-md border border-line px-4 py-2 text-sm"
+                  disabled={busy === "customer"}
+                  onClick={closeCustomerForm}
+                  className="rounded-md border border-line px-4 py-2 text-sm disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
+                  type="submit"
                   disabled={busy === "customer"}
-                  className="rounded-md bg-brand px-4 py-2 text-sm font-normal text-white disabled:opacity-60"
+                  className="rounded-md bg-brand px-4 py-2 text-sm text-white disabled:opacity-60"
                 >
                   {busy === "customer" ? "Saving..." : "Save customer"}
                 </button>
               </div>
             </form>
-          </section>
+          </AdminDialogPanel>
+          </div>,
+          document.body,
         )}
 
         <section className="overflow-hidden rounded-lg border border-line bg-white">
@@ -554,16 +602,9 @@ export default function CustomersPage() {
             />
           </div>
           {loading && !customers.length ? (
-            <div className="p-12 text-center text-sm text-muted">
-              Loading customer records...
-            </div>
+            <AdminTableSkeleton columns={6} rows={6} />
           ) : customers.length === 0 ? (
-            <div className="p-12 text-center">
-              <p className="font-normal">No customers found</p>
-              <p className="mt-1 text-sm text-muted">
-                Adjust the search or create a customer record.
-              </p>
-            </div>
+            <AdminEmptyState icon="person" title="No customers found" description="Adjust the search or create a customer record." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-left text-sm">
@@ -661,7 +702,7 @@ export default function CustomersPage() {
 
         {reminderCustomerId && <section className="mt-4 overflow-hidden rounded-lg border border-line bg-white">
           <div className="flex items-center justify-between border-b border-line p-4"><div><h2 className="m-0 text-lg font-semibold">Reminder history</h2><p className="mb-0 mt-1 text-sm text-muted">{customers.find((customer) => customer.id === reminderCustomerId)?.name ?? "Customer"}</p></div><button onClick={() => setReminderCustomerId("")} className="rounded-md border border-line px-3 py-2 text-sm">Close</button></div>
-          {busy === "reminders" ? <p className="p-4 text-sm text-muted">Loading reminders...</p> : !reminderHistory.length ? <p className="p-4 text-sm text-muted">No reminders have been queued for this customer.</p> : <div className="divide-y divide-line">{reminderHistory.map((reminder) => <article key={reminder.id} className="grid gap-2 p-4"><div className="flex flex-wrap justify-between gap-2"><strong>{reminder.title}</strong><time className="text-sm text-muted">{dateTime(reminder.createdAt)}</time></div><p className="m-0 text-sm text-muted">{reminder.message}</p><div className="grid gap-2 sm:grid-cols-2">{reminder.deliveries.map((delivery) => <div key={delivery.id} className="flex items-center justify-between gap-3 rounded-md bg-[#f8faf8] p-3 text-sm"><span><strong>{delivery.channel}</strong> · {delivery.destination}<br /><small className="text-muted">{delivery.status.toLowerCase()} · {delivery.attempts} attempts{delivery.lastError ? ` · ${delivery.lastError}` : ""}</small></span>{delivery.status === "FAILED" && ["OWNER", "STAFF"].includes(user?.role ?? "") && <button disabled={busy === delivery.id} onClick={() => void retryReminder(delivery.id)} className="rounded border border-line bg-white px-2 py-1 text-xs disabled:opacity-50">Retry</button>}</div>)}</div></article>)}</div>}
+          {busy === "reminders" ? <AdminTableSkeleton columns={3} rows={3} /> : !reminderHistory.length ? <p className="p-4 text-sm text-muted">No reminders have been queued for this customer.</p> : <div className="divide-y divide-line">{reminderHistory.map((reminder) => <article key={reminder.id} className="grid gap-2 p-4"><div className="flex flex-wrap justify-between gap-2"><strong>{reminder.title}</strong><time className="text-sm text-muted">{dateTime(reminder.createdAt)}</time></div><p className="m-0 text-sm text-muted">{reminder.message}</p><div className="grid gap-2 sm:grid-cols-2">{reminder.deliveries.map((delivery) => <div key={delivery.id} className="flex items-center justify-between gap-3 rounded-md bg-[#f8faf8] p-3 text-sm"><span><strong>{delivery.channel}</strong> · {delivery.destination}<br /><small className="text-muted">{delivery.status.toLowerCase()} · {delivery.attempts} attempts{delivery.lastError ? ` · ${delivery.lastError}` : ""}</small></span>{delivery.status === "FAILED" && ["OWNER", "STAFF"].includes(user?.role ?? "") && <button disabled={busy === delivery.id} onClick={() => void retryReminder(delivery.id)} className="rounded border border-line bg-white px-2 py-1 text-xs disabled:opacity-50">Retry</button>}</div>)}</div></article>)}</div>}
         </section>}
 
         {statement && (
@@ -687,7 +728,7 @@ export default function CustomersPage() {
               </button>
             </div>
             {busy === "statement" ? (
-              <p className="p-6 text-sm text-muted">Loading statement...</p>
+              <AdminTableSkeleton columns={4} rows={4} />
             ) : !statement.transactions.length ? (
               <p className="p-8 text-center text-sm text-muted">
                 No sale transactions recorded.

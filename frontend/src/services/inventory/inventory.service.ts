@@ -39,6 +39,8 @@ export function createStockCount(input: unknown) { return postWorkflow("/invento
 export function adjustProductStock(productId: string, input: unknown) { return postWorkflow(`/products/${encodeURIComponent(productId)}/adjustments`, input); }
 export function dispatchStockTransfer(id: string) { return postWorkflow(`/inventory/transfers/${encodeURIComponent(id)}/dispatch`); }
 export function receiveStockTransfer(id: string) { return postWorkflow(`/inventory/transfers/${encodeURIComponent(id)}/receive`); }
+export function receiveStockTransferWithLines(id: string, input: unknown) { return postWorkflow(`/inventory/transfers/${encodeURIComponent(id)}/receive`, input); }
+export function changeStockLotCondition(id: string, input: unknown) { return apiRequest(`/inventory/lots/${encodeURIComponent(id)}/condition`, { method: "PATCH", body: JSON.stringify(input) }); }
 export function submitStockCount(id: string) { return postWorkflow(`/inventory/counts/${encodeURIComponent(id)}/submit`); }
 export function approveStockCount(id: string) { return postWorkflow(`/inventory/counts/${encodeURIComponent(id)}/approve`); }
 export function postStockCount(id: string) { return postWorkflow(`/inventory/counts/${encodeURIComponent(id)}/post`); }

@@ -77,6 +77,13 @@ customersRouter.post("/:customerId/payments", requireRoles("OWNER", "STAFF"), as
   if (new Set(parsed.data.allocations.map((item) => item.saleId)).size !== parsed.data.allocations.length) throw new ApiError(400, "A sale can appear only once per payment allocation.", "DUPLICATE_ALLOCATION");
   const sales = await prisma.sale.findMany({ where: { id: { in: parsed.data.allocations.map((item) => item.saleId) }, businessId: auth.businessId, customerId: customer.id, status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } } } });
   if (sales.length !== parsed.data.allocations.length) throw new ApiError(404, "One or more sales do not belong to this customer.", "SALE_NOT_FOUND");
+  let cashShift: { id: string } | null = null;
+  if (parsed.data.method === "CASH") {
+    const branchIds = [...new Set(sales.map((sale) => sale.branchId))];
+    if (branchIds.length !== 1) throw new ApiError(400, "Cash repayment allocations must belong to one branch.", "MULTIPLE_CASH_BRANCHES");
+    cashShift = await prisma.cashShift.findFirst({ where: { businessId: auth.businessId, userId: auth.userId, branchId: branchIds[0], closedAt: null }, select: { id: true } });
+    if (!cashShift) throw new ApiError(409, "Open a cashier shift for this branch before recording a cash repayment.", "SHIFT_REQUIRED");
+  }
   for (const allocation of parsed.data.allocations) {
     const sale = sales.find((entry) => entry.id === allocation.saleId)!;
     const paid = sale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0);
@@ -84,6 +91,7 @@ customersRouter.post("/:customerId/payments", requireRoles("OWNER", "STAFF"), as
     if (paid + allocation.amount > Number(sale.total) - Number(credited._sum.total ?? 0)) throw new ApiError(409, "Payment allocation exceeds the outstanding sale balance.", "OVER_ALLOCATION");
   }
   const payment = await prisma.$transaction(async (transaction) => {
+    if (cashShift && !await transaction.cashShift.findFirst({ where: { id: cashShift.id, userId: auth.userId, closedAt: null }, select: { id: true } })) throw new ApiError(409, "The cashier shift closed before this repayment was recorded. Open a new shift and retry.", "SHIFT_NOT_OPEN");
     for (const allocation of parsed.data.allocations) {
       const sale = sales.find((entry) => entry.id === allocation.saleId)!;
       const [paid, credited] = await Promise.all([
@@ -93,6 +101,7 @@ customersRouter.post("/:customerId/payments", requireRoles("OWNER", "STAFF"), as
       if (Number(paid._sum.amount ?? 0) + allocation.amount > Number(sale.total) - Number(credited._sum.total ?? 0)) throw new ApiError(409, "Sale balance changed. Reload and retry the payment allocation.", "OVER_ALLOCATION");
     }
     const created = await transaction.payment.create({ data: { businessId: auth.businessId, method: parsed.data.method, status: "SUCCEEDED", amount: new Prisma.Decimal(allocationTotal), reference: parsed.data.reference, paidAt: new Date(), saleAllocations: { create: parsed.data.allocations.map((entry) => ({ saleId: entry.saleId, amount: entry.amount })) } } });
+    if (cashShift) await transaction.cashMovement.create({ data: { cashShiftId: cashShift.id, type: "PAID_IN", amount: new Prisma.Decimal(allocationTotal), reason: `Creditor repayment ${created.reference}` } });
     await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "CUSTOMER_PAYMENT", sourceId: created.id, description: `Customer payment ${created.reference}`, lines: [{ code: parsed.data.method === "CASH" ? "1000" : "1010", debit: allocationTotal, description: "Customer payment received" }, { code: "1100", credit: allocationTotal, description: "Reduce customer receivable" }] });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CUSTOMER_PAYMENT_RECORDED", entityType: "Payment", entityId: created.id, after: { customerId: customer.id, amount: allocationTotal, allocationCount: parsed.data.allocations.length } });
     return created;

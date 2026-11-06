@@ -14,3 +14,33 @@
   --font-sans: var(--font-nunito), "Nunito", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
+
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+  select,
+  textarea {
+    @apply px-3;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus,
+  select:focus,
+  textarea:focus {
+    @apply border-brand outline-none ring-2 ring-brand/20;
+  }
+
+  button:not(:disabled),
+  a[href],
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  [role="button"]:not([aria-disabled="true"]) {
+    @apply cursor-pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    @apply cursor-not-allowed;
+  }
+}

@@ -142,12 +142,8 @@ export function DashboardIcon({
 }
 
 export function DashboardDataError({ message }: { message?: string }) {
-  if (!message) return null;
-  return (
-    <p className="mt-1.5 text-sm leading-snug text-[#a75043]" role="status">
-      Could not load this section. {message}
-    </p>
-  );
+  void message;
+  return null;
 }
 
 export function DashboardSummaryCard({
@@ -162,7 +158,7 @@ export function DashboardSummaryCard({
   tone?: "default" | "warning";
 }) {
   return (
-    <article className="grid min-h-[106px] gap-1.5 rounded-xl border border-line bg-white p-4 max-[620px]:min-h-[91px] max-[620px]:p-3">
+    <article className="grid min-h-[106px] gap-2 rounded-xl border border-line bg-white p-5 max-[620px]:min-h-[91px] max-[620px]:p-3.5">
       <span className="text-sm text-[#75827a]">{label}</span>
       <strong
         className={`text-2xl leading-none font-normal tracking-tight max-[620px]:text-xl ${tone === "warning" ? "text-[#a6782c]" : "text-[#26372d]"}`}
@@ -346,7 +342,7 @@ export function DashboardMetricCard({
   );
   return (
     <Link
-      className="flex min-h-28 min-w-0 flex-col rounded-xl border border-line bg-white p-4 shadow-sm transition-colors hover:border-[#cbdacf] max-[620px]:min-h-[105px] max-[620px]:p-2.5"
+      className="flex min-h-28 min-w-0 flex-col rounded-xl border border-line bg-white p-5 shadow-sm transition-colors hover:border-[#cbdacf] max-[620px]:min-h-[105px] max-[620px]:p-3.5"
       href={href}
     >
       <div className="flex items-center justify-between text-sm text-[#6e7b73]">
@@ -358,16 +354,73 @@ export function DashboardMetricCard({
         </span>
       </div>
       <span className="my-2 truncate text-[21px] tracking-tight text-[#202f27] max-[620px]:text-[17px]">
-        {error ? (restricted ? "Restricted" : "Unavailable") : value}
+        {error ? (restricted ? "Restricted" : "—") : value}
       </span>
       <span className="mt-auto text-[11px] leading-snug text-[#8c9890]">
-        {error
-          ? restricted
-            ? error
-            : "Retry from the refresh control"
-          : detail}
+        {restricted ? error : detail}
       </span>
     </Link>
+  );
+}
+
+export function DashboardOverviewSkeleton() {
+  const pulse = "animate-pulse rounded-md bg-[#edf1ed]";
+
+  return (
+    <div className="space-y-4" aria-label="Loading dashboard" aria-busy="true">
+      <div className="h-[59px] rounded-xl border border-line bg-white p-4">
+        <div className={`${pulse} h-7 w-full max-w-[520px]`} />
+      </div>
+      <section className="grid grid-cols-4 gap-3 max-[900px]:grid-cols-2 max-[620px]:gap-2" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, index) => (
+          <article key={index} className="grid min-h-28 gap-3 rounded-xl border border-line bg-white p-5 max-[620px]:min-h-[105px] max-[620px]:p-3.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className={`${pulse} h-4 w-2/3`} />
+              <div className={`${pulse} size-7 rounded-lg`} />
+            </div>
+            <div className={`${pulse} h-6 w-1/2`} />
+            <div className={`${pulse} h-3 w-4/5`} />
+          </article>
+        ))}
+      </section>
+      <section className="grid grid-cols-[minmax(0,1.8fr)_minmax(270px,1fr)] gap-3 max-[900px]:grid-cols-1" aria-hidden="true">
+        <article className="min-h-[340px] rounded-xl border border-line bg-white p-5">
+          <div className={`${pulse} mb-2 h-5 w-40`} />
+          <div className={`${pulse} mb-6 h-3 w-64 max-w-full`} />
+          <div className={`${pulse} h-[240px] w-full rounded-lg`} />
+        </article>
+        <article className="min-h-[340px] rounded-xl border border-line bg-white p-5">
+          <div className={`${pulse} mb-6 h-5 w-36`} />
+          <div className="space-y-5">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className="flex items-center gap-3">
+                <div className={`${pulse} size-8 rounded-lg`} />
+                <div className="flex-1 space-y-2">
+                  <div className={`${pulse} h-3 w-3/4`} />
+                  <div className={`${pulse} h-3 w-1/2`} />
+                </div>
+                <div className={`${pulse} h-4 w-14`} />
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+      <section className="grid grid-cols-3 gap-3 max-[900px]:grid-cols-2 max-[620px]:grid-cols-1" aria-hidden="true">
+        {Array.from({ length: 3 }, (_, index) => (
+          <article key={index} className="min-h-40 rounded-xl border border-line bg-white p-5">
+            <div className={`${pulse} mb-5 h-5 w-36`} />
+            <div className="space-y-4">
+              {Array.from({ length: 3 }, (_, row) => (
+                <div key={row} className="flex items-center justify-between gap-4">
+                  <div className={`${pulse} h-3 w-2/3`} />
+                  <div className={`${pulse} h-3 w-12`} />
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
   );
 }
 

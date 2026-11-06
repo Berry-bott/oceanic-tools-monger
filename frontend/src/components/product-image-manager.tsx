@@ -2,15 +2,14 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { productKeys, removeProductGalleryImage, setPrimaryProductImage, uploadProductImage, type ProductImage } from "@/services/products/product.service";
 
-const requiredViews = ["FRONT", "BACK", "SIDE"] as const;
-const viewLabels: Record<ProductImage["view"], string> = {
-  FRONT: "Front view",
-  BACK: "Back view",
-  SIDE: "Side view",
-  ADDITIONAL: "Additional view",
-};
+const productViews = [
+  { key: "FRONT", label: "Front view" },
+  { key: "BACK", label: "Back view" },
+  { key: "SIDE", label: "Side view" },
+] as const;
 
 export function ProductImageManager({ productId, images = [] }: { productId: string; images: ProductImage[] }) {
   const queryClient = useQueryClient();
@@ -62,33 +61,29 @@ export function ProductImageManager({ productId, images = [] }: { productId: str
 
   const busy = upload.isPending || remove.isPending || setPrimary.isPending;
   return (
-    <section className="grid gap-4 rounded-xl border border-line bg-white p-5 sm:p-6" aria-labelledby="product-images-title">
+    <section className="grid gap-4 rounded-xl border border-line bg-white p-4 sm:p-5" aria-labelledby="product-images-title">
       <div>
-        <h2 id="product-images-title" className="text-lg font-semibold text-ink">Product photos</h2>
-        <p className="mt-1 text-sm text-muted">Photos are optional. Add Front, Back, Side or other useful views, and customers can switch between them in the public store.</p>
+        <h2 id="product-images-title" className="text-base font-semibold text-ink">Product photos</h2>
+        <p className="mt-1 text-sm text-muted">Add a front, back or side photo. Customers can switch between uploaded views.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        {requiredViews.map((view) => {
+      <div className="grid gap-3 sm:grid-cols-3">
+        {productViews.map(({ key: view, label }) => {
           const image = images.find((item) => item.view === view);
           return (
-            <ImageSlot key={view} label={viewLabels[view]} image={image} disabled={busy} onFile={(file) => void uploadFile(file, view)} onRemove={() => image && void removeImage(image.id)} onSetPrimary={() => image && void setPrimary.mutateAsync(image.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not set the main photo."))} />
+            <ImageSlot
+              key={view}
+              label={label}
+              image={image}
+              disabled={busy}
+              onFile={(file) => void uploadFile(file, view)}
+              onRemove={image ? () => void removeImage(image.id) : undefined}
+              onSetPrimary={image ? () => void setPrimary.mutateAsync(image.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not set the main photo.")) : undefined}
+            />
           );
         })}
       </div>
-      <div className="grid gap-3 border-t border-line pt-4">
-        <div>
-          <h3 className="text-base font-medium text-ink">More photos (optional)</h3>
-          <p className="mt-1 text-sm text-muted">Add close-ups, accessories or other useful angles.</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {images.filter((image) => image.view === "ADDITIONAL").map((image) => (
-            <ImageSlot key={image.id} label={image.mediaAsset.originalFilename ? `More photos: ${image.mediaAsset.originalFilename}` : "Additional photo"} image={image} disabled={busy} onFile={(file) => void uploadFile(file, "ADDITIONAL", image.id)} onRemove={() => void removeImage(image.id)} onSetPrimary={() => void setPrimary.mutateAsync(image.id).catch((cause) => setError(cause instanceof Error ? cause.message : "Could not set the main photo."))} />
-          ))}
-          <ImageSlot label="Add another photo" disabled={busy} onFile={(file) => void uploadFile(file, "ADDITIONAL")} />
-        </div>
-      </div>
       {error && <p className="m-0 text-sm text-red-700" role="alert">{error}</p>}
-      <p className="m-0 text-xs text-muted">JPEG, PNG or WebP. Maximum 5 MB per photo. Images are shared by all branches.</p>
+      <p className="m-0 text-xs text-muted">JPEG, PNG or WebP. Up to 5 MB per photo. Photos are shared by all branches.</p>
     </section>
   );
 }
@@ -100,18 +95,19 @@ function ImageSlot({ label, image, disabled, onFile, onRemove, onSetPrimary }: {
       <strong className="text-sm font-medium text-ink">{label}</strong>
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={label} className="aspect-square w-full rounded-md border border-line bg-canvas object-contain" />
+        <img src={url} alt={label} className="mx-auto aspect-square w-full max-w-40 rounded-md border border-line bg-canvas object-contain" />
       ) : (
-        <div className="grid aspect-square place-items-center rounded-md bg-canvas text-sm text-muted">No photo yet</div>
+        <div className="mx-auto grid aspect-square w-full max-w-40 place-items-center rounded-md bg-canvas text-xs text-muted">No photo yet</div>
       )}
-      <label className="grid gap-1 text-sm text-brand">
-        <span>{image ? "Replace photo" : "Choose photo"}</span>
-        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled} className="block w-full text-xs file:mr-2 file:rounded-md file:border-0 file:bg-[#edf5ef] file:px-2 file:py-2 file:text-xs file:text-brand" onChange={(event) => { onFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+      <label className="relative inline-flex h-8 w-fit cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border border-line bg-white px-2.5 text-xs font-medium text-brand hover:bg-canvas has-[:disabled]:cursor-wait has-[:disabled]:opacity-60">
+        <AdminUiIcon name="image" size={14} />
+        {image ? "Replace photo" : "Choose photo"}
+        <input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled} aria-label={`${image ? "Replace" : "Choose"} ${label}`} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => { onFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
       </label>
       {image && onSetPrimary && (image.isPrimary
         ? <span className="text-xs font-medium text-[#4b7557]">Main product photo</span>
-        : <button type="button" disabled={disabled} onClick={onSetPrimary} className="justify-self-start text-xs text-brand disabled:opacity-60">Set as main photo</button>)}
-      {image && onRemove && <button type="button" disabled={disabled} onClick={onRemove} className="justify-self-start text-sm text-red-700 disabled:opacity-60">Remove photo</button>}
+        : <button type="button" disabled={disabled} onClick={onSetPrimary} className="w-fit cursor-pointer text-xs text-brand disabled:opacity-60">Set as main photo</button>)}
+      {image && onRemove && <button type="button" aria-label={`Remove ${label.toLowerCase()}`} title="Remove photo" disabled={disabled} onClick={onRemove} className="grid size-7 cursor-pointer place-items-center rounded-md border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"><AdminUiIcon name="trash" size={14} /></button>}
     </div>
   );
 }

@@ -43,6 +43,10 @@ export function createSaleReturn<ReturnResult>(saleId: string, input: Record<str
   });
 }
 
+export function lookupSaleForReturn<Sale>(reference: string) {
+  return apiRequest<{ data: Sale }>(`/sales/lookup?reference=${encodeURIComponent(reference)}`);
+}
+
 export function approveSaleRefund(returnId: string) {
   return apiRequest(`/sales/returns/${encodeURIComponent(returnId)}/approve-refund`, {
     method: "POST",

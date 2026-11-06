@@ -10,7 +10,7 @@ import { takeFefoLots } from "../lib/stock-lots.js";
 import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
 
 export const salesRouter = Router();
-const saleSchema = z.object({ branchId: z.string(), customerId: z.string().optional(), cashShiftId: z.string().optional(), discount: z.coerce.number().min(0).default(0), tax: z.coerce.number().min(0).default(0), channel: z.enum(["POS", "MANUAL"]).default("POS"), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive() })).min(1).max(100), payments: z.array(z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), amount: z.coerce.number().positive() })).default([]) });
+const saleSchema = z.object({ branchId: z.string(), customerId: z.string().optional(), creditReference: z.string().trim().max(100).optional(), dueAt: z.coerce.date().optional(), cashShiftId: z.string().optional(), tax: z.coerce.number().min(0).default(0), channel: z.enum(["POS", "MANUAL"]).default("POS"), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitPrice: z.coerce.number().positive().optional() })).min(1).max(100), payments: z.array(z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), amount: z.coerce.number().positive() })).default([]) });
 const reference = (prefix: string) => `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
 const moneyRound = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
 
@@ -21,8 +21,31 @@ salesRouter.get("/", async (request, response) => {
   const channel = typeof request.query.channel === "string" ? request.query.channel : undefined;
   const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const data = await prisma.sale.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(channel ? { channel: channel as never } : {}) }, include: { customer: { select: { id: true, name: true, phone: true } }, user: { select: { id: true, name: true } }, lines: true, payments: { include: { payment: { select: { id: true, method: true, status: true, amount: true, paidAt: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 });
+  const data = await prisma.sale.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(channel ? { channel: channel as never } : {}) }, include: { customer: { select: { id: true, name: true, phone: true } }, user: { select: { id: true, name: true } }, lines: true, payments: { include: { payment: { select: { id: true, method: true, status: true, amount: true, paidAt: true } } } }, returns: { select: { total: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
   response.json({ data });
+});
+
+salesRouter.get("/lookup", async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const parsed = z.object({ reference: z.string().trim().min(1).max(100) }).safeParse(request.query);
+  if (!parsed.success) throw new ApiError(400, "Enter a sale or receipt reference.", "VALIDATION_ERROR", parsed.error.issues);
+  const referenceValue = parsed.data.reference;
+  const sale = await prisma.sale.findFirst({
+    where: {
+      businessId: auth.businessId,
+      OR: [{ id: referenceValue }, { number: { equals: referenceValue, mode: "insensitive" } }],
+      ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}),
+    },
+    include: {
+      branch: { select: { name: true } },
+      user: { select: { id: true, name: true, email: true } },
+      customer: { select: { id: true, name: true, phone: true } },
+      lines: { include: { returns: { select: { quantity: true } } } },
+      payments: { include: { payment: { select: { method: true, status: true, amount: true } } } },
+    },
+  });
+  if (!sale || sale.status === "CANCELLED") throw new ApiError(404, "No completed sale was found for that reference.", "SALE_NOT_FOUND");
+  response.json({ data: sale });
 });
 
 salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) => {
@@ -45,6 +68,7 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
   if (products.length !== new Set(input.lines.map((line) => line.productId)).size) throw new ApiError(409, "One or more products are unavailable for sale.", "PRODUCT_UNAVAILABLE");
   const branch = await prisma.branch.findFirst({ where: { id: input.branchId, businessId: auth.businessId }, select: { id: true } });
   if (!branch) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
+  if (auth.role === "STAFF" && (!auth.branchId || auth.branchId !== branch.id)) throw new ApiError(403, "You can only record sales for your assigned branch.", "BRANCH_ACCESS_DENIED");
   const customer = input.customerId ? await prisma.customer.findFirst({ where: { id: input.customerId, businessId: auth.businessId } }) : null;
   if (input.customerId && !customer) throw new ApiError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
   const shift = input.cashShiftId ? await prisma.cashShift.findFirst({ where: { id: input.cashShiftId, branchId: branch.id, userId: auth.userId, closedAt: null } }) : null;
@@ -57,28 +81,32 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
     const onHand = Number(balance?.onHand ?? 0);
     const reserved = Number(balance?.reserved ?? 0);
     if (line.quantity > onHand - reserved) throw new ApiError(409, `${product.name} no longer has enough available stock.`, "INSUFFICIENT_STOCK", { productId: product.id, available: onHand - reserved });
-    return { product, quantity: line.quantity, unitPrice: Number(product.sellingPrice), unitCost: Number(product.costPrice), lineTotal: moneyRound(Number(product.sellingPrice) * line.quantity) };
+    const unitPrice = line.unitPrice ?? Number(product.sellingPrice);
+    const unitCost = Number(product.costPrice);
+    if (unitPrice < unitCost) throw new ApiError(409, `${product.name} cannot be sold below its cost price of ${unitCost.toFixed(2)}.`, "BELOW_COST_PRICE", { productId: product.id, minimumPrice: unitCost });
+    return { product, quantity: line.quantity, unitPrice, unitCost, lineTotal: moneyRound(unitPrice * line.quantity) };
   });
   const subtotal = moneyRound(lines.reduce((sum, line) => sum + line.lineTotal, 0));
-  if (input.discount + input.tax > subtotal) throw new ApiError(400, "Discount and tax adjustments exceed the sale subtotal.", "INVALID_SALE_TOTAL");
-  const total = moneyRound(subtotal - input.discount + input.tax);
+  if (input.tax > subtotal) throw new ApiError(400, "Tax cannot exceed the sale subtotal.", "INVALID_SALE_TOTAL");
+  const total = moneyRound(subtotal + input.tax);
   const paid = moneyRound(input.payments.reduce((sum, payment) => sum + payment.amount, 0));
   if (paid > total) throw new ApiError(400, "Payment amount cannot exceed the amount due.", "OVERPAYMENT_NOT_SUPPORTED");
-  if (paid < total) {
-    if (!customer) throw new ApiError(400, "Select a customer to record a credit balance.", "CUSTOMER_REQUIRED_FOR_CREDIT");
-    const existingSales = await prisma.sale.findMany({ where: { businessId: auth.businessId, customerId: customer.id, status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } }, returns: { select: { total: true } } } });
-    const currentReceivable = moneyRound(existingSales.reduce((sum, sale) => {
-      const collected = sale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((paidSum, entry) => paidSum + Number(entry.amount), 0);
-      const credited = sale.returns.reduce((returnSum, entry) => returnSum + Number(entry.total), 0);
-      return sum + Math.max(0, Number(sale.total) - collected - credited);
-    }, 0));
-    const remainingCredit = Math.max(0, Number(customer.creditLimit ?? 0) - currentReceivable);
-    if (remainingCredit < total - paid) throw new ApiError(409, "Customer credit limit does not cover this balance.", "CREDIT_LIMIT_EXCEEDED", { remainingCredit });
-  }
+  if (input.dueAt && input.dueAt.getTime() < Date.now() && paid < total) throw new ApiError(400, "The payment deadline cannot be in the past.", "INVALID_CREDIT_DUE_DATE");
+  if (paid < total && !customer) throw new ApiError(400, "Select a customer to record a credit balance.", "CUSTOMER_REQUIRED_FOR_CREDIT");
   if (input.payments.some((payment) => payment.method === "CASH") && !shift) throw new ApiError(409, "Open a cashier shift before recording cash payment.", "SHIFT_REQUIRED");
 
   try {
     const sale = await prisma.$transaction(async (transaction) => {
+      if (paid < total && customer) {
+        const existingSales = await transaction.sale.findMany({ where: { businessId: auth.businessId, customerId: customer.id, status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } }, returns: { select: { total: true } } } });
+        const currentReceivable = moneyRound(existingSales.reduce((sum, existingSale) => {
+          const collected = existingSale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((paidSum, entry) => paidSum + Number(entry.amount), 0);
+          const credited = existingSale.returns.reduce((returnSum, entry) => returnSum + Number(entry.total), 0);
+          return sum + Math.max(0, Number(existingSale.total) - collected - credited);
+        }, 0));
+        const remainingCredit = Math.max(0, Number(customer.creditLimit ?? 0) - currentReceivable);
+        if (remainingCredit < total - paid) throw new ApiError(409, "Customer credit limit does not cover this balance.", "CREDIT_LIMIT_EXCEEDED", { remainingCredit });
+      }
       let saleCost = 0;
       for (const line of lines) {
         const currentBalance = await transaction.stockBalance.findUnique({ where: { productId_branchId: { productId: line.product.id, branchId: branch.id } } });
@@ -91,7 +119,7 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
         saleCost += allocations.reduce((sum, allocation) => sum + Number(allocation.unitCost) * Number(allocation.quantity), 0);
         (line as typeof line & { lotAllocations: typeof allocations }).lotAllocations = allocations;
       }
-      const created = await transaction.sale.create({ data: { businessId: auth.businessId, branchId: branch.id, userId: auth.userId, customerId: customer?.id, number: reference("SALE"), channel: input.channel, subtotal, discount: input.discount, tax: input.tax, total, dueAt: total > paid && customer ? new Date(Date.now() + customer.creditDays * 24 * 60 * 60 * 1000) : null, idempotencyKey, cashShiftId: shift?.id, lines: { create: lines.map((line) => ({ productId: line.product.id, productName: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPrice: line.unitPrice, unitCost: line.unitCost, lineTotal: line.lineTotal })) }, }, include: { lines: true } });
+      const created = await transaction.sale.create({ data: { businessId: auth.businessId, branchId: branch.id, userId: auth.userId, customerId: customer?.id, number: reference("SALE"), channel: input.channel, subtotal, discount: 0, tax: input.tax, total, dueAt: total > paid && customer ? input.dueAt ?? new Date(Date.now() + customer.creditDays * 24 * 60 * 60 * 1000) : null, creditReference: input.creditReference, idempotencyKey, cashShiftId: shift?.id, lines: { create: lines.map((line) => ({ productId: line.product.id, productName: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPrice: line.unitPrice, unitCost: line.unitCost, lineTotal: line.lineTotal })) }, }, include: { lines: true } });
       for (const line of lines) {
         const saleLine = created.lines.find((createdLine) => createdLine.productId === line.product.id)!;
         const allocations = (line as typeof line & { lotAllocations: { stockLotId: string; quantity: Prisma.Decimal; unitCost: Prisma.Decimal }[] }).lotAllocations;
@@ -110,7 +138,6 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
       const ledgerLines: LedgerLine[] = input.payments.map((tender) => ({ code: tender.method === "CASH" ? "1000" : "1010", debit: tender.amount, description: `${tender.method} sale payment` }));
       if (total - paid > 0) ledgerLines.push({ code: "1100", debit: total - paid, description: "Customer receivable" });
       ledgerLines.push({ code: "4000", credit: subtotal, description: "Gross sales revenue" });
-      if (input.discount > 0) ledgerLines.push({ code: "4100", debit: input.discount, description: "Sales discount" });
       if (input.tax > 0) ledgerLines.push({ code: "2100", credit: input.tax, description: "Sales tax payable" });
       if (saleCost > 0) ledgerLines.push({ code: "5000", debit: saleCost, description: "Cost of goods sold" }, { code: "1200", credit: saleCost, description: "Inventory relieved" });
       if (total > 0 || saleCost > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "SALE", sourceId: created.id, description: `Sale ${created.number}`, lines: ledgerLines });
@@ -137,6 +164,7 @@ salesRouter.post("/:saleId/returns", requireRoles("OWNER", "STAFF"), async (requ
   const auth = response.locals.auth as AuthContext;
   const sale = await prisma.sale.findFirst({ where: { id: request.params.saleId as string, businessId: auth.businessId, status: { not: "CANCELLED" } }, include: { lines: { include: { lotAllocations: true, returns: { include: { lotAllocations: true } } } }, payments: { include: { payment: true } }, returns: true, refunds: true } });
   if (!sale) throw new ApiError(404, "Sale not found.", "SALE_NOT_FOUND");
+  if (auth.role === "STAFF" && (!auth.branchId || sale.branchId !== auth.branchId)) throw new ApiError(403, "You can only process returns for your assigned branch.", "BRANCH_ACCESS_DENIED");
   const byLine = new Map(sale.lines.map((line) => [line.id, line]));
   if (new Set(parsed.data.lines.map((line) => line.saleLineId)).size !== parsed.data.lines.length) throw new ApiError(400, "Each sale line can appear only once per return.", "DUPLICATE_RETURN_LINE");
   let returnedValue = 0;
@@ -178,20 +206,20 @@ salesRouter.post("/:saleId/returns", requireRoles("OWNER", "STAFF"), async (requ
       }
     }
     let refund = null;
-    if (refundAmount > 0) refund = await transaction.refund.create({ data: { saleId: sale.id, saleReturnId: returned.id, userId: auth.userId, reference: `RF-${randomUUID().slice(0, 10).toUpperCase()}`, amount: refundAmount, method: parsed.data.method, reason: parsed.data.reason, status: "PENDING" } });
+    if (refundAmount > 0) refund = await transaction.refund.create({ data: { saleId: sale.id, saleReturnId: returned.id, userId: auth.userId, reference: `RF-${randomUUID().slice(0, 10).toUpperCase()}`, amount: refundAmount, method: parsed.data.method, reason: parsed.data.reason, status: "SUCCEEDED" } });
     const returnCost = moneyRound(parsed.data.lines.filter((item) => item.restock).reduce((sum, item) => sum + Number(byLine.get(item.saleLineId)!.unitCost) * item.quantity, 0));
     const returnRevenue = Number(sale.total) > 0 ? proportionalNet * (Number(sale.subtotal) - Number(sale.discount)) / Number(sale.total) : proportionalNet;
     const returnTax = proportionalNet - returnRevenue;
     const returnJournal: LedgerLine[] = [{ code: "4100", debit: returnRevenue, description: "Customer return credit" }];
     if (returnTax > 0) returnJournal.push({ code: "2100", debit: returnTax, description: "Reverse tax payable on returned goods" });
-    if (refundAmount > 0) returnJournal.push({ code: "2200", credit: refundAmount, description: "Refund payable pending approval" });
+    if (refundAmount > 0) returnJournal.push({ code: parsed.data.method === "CASH" ? "1000" : "1010", credit: refundAmount, description: `${parsed.data.method} refund issued to customer` });
     if (proportionalNet > refundAmount) returnJournal.push({ code: "1100", credit: proportionalNet - refundAmount, description: "Customer receivable credit" });
     if (returnCost > 0) returnJournal.push({ code: "1200", debit: returnCost, description: "Restocked returned goods" }, { code: "5000", credit: returnCost, description: "Reverse cost of goods sold" });
     if (proportionalNet > 0 || returnCost > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "SALE_RETURN", sourceId: returned.id, description: `Return ${returned.reference}`, lines: returnJournal });
     const refreshedLines = await transaction.saleLine.findMany({ where: { saleId: sale.id }, include: { returns: { select: { quantity: true } } } });
     const fullyReturned = refreshedLines.every((line) => line.returns.reduce((sum, item) => sum + Number(item.quantity), 0) >= Number(line.quantity));
     await transaction.sale.update({ where: { id: sale.id }, data: { status: fullyReturned ? "RETURNED" : "PARTIALLY_RETURNED" } });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "SALE_RETURN_POSTED", entityType: "SaleReturn", entityId: returned.id, after: { reference: returned.reference, creditAmount: proportionalNet, refundAmount } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "SALE_RETURN_POSTED", entityType: "SaleReturn", entityId: returned.id, after: { reference: returned.reference, creditAmount: proportionalNet, refundAmount, refundStatus: refund ? "SUCCEEDED" : null, refundedBy: auth.userId } });
     return { return: returned, refund };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   response.status(201).json({ data: result });
@@ -219,9 +247,16 @@ salesRouter.post("/shifts/open", requireRoles("OWNER", "STAFF"), async (request,
   const auth = response.locals.auth as AuthContext;
   const branch = await prisma.branch.findFirst({ where: { id: parsed.data.branchId, businessId: auth.businessId } });
   if (!branch) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
+  if (auth.role === "STAFF" && (!auth.branchId || auth.branchId !== branch.id)) throw new ApiError(403, "You can only clock in at your assigned branch.", "BRANCH_ACCESS_DENIED");
   const openKey = `${branch.id}:${auth.userId}`;
   try {
-    const shift = await prisma.cashShift.create({ data: { businessId: auth.businessId, branchId: branch.id, userId: auth.userId, openingCash: parsed.data.openingCash, openKey } });
+    const shift = await prisma.$transaction(async (transaction) => {
+      const created = await transaction.cashShift.create({ data: { businessId: auth.businessId, branchId: branch.id, userId: auth.userId, openingCash: parsed.data.openingCash, openKey } });
+      const owners = await transaction.user.findMany({ where: { businessId: auth.businessId, role: "OWNER", isActive: true }, select: { id: true } });
+      if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked in", message: `${auth.name} (${auth.email}) clocked in at ${branch.name} at ${created.openedAt.toISOString()}.`, entityType: "CashShift", entityId: created.id, dedupeKey: `SHIFT-OPENED:${created.id}:${owner.id}` })) });
+      await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CASH_SHIFT_OPENED", entityType: "CashShift", entityId: created.id, after: { branchId: branch.id, openedAt: created.openedAt, openingCash: created.openingCash.toString() } });
+      return created;
+    });
     response.status(201).json({ data: shift });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new ApiError(409, "Close the current shift before opening another.", "SHIFT_ALREADY_OPEN");
@@ -259,15 +294,19 @@ salesRouter.post("/shifts/:shiftId/close", requireRoles("OWNER", "STAFF"), async
   const parsed = z.object({ closingCash: z.coerce.number().min(0) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter the counted closing cash.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
-  const shift = await prisma.cashShift.findFirst({ where: { id: request.params.shiftId as string, businessId: auth.businessId, userId: auth.userId, closedAt: null }, include: { sales: { include: { payments: { include: { payment: true } }, refunds: true } }, movements: true } });
+  const shift = await prisma.cashShift.findFirst({ where: { id: request.params.shiftId as string, businessId: auth.businessId, userId: auth.userId, closedAt: null }, include: { sales: { include: { payments: { include: { payment: true } }, refunds: true } }, movements: true, branch: { select: { name: true } } } });
   if (!shift) throw new ApiError(404, "Open shift not found.", "SHIFT_NOT_FOUND");
   const cashReceived = shift.sales.reduce((sum, sale) => sum + sale.payments.filter((entry) => entry.payment.method === "CASH" && entry.payment.status === "SUCCEEDED").reduce((total, entry) => total + Number(entry.amount), 0), 0);
   const cashMovements = shift.movements.reduce((sum, movement) => sum + (movement.type === "PAID_IN" ? Number(movement.amount) : -Number(movement.amount)), 0);
   const cashRefunds = shift.sales.reduce((sum, sale) => sum + sale.refunds.filter((refund) => refund.method === "CASH" && refund.status === "SUCCEEDED").reduce((subtotal, refund) => subtotal + Number(refund.amount), 0), 0);
   const expected = Number(shift.openingCash) + cashReceived - cashRefunds + cashMovements;
+  const grossSales = shift.sales.reduce((sum, sale) => sum + Number(sale.total), 0);
+  const totalRefunds = shift.sales.reduce((sum, sale) => sum + sale.refunds.filter((refund) => refund.status === "SUCCEEDED").reduce((subtotal, refund) => subtotal + Number(refund.amount), 0), 0);
   const closed = await prisma.$transaction(async (transaction) => {
     const result = await transaction.cashShift.update({ where: { id: shift.id }, data: { closingCash: parsed.data.closingCash, expectedClosingCash: expected, closedAt: new Date(), openKey: null } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CASH_SHIFT_CLOSED", entityType: "CashShift", entityId: shift.id, before: { expectedClosingCash: expected }, after: { closingCash: parsed.data.closingCash, variance: parsed.data.closingCash - expected } });
+    const owners = await transaction.user.findMany({ where: { businessId: auth.businessId, role: "OWNER", isActive: true }, select: { id: true } });
+    if (owners.length) await transaction.notification.createMany({ data: owners.map((owner) => ({ businessId: auth.businessId, userId: owner.id, type: "CASH_SHIFT", severity: "INFO", title: "Staff clocked out", message: `${auth.name} (${auth.email}) clocked out from ${shift.branch.name} at ${result.closedAt?.toISOString()}. Clock-in: ${shift.openedAt.toISOString()}. Sales: ${shift.sales.length} transactions, gross ${grossSales.toFixed(2)}, refunds ${totalRefunds.toFixed(2)}, net ${Math.max(0, grossSales - totalRefunds).toFixed(2)}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-CLOSED:${shift.id}:${owner.id}` })) });
     if (Math.abs(parsed.data.closingCash - expected) >= 0.01) await transaction.notification.create({ data: { businessId: auth.businessId, userId: auth.userId, type: "CASH_SHIFT", severity: "WARNING", title: "Cashier shift discrepancy", message: `Shift ${shift.id} closed with a cash variance of ${(parsed.data.closingCash - expected).toFixed(2)}.`, entityType: "CashShift", entityId: shift.id, dedupeKey: `SHIFT-VARIANCE:${shift.id}` } });
     return result;
   });

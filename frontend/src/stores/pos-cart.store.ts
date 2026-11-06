@@ -5,12 +5,15 @@ type CartProduct = {
   name: string;
   sku: string;
   sellingPrice: number | string;
+  costPrice: number | string;
+  unit: string;
 };
-type CartItem = { product: CartProduct; quantity: number };
+type CartItem = { product: CartProduct; quantity: number; unitPrice: number };
 type PosCartState = {
   branchId: string;
   items: CartItem[];
   addProduct: (product: CartProduct, branchId: string) => void;
+  setUnitPrice: (productId: string, unitPrice: number) => void;
   adjustQuantity: (productId: string, amount: number) => void;
   clearCart: () => void;
 };
@@ -30,9 +33,15 @@ export const usePosCartStore = create<PosCartState>((set) => ({
                 ? { ...item, quantity: item.quantity + 1 }
                 : item,
             )
-          : [...currentItems, { product, quantity: 1 }],
+          : [...currentItems, { product, quantity: 1, unitPrice: Number(product.sellingPrice) }],
       };
     }),
+  setUnitPrice: (productId, unitPrice) =>
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.product.id === productId ? { ...item, unitPrice } : item,
+      ),
+    })),
   adjustQuantity: (productId, amount) =>
     set((state) => ({
       items: state.items.flatMap((item) =>

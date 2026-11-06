@@ -14,19 +14,18 @@ import { useBranches } from "@/hooks/queries/use-branches";
 import { ProductSpecificationsEditor, type ProductSpecificationInput } from "@/components/product-specifications-editor";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
+import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { checkProductDuplicates, type ProductDuplicate } from "@/services/products/product.service";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 
 type Role = "OWNER" | "STAFF";
 type User = { id: string; name: string; email: string; role: Role; branchId?: string | null };
 type Branch = { id: string; name: string; isDefault: boolean };
-type AdditionalImage = { id: string; file: File };
 const canManage = (role: Role) => role === "OWNER" || role === "STAFF";
 
 const fieldClass = "grid gap-2 text-sm text-[#536159]";
 const inputClass = "h-11 w-full rounded-lg border border-[#dfe6e0] bg-white px-3 text-sm text-[#34413a] outline-none placeholder:text-[#aab3ac] focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]";
 const textareaClass = "w-full rounded-lg border border-[#dfe6e0] bg-white p-3 text-sm text-[#34413a] outline-none placeholder:text-[#aab3ac] focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]";
-const imageFieldClass = "grid gap-2 text-sm text-[#536159]";
 const secondaryButton = "inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-[#e0e7e1] bg-white px-4 text-sm text-[#4e5e54] hover:border-[#ccd9ce] hover:bg-[#f8faf8]";
 
 export default function NewProductPage() {
@@ -39,7 +38,6 @@ export default function NewProductPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [images, setImages] = useState<Record<"FRONT" | "BACK" | "SIDE", File | null>>({ FRONT: null, BACK: null, SIDE: null });
-  const [additionalImages, setAdditionalImages] = useState<AdditionalImage[]>([]);
   const [specifications, setSpecifications] = useState<ProductSpecificationInput[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -127,13 +125,6 @@ export default function NewProductPage() {
               setImages((current) => ({ ...current, [view]: null }));
             }
           }
-          const pendingAdditional = [...additionalImages];
-          const uploadedAdditional = new Set<string>();
-          for (const image of pendingAdditional) {
-            await uploadImageMutation.mutateAsync({ id: productId, file: image.file, view: "ADDITIONAL", isPrimary: primaryImageKey === `ADDITIONAL-${image.id}` });
-            uploadedAdditional.add(image.id);
-            setAdditionalImages((current) => current.filter((item) => !uploadedAdditional.has(item.id)));
-          }
         } catch (uploadError) {
           setError(
             `Product saved, but its image was not uploaded. ${uploadError instanceof Error ? uploadError.message : "Choose the image again and retry."}`,
@@ -159,11 +150,7 @@ export default function NewProductPage() {
   }
 
   if (loading)
-    return (
-        <main className="grid min-h-[50vh] place-items-center text-sm text-[#718077]">
-        <span className="inline-flex items-center gap-3"><FourDotLoader className="text-brand" />Loading your account...</span>
-      </main>
-    );
+    return <AdminPageSkeleton variant="form" />;
   if (!user || !canManage(user.role))
     return (
       <main className="mx-auto max-w-3xl px-6 py-10">
@@ -256,7 +243,7 @@ export default function NewProductPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className={fieldClass}>SKU<input className={inputClass} name="sku" required maxLength={80} placeholder="e.g. GPP-500G-001" /></label>
               <label className={fieldClass}><span className="flex items-center gap-1">Barcode <span className="text-muted">(optional)</span></span><input className={inputClass} name="barcode" maxLength={80} placeholder="Scan or enter barcode" /></label>
-              <label className={fieldClass}><span className="flex items-center gap-1">Brand <span className="text-muted">(optional)</span></span><input className={inputClass} name="brand" maxLength={120} placeholder="e.g. CAT" /></label>
+              <label className={fieldClass}>Brand<input className={inputClass} name="brand" required maxLength={120} placeholder="e.g. CAT" /></label>
               <label className={fieldClass}><span className="flex items-center gap-1">Model <span className="text-muted">(optional)</span></span><input className={inputClass} name="model" maxLength={120} placeholder="e.g. 10KVA" /></label>
             </div>
             <label className={fieldClass}><span className="flex items-center gap-1">Description <span className="text-muted">(optional)</span></span><textarea name="description" rows={4} maxLength={5000} className={`${textareaClass} resize-y`} placeholder="Add details that help staff and customers understand this product." /></label>
@@ -270,47 +257,17 @@ export default function NewProductPage() {
                 return (
                   <div key={view} className="grid content-start gap-3 rounded-lg border border-line p-3">
                     <h3 className="m-0 text-sm font-medium text-ink">{label}<span className="ml-1 text-xs font-normal text-muted">Optional</span></h3>
-                    {images[view] ? <LocalImagePreview file={images[view]} alt={`${label} preview`} className="aspect-square w-full rounded-lg border border-line bg-canvas object-contain" /> : <div className="grid aspect-square place-items-center rounded-lg bg-canvas text-sm text-muted">No photo added</div>}
-                    <label className="grid cursor-pointer gap-2 text-sm text-brand">
-                      <span>{images[view] ? "Replace photo" : "Choose photo"}</span>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="block w-full text-xs file:mr-2 file:rounded-md file:border-0 file:bg-[#edf5ef] file:px-2 file:py-2 file:text-xs file:text-brand" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024)) { setError("Choose a JPEG, PNG or WebP image up to 5 MB."); } else { setError(""); setImages((current) => ({ ...current, [view]: file })); } event.currentTarget.value = ""; }} />
+                    {images[view] ? <LocalImagePreview file={images[view]} alt={`${label} preview`} className="mx-auto aspect-square w-full max-w-40 rounded-lg border border-line bg-canvas object-contain" /> : <div className="mx-auto grid aspect-square w-full max-w-40 place-items-center rounded-lg bg-canvas text-xs text-muted">No photo added</div>}
+                    <label className="relative inline-flex h-9 w-fit cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg border border-line bg-white px-3 text-xs font-medium text-brand hover:bg-canvas">
+                      <AdminUiIcon name="image" size={15} />
+                      {images[view] ? "Replace photo" : "Choose photo"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`${images[view] ? "Replace" : "Choose"} ${label}`} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024)) { setError("Choose a JPEG, PNG or WebP image up to 5 MB."); } else { setError(""); setImages((current) => ({ ...current, [view]: file })); } event.currentTarget.value = ""; }} />
                     </label>
               {images[view] && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><button type="button" className="cursor-pointer text-brand" onClick={() => setPrimaryImageKey(view)}>{primaryImageKey === view ? "Main photo" : "Set as main photo"}</button><button type="button" aria-label={`Remove ${label.toLowerCase()}`} title="Remove photo" className="grid size-8 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => { setImages((current) => ({ ...current, [view]: null })); if (primaryImageKey === view) setPrimaryImageKey("FRONT"); }}><AdminUiIcon name="trash" /></button></div>}
                   </div>
                 );
               })}
             </div>
-              <label className={`${imageFieldClass} cursor-pointer`}>
-              More photos (optional)
-              <input
-                type="file"
-                multiple
-                accept="image/jpeg,image/png,image/webp"
-                className="block w-full text-sm file:mr-2 file:rounded-md file:border-0 file:bg-[#edf5ef] file:px-2 file:py-2 file:text-sm file:text-brand"
-                onChange={(event) => {
-                  const selected = Array.from(event.target.files ?? []);
-                  const valid = selected
-                    .filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type) && file.size <= 5 * 1024 * 1024)
-                    .map((file) => ({ id: crypto.randomUUID(), file }));
-                  setError(valid.length === selected.length ? "" : "Some photos were skipped. Use JPEG, PNG or WebP files up to 5 MB each.");
-                  setAdditionalImages((current) => [...current, ...valid]);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
-            {additionalImages.map(({ id, file }) => (
-              <div key={id} className="flex items-center gap-3 text-sm text-ink">
-                <LocalImagePreview file={file} alt="Additional photo preview" className="size-14 rounded-md border border-line object-cover" />
-                <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                <button type="button" className="cursor-pointer text-xs text-brand" onClick={() => setPrimaryImageKey(`ADDITIONAL-${id}`)}>
-                  {primaryImageKey === `ADDITIONAL-${id}` ? "Main photo" : "Set as main"}
-                </button>
-                <button type="button" aria-label={`Remove ${file.name}`} title="Remove photo" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => {
-                  setAdditionalImages((current) => current.filter((item) => item.id !== id));
-                  if (primaryImageKey === `ADDITIONAL-${id}`) setPrimaryImageKey("FRONT");
-                }}><AdminUiIcon name="trash" /></button>
-              </div>
-            ))}
             <p className="m-0 text-xs text-muted">JPEG, PNG or WebP. Maximum 5 MB per photo. Photos are shared by every branch.</p>
           </section>
           <section className="grid gap-4 rounded-xl border border-line bg-white p-5 shadow-sm sm:p-6" aria-labelledby="pricing-heading">
@@ -329,27 +286,41 @@ export default function NewProductPage() {
               />
             </label>
             <label className={fieldClass}>
-              Unit cost (NGN)
+              Cost price (NGN)
               <input
                 className={inputClass}
                 name="costPrice"
                 type="number"
                 min="0"
                 step="0.01"
-                defaultValue="0"
                 required
+                placeholder="Enter the cost for one unit"
               />
             </label>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className={fieldClass}>
               Unit
               <input
                 className={inputClass}
                 name="unit"
                 defaultValue="piece"
+                required
                 maxLength={40}
                 placeholder="e.g. piece, bag, carton"
+              />
+            </label>
+            <label className={fieldClass}>
+              Quantity
+              <input
+                className={inputClass}
+                name="quantity"
+                type="number"
+                min="0"
+                step="0.001"
+                required
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
               />
             </label>
             <label className={fieldClass}>
@@ -367,29 +338,21 @@ export default function NewProductPage() {
           </div>
           </section>
           <section className="grid gap-4 rounded-xl border border-line bg-white p-5 shadow-sm sm:p-6" aria-labelledby="branch-setup-heading">
-            <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="folder" size={19} /></span><div><h2 id="branch-setup-heading" className="m-0 text-lg font-semibold text-ink">Branch and opening stock</h2><p className="mb-0 mt-1 text-sm text-muted">Choose where this product will be stocked. Zero opening stock means no quantity is added yet.</p></div></div>
+            <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="folder" size={19} /></span><div><h2 id="branch-setup-heading" className="m-0 text-lg font-semibold text-ink">Branch</h2><p className="mb-0 mt-1 text-sm text-muted">Choose the branch where this product will be kept.</p></div></div>
             {user.role === "OWNER" ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className={fieldClass}>Branch
+              <div className="grid gap-4">
+                <label className={`${fieldClass} max-w-xl`}>Branch
                   <select className={inputClass} value={selectedBranchId} onChange={(event) => setSelectedBranchId(event.target.value)} required disabled={branchQuery.isLoading || branchQuery.isError || !branchQuery.data?.data.length}>
                     <option value="">{branchQuery.isLoading ? "Loading branches..." : "Choose a branch"}</option>
                     {(branchQuery.data?.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{branch.isDefault ? " (Main branch)" : ""}</option>)}
                   </select>
                 </label>
-                <label className={fieldClass}>Quantity
-                  <input type="number" name="quantity" min="0" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
-                </label>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">
+              <div className="max-w-xl rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">
                   {user.branchId
                     ? `This product will be assigned to ${assignedBranch?.name ?? "your assigned branch"}.`
                     : "Your account has no branch yet. Ask the owner to assign one before you add a product."}
-                </div>
-                <label className={fieldClass}>Quantity
-                  <input type="number" name="quantity" min="0" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
-                </label>
               </div>
             )}
             {branchQuery.isError && (
