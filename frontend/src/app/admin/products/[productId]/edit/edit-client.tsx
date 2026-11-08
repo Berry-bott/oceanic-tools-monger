@@ -13,7 +13,7 @@ import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 import { getProduct, productKeys, updateProduct } from "@/services/products/product.service";
 
-const canManage = (role?: string) => role === "OWNER" || role === "STAFF";
+const canManage = (user?: { role: string; staffAccessRole?: string | null }) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 const fieldClass = "grid gap-1.5 text-sm text-[#536159]";
 const inputClass = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]";
 const sectionClass = "grid gap-4 rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5";
@@ -48,7 +48,7 @@ export default function EditProductPage({ productId }: { productId: string }) {
   }, [product]);
 
   if (!userQuery.data || productQuery.isLoading) return <AdminPageSkeleton variant="form" />;
-  if (!canManage(userQuery.data.user.role)) return <main className="mx-auto max-w-5xl px-4 py-8 text-sm text-muted">You do not have access to edit products.</main>;
+  if (!canManage(userQuery.data.user)) return <main className="mx-auto max-w-5xl px-4 py-8 text-sm text-muted">You do not have access to edit products.</main>;
   if (productQuery.isError || !product) return <main className="mx-auto max-w-5xl px-4 py-8 text-sm text-red-700">Product could not be loaded. <Link href="/admin/products" className="underline">Return to products</Link></main>;
 
   function submit(event: React.FormEvent<HTMLFormElement>) {

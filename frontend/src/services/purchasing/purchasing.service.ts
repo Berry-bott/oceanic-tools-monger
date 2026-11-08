@@ -11,11 +11,11 @@ export async function getPurchasingOverview<Supplier, Purchase>() {
 }
 
 export function createSupplier(input: Record<string, unknown>) {
-  return apiRequest("/suppliers", { method: "POST", body: JSON.stringify(input) });
+  return apiRequest<{ data: { id: string; name: string } }>("/suppliers", { method: "POST", body: JSON.stringify(input) });
 }
 
 export function createPurchaseOrder(input: Record<string, unknown>) {
-  return apiRequest("/purchases", { method: "POST", body: JSON.stringify(input) });
+  return apiRequest<{ data: { id: string; number: string; lines: { id: string }[] } }>("/purchases", { method: "POST", body: JSON.stringify(input) });
 }
 
 export function transitionPurchaseOrder(id: string, action: "submit" | "approve") {

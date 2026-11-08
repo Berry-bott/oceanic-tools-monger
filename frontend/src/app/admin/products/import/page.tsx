@@ -11,7 +11,7 @@ import { commitProductImport, parseProductImport, productKeys, validateProductIm
 
 type ImportRow = Record<string, unknown>;
 type Validation = { branchId: string; total: number; valid: number; invalid: number; rows: { row: number; status: string; errors: string[]; possibleMatch?: { name: string; sku: string } }[] };
-const canManage = (role?: string) => role === "OWNER" || role === "STAFF";
+const canManage = (user?: { role: string; staffAccessRole?: string | null }) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 
 export default function ProductImportPage() {
   const userQuery = useCurrentUser();
@@ -50,7 +50,7 @@ export default function ProductImportPage() {
   }
 
   if (userQuery.isPending) return <AdminPageSkeleton variant="form" />;
-  if (!userQuery.data || !canManage(userQuery.data.user.role)) return <main className="p-8 text-sm text-muted">You do not have access to import products.</main>;
+  if (!userQuery.data || !canManage(userQuery.data.user)) return <main className="p-8 text-sm text-muted">You do not have access to import products.</main>;
   const branches = branchesQuery.data?.data ?? [];
 
   return (

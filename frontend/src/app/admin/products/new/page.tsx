@@ -19,9 +19,9 @@ import { checkProductDuplicates, type ProductDuplicate } from "@/services/produc
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 
 type Role = "OWNER" | "STAFF";
-type User = { id: string; name: string; email: string; role: Role; branchId?: string | null };
+type User = { id: string; name: string; email: string; role: Role; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null; branchId?: string | null };
 type Branch = { id: string; name: string; isDefault: boolean };
-const canManage = (role: Role) => role === "OWNER" || role === "STAFF";
+const canManage = (user: User | null) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 
 const fieldClass = "grid gap-2 text-sm text-[#536159]";
 const inputClass = "h-11 w-full rounded-lg border border-[#dfe6e0] bg-white px-3 text-sm text-[#34413a] outline-none placeholder:text-[#aab3ac] focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]";
@@ -53,13 +53,14 @@ export default function NewProductPage() {
   const [pendingDuplicateKey, setPendingDuplicateKey] = useState("");
   const createProductMutation = useCreateProduct();
   const uploadImageMutation = useUploadProductImage();
+  const returnToReceiving = searchParams.get("returnTo") === "receive-stock";
   const selectedCategoryId = selectedCategoryIdOverride ?? searchParams.get("categoryId") ?? "";
   const selectedCategory = categoriesQuery.data?.data.find((category) => category.id === selectedCategoryId);
   const assignedBranch = branchQuery.data?.data.find((branch) => branch.id === user?.branchId);
 
   async function createProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !canManage(user.role)) return;
+    if (!user || !canManage(user)) return;
     setError("");
     setSaving(true);
     const form = new FormData(event.currentTarget);
@@ -139,7 +140,7 @@ export default function NewProductPage() {
         "oceanic-product-created",
         (savedProductVisibility ?? publishOnSave) ? "published" : "draft",
       );
-      router.push("/admin/products");
+      router.push(returnToReceiving ? "/admin/purchasing" : "/admin/products");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -153,7 +154,7 @@ export default function NewProductPage() {
 
   if (loading)
     return <AdminPageSkeleton variant="form" />;
-  if (!user || !canManage(user.role))
+  if (!user || !canManage(user))
     return (
       <main className="mx-auto max-w-3xl px-6 py-10">
         <section
@@ -176,9 +177,9 @@ export default function NewProductPage() {
       >
         <Link
           className="text-[#397853] [&:hover]:[text-decoration:underline]"
-          href="/admin/products"
+          href={returnToReceiving ? "/admin/purchasing" : "/admin/products"}
         >
-          Products
+          {returnToReceiving ? "Receive stock" : "Products"}
         </Link>
         <span> / Add product</span>
       </nav>
@@ -194,13 +195,18 @@ export default function NewProductPage() {
             Add the product details and its quantity for the branch.
           </p>
         </div>
-        <Link
-          href="/admin/categories"
-          className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas"
-        >
-          <AdminUiIcon name="folder" size={17} />
-          Manage categories
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {returnToReceiving && <Link href="/admin/purchasing" className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas">
+            Return to receiving
+          </Link>}
+          <Link
+            href="/admin/categories"
+            className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas"
+          >
+            <AdminUiIcon name="folder" size={17} />
+            Manage categories
+          </Link>
+        </div>
       </header>
       <div className="mx-auto w-full max-w-4xl">
         <form

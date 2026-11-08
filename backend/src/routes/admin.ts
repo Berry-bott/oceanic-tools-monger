@@ -46,12 +46,12 @@ businessRouter.patch("/", requireRoles("OWNER"), async (request, response) => {
 
 usersRouter.get("/", async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
-  response.json({ data: await prisma.user.findMany({ where: { businessId: auth.businessId }, select: { id: true, name: true, email: true, role: true, branchId: true, branch: { select: { name: true } }, isActive: true, createdAt: true, updatedAt: true }, orderBy: { name: "asc" } }) });
+  response.json({ data: await prisma.user.findMany({ where: { businessId: auth.businessId }, select: { id: true, name: true, email: true, role: true, staffAccessRole: true, branchId: true, branch: { select: { name: true } }, isActive: true, createdAt: true, updatedAt: true }, orderBy: { name: "asc" } }) });
 });
 
 usersRouter.post("/", async (request, response) => {
-  const parsed = z.object({ name: z.string().trim().min(1).max(180), email: z.email(), password: z.string().min(12).max(200), branchId: z.string().min(1), role: z.literal("STAFF").default("STAFF") }).safeParse(request.body);
-  if (!parsed.success) throw new ApiError(400, "Provide a name, valid email, strong password and branch.", "VALIDATION_ERROR", parsed.error.issues);
+  const parsed = z.object({ name: z.string().trim().min(1).max(180), email: z.email(), password: z.string().length(6), branchId: z.string().min(1), staffAccessRole: z.enum(["CASHIER", "SENIOR_STAFF"]) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Provide a name, valid email, six-character temporary password and branch.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const branch = await prisma.branch.findFirst({ where: { id: parsed.data.branchId, businessId: auth.businessId }, select: { id: true } });
   if (!branch) throw new ApiError(404, "Choose a branch in this business.", "BRANCH_NOT_FOUND");
@@ -61,7 +61,7 @@ usersRouter.post("/", async (request, response) => {
   let user;
   try {
     user = await prisma.$transaction(async (transaction) => {
-      const created = await transaction.user.create({ data: { businessId: auth.businessId, branchId: branch.id, name: parsed.data.name, email, passwordHash, role: parsed.data.role }, select: { id: true, name: true, email: true, role: true, branchId: true, branch: { select: { name: true } }, isActive: true, createdAt: true } });
+      const created = await transaction.user.create({ data: { businessId: auth.businessId, branchId: branch.id, name: parsed.data.name, email, passwordHash, role: "STAFF", staffAccessRole: parsed.data.staffAccessRole, mustChangePassword: true }, select: { id: true, name: true, email: true, role: true, staffAccessRole: true, branchId: true, branch: { select: { name: true } }, isActive: true, createdAt: true } });
       await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "USER_CREATED", entityType: "User", entityId: created.id, after: { email: created.email, role: created.role, branchId: created.branchId } });
       return created;
     });
@@ -69,7 +69,7 @@ usersRouter.post("/", async (request, response) => {
     // The previous UserRole enum does not contain STAFF. Postgres reports 22P02
     // when it rejects that role, which means the consolidation migration is pending.
     if (hasDatabaseErrorCode(error, "22P02")) {
-      throw new ApiError(503, "The staff-role database migration has not been applied. Apply migration 20261102090000_consolidate_staff_roles, then retry.", "STAFF_ROLE_MIGRATION_REQUIRED");
+      throw new ApiError(503, "Apply the staff access roles database migration, then retry.", "STAFF_ROLE_MIGRATION_REQUIRED");
     }
     throw error;
   }
@@ -77,7 +77,7 @@ usersRouter.post("/", async (request, response) => {
 });
 
 usersRouter.patch("/:userId", async (request, response) => {
-  const parsed = z.object({ isActive: z.boolean().optional(), name: z.string().trim().min(1).max(180).optional(), branchId: z.string().min(1).optional() }).safeParse(request.body);
+  const parsed = z.object({ isActive: z.boolean().optional(), name: z.string().trim().min(1).max(180).optional(), branchId: z.string().min(1).optional(), staffAccessRole: z.enum(["CASHIER", "SENIOR_STAFF"]).optional() }).safeParse(request.body);
   if (!parsed.success || !Object.keys(parsed.success ? parsed.data : {}).length) throw new ApiError(400, "Provide valid user fields to update.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const user = await prisma.user.findFirst({ where: { id: request.params.userId as string, businessId: auth.businessId } });
@@ -85,8 +85,8 @@ usersRouter.patch("/:userId", async (request, response) => {
   if (user.role === "OWNER") throw new ApiError(409, "Owner accounts cannot be changed here.", "OWNER_UPDATE_BLOCKED");
   if (parsed.data.branchId && !await prisma.branch.findFirst({ where: { id: parsed.data.branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Choose a branch in this business.", "BRANCH_NOT_FOUND");
   const updated = await prisma.$transaction(async (transaction) => {
-    const result = await transaction.user.update({ where: { id: user.id }, data: parsed.data, select: { id: true, name: true, email: true, role: true, branchId: true, branch: { select: { name: true } }, isActive: true } });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: parsed.data.branchId ? "USER_BRANCH_CHANGED" : "USER_UPDATED", entityType: "User", entityId: user.id, before: { role: user.role, isActive: user.isActive, branchId: user.branchId }, after: { role: result.role, isActive: result.isActive, branchId: result.branchId } });
+    const result = await transaction.user.update({ where: { id: user.id }, data: parsed.data, select: { id: true, name: true, email: true, role: true, staffAccessRole: true, branchId: true, branch: { select: { name: true } }, isActive: true } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: parsed.data.branchId ? "USER_BRANCH_CHANGED" : "USER_UPDATED", entityType: "User", entityId: user.id, before: { role: user.role, staffAccessRole: user.staffAccessRole, isActive: user.isActive, branchId: user.branchId }, after: { role: result.role, staffAccessRole: result.staffAccessRole, isActive: result.isActive, branchId: result.branchId } });
     if (!result.isActive) await transaction.session.deleteMany({ where: { userId: result.id } });
     return result;
   });

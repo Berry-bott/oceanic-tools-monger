@@ -2,13 +2,12 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { ApiError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 import { writeAudit } from "../lib/audit.js";
 import { cleanupTrackedMedia, createMediaUploadMiddleware, createTrackedMedia, type MediaPurpose } from "../lib/media-storage.js";
 
 export const mediaRouter = Router();
-const mediaRoles = ["OWNER", "STAFF"] as const;
-mediaRouter.use(requireAuth, requireRoles(...mediaRoles));
+mediaRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 
 const purposes = {
   "course-videos": "COURSE_VIDEO",

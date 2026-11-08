@@ -5,6 +5,7 @@ export type StaffMember = {
   name: string;
   email: string;
   role: "OWNER" | "STAFF";
+  staffAccessRole: "CASHIER" | "SENIOR_STAFF" | null;
   branchId: string | null;
   branch?: { name: string } | null;
   isActive: boolean;
@@ -16,6 +17,7 @@ export type CreateStaffInput = {
   email: string;
   password: string;
   branchId: string;
+  staffAccessRole: "CASHIER" | "SENIOR_STAFF";
 };
 
 export const staffKeys = {
@@ -31,14 +33,14 @@ export async function getStaffMembers() {
 export async function createStaffMember(input: CreateStaffInput) {
   const response = await apiRequest<{ data: StaffMember }>("/users", {
     method: "POST",
-    body: JSON.stringify({ ...input, role: "STAFF" }),
+    body: JSON.stringify(input),
   });
   return response.data;
 }
 
 export async function updateStaffMember(
   id: string,
-  input: { name?: string; isActive?: boolean; branchId?: string },
+  input: { name?: string; isActive?: boolean; branchId?: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" },
 ) {
   const response = await apiRequest<{ data: StaffMember }>(
     `/users/${encodeURIComponent(id)}`,

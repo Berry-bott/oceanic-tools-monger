@@ -184,7 +184,7 @@ export default function CreditorsPage() {
 
     {showCreate && createPortal((
       <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowCreate(false); }}>
-        <AdminDialogPanel className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4" role="dialog" aria-modal="true" aria-labelledby="creditor-create-title" onEscape={() => setShowCreate(false)}>
+        <AdminDialogPanel className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4" role="dialog" aria-modal="true" aria-labelledby="creditor-create-title" onEscape={() => setShowCreate(false)}>
           <div className="mb-5 flex items-start justify-between gap-4">
             <div><h2 id="creditor-create-title" className="m-0 text-lg font-semibold text-[#26372d]">Add a creditor account</h2><p className="mb-0 mt-1 text-sm text-muted">Save their details and the agreed credit limit and payment time.</p></div>
             <button type="button" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line bg-white text-muted hover:bg-canvas" onClick={() => setShowCreate(false)} aria-label="Close"><AdminUiIcon name="close" size={15} /></button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
@@ -15,6 +16,7 @@ type DataRow = Record<string, unknown>;
 const canView = (role?: string) => role === "OWNER" || role === "STAFF";
 const today = () => new Date().toLocaleDateString("en-CA");
 const titleCase = (value: string) => value.replaceAll(/([A-Z])/g, " $1").replaceAll("_", " ").replace(/^\w/, (letter) => letter.toUpperCase());
+const sourceLabel = (value: string) => value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const chartDate = (value: string) => {
   const date = new Date(`${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "short" }).format(date);
@@ -121,11 +123,52 @@ function SalesPerformance({ report, from, to, currency, branchSelected }: { repo
           <div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">Best-selling products</h2><p className="mb-0 mt-1 text-sm text-muted">Top products by sales revenue.</p></div>
           <ReportTable rows={bestSellerRows} currency={currency} emptyText="No products sold in this period." />
         </article>
-        <article className="rounded-xl border border-line bg-white p-4">
-          <h2 className="m-0 text-base font-semibold">Where sales came from</h2>
-          <div className="mt-3 grid gap-5 sm:grid-cols-2">
-            <div><h3 className="m-0 text-sm font-medium">Payment method</h3>{paymentMethods.length ? <div className="mt-2 space-y-2">{paymentMethods.map((row) => <div key={String(row.method)} className="flex justify-between gap-3 text-sm"><span className="text-muted">{titleCase(String(row.method ?? "Other"))}</span><strong>{formatMoney(row.amount, currency)}</strong></div>)}</div> : <p className="text-sm text-muted">No customer payments recorded.</p>}</div>
-            <div><h3 className="m-0 text-sm font-medium">Sales channel</h3>{channels.length ? <div className="mt-2 space-y-2">{channels.map((row) => <div key={String(row.channel)} className="flex justify-between gap-3 text-sm"><span className="text-muted">{titleCase(String(row.channel ?? "Other"))}</span><strong>{formatMoney(row.amount, currency)}</strong></div>)}</div> : <p className="text-sm text-muted">No sales recorded.</p>}</div>
+        <article className="rounded-xl border border-line bg-white p-4 sm:p-5">
+          <div className="mb-4">
+            <h2 className="m-0 text-base font-semibold">Where sales came from</h2>
+            <p className="mb-0 mt-1 text-sm text-muted">Compare how customers paid and where sales were recorded.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              { title: "Payment method", caption: "Money received", rows: paymentMethods, key: "method", empty: "No customer payments recorded." },
+              { title: "Sales channel", caption: "Sales revenue", rows: channels, key: "channel", empty: "No sales recorded." },
+            ] as const).map((group) => {
+              const total = group.rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+              const colors = ["bg-[#27805f]", "bg-[#65a989]", "bg-[#a8cbb5]", "bg-[#d0e2d5]"];
+              return (
+                <section key={group.title} className="min-w-0 rounded-xl border border-[#e7ece8] bg-[#fbfcfb] p-4" aria-label={group.title}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="m-0 text-sm font-semibold text-[#35453b]">{group.title}</h3>
+                      <p className="mb-0 mt-1 text-xs text-muted">{group.caption}</p>
+                    </div>
+                    <strong className="shrink-0 text-sm font-semibold tabular-nums text-[#26372d]">{formatMoney(total, currency)}</strong>
+                  </div>
+                  {group.rows.length ? (
+                    <>
+                      <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-[#e8eeea]" aria-hidden="true">
+                        {group.rows.map((row, index) => <span key={String(row[group.key])} className={`${colors[index % colors.length]} h-full`} style={{ width: `${total > 0 ? Math.max(0, Number(row.amount ?? 0) / total * 100) : 0}%` }} />)}
+                      </div>
+                      <div className="mt-3 grid gap-2.5">
+                        {group.rows.map((row, index) => {
+                          const amount = Number(row.amount ?? 0);
+                          return (
+                            <div key={String(row[group.key])} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm">
+                              <span className="flex min-w-0 items-center gap-2 text-[#65736a]">
+                                <span className={`size-2 shrink-0 rounded-full ${colors[index % colors.length]}`} aria-hidden="true" />
+                                <span className="truncate">{sourceLabel(String(row[group.key] ?? "Other"))}</span>
+                              </span>
+                              <strong className="text-right font-semibold tabular-nums text-[#35453b]">{formatMoney(amount, currency)}</strong>
+                              <span className="col-start-1 text-xs text-[#929d95]">{total > 0 ? `${Math.round(amount / total * 100)}%` : "0%"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : <p className="mb-0 mt-4 rounded-lg bg-white px-3 py-4 text-sm text-muted">{group.empty}</p>}
+                </section>
+              );
+            })}
           </div>
         </article>
       </section>
@@ -226,6 +269,25 @@ export default function ReportsPage() {
         <section className="overflow-hidden rounded-xl border border-line bg-white"><div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">Profit and loss details</h2><p className="mb-0 mt-1 text-sm text-muted">Income and costs recorded in the selected period.</p></div><ReportTable rows={data} currency={currency} emptyText="No accounting activity for this period." /></section>
       </>}
 
+      {path === "expenses" && !reportQuery.isLoading && !reportQuery.error && <>
+        <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Expense summary">
+          <SummaryCard label="Total expenses" value={Number(summary.totalExpenses ?? 0)} currency={currency} detail="Recorded by expense date in the selected period" />
+          <SummaryCard label="Staff payments" value={Number(summary.staffPayments ?? 0)} currency={currency} />
+          <SummaryCard label="Expense records" value={Number(summary.expenseCount ?? 0)} currency={currency} money={false} />
+        </section>
+        <section className="mb-4 overflow-hidden rounded-xl border border-line bg-white">
+          <div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">Expenses by category</h2><p className="mb-0 mt-1 text-sm text-muted">Category totals for {from} to {to}{branchId ? " in the selected branch" : " across all branches"}.</p></div>
+          <ReportTable rows={Array.isArray(summary.byCategory) ? summary.byCategory as DataRow[] : []} currency={currency} emptyText="No expenses recorded in this period." />
+        </section>
+        <section className="overflow-hidden rounded-xl border border-line bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
+            <div><h2 className="m-0 text-base font-semibold">Expense transactions</h2><p className="mb-0 mt-1 text-sm text-muted">Individual recorded expenses, including staff payments.</p></div>
+            <Link href="/admin/expenses" className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink hover:bg-canvas">Record an expense</Link>
+          </div>
+          <ReportTable rows={data} currency={currency} emptyText="No expenses recorded in this period." />
+        </section>
+      </>}
+
       {path === "customer-payments" && !reportQuery.isLoading && <>
         <section className="mb-4 grid gap-3 sm:grid-cols-2"><SummaryCard label="Customer payments received" value={Number(summary.totalReceived ?? 0)} currency={currency} /><SummaryCard label="Payments" value={Number(summary.paymentCount ?? 0)} currency={currency} money={false} detail="Successful payments in this period" /></section>
         <section className="overflow-hidden rounded-xl border border-line bg-white"><div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">Customer payment details</h2><p className="mb-0 mt-1 text-sm text-muted">Each row shows the part of a payment applied to a sale.</p></div><ReportTable rows={data} currency={currency} emptyText="No customer payments in this date range." /></section>
@@ -249,7 +311,7 @@ export default function ReportsPage() {
         <section className="overflow-hidden rounded-xl border border-line bg-white"><div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">Stock activity and exceptions</h2><p className="mb-0 mt-1 text-sm text-muted">Each row keeps its product unit separate. Export this report to review stock, transfers, counts and batches.</p></div><ReportTable rows={data} currency={currency} emptyText="No stock activity is recorded." /></section>
       </>}
 
-      {!reportQuery.isLoading && path !== "weekly-performance" && path !== "profit-loss" && path !== "customer-payments" && path !== "supplier-balances" && path !== "stock-operations" && <>
+      {!reportQuery.isLoading && path !== "weekly-performance" && path !== "profit-loss" && path !== "expenses" && path !== "customer-payments" && path !== "supplier-balances" && path !== "stock-operations" && <>
         {Object.keys(summary).length > 0 && <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Report summary">{Object.entries(summary).filter(([key, value]) => key !== "currency" && (typeof value === "number" || typeof value === "string")).map(([key, value]) => <SummaryCard key={key} label={titleCase(key)} value={value} currency={currency} />)}</section>}
         {report.totalValue !== undefined && <section className="mb-4 grid gap-3 sm:grid-cols-2"><SummaryCard label="Total value" value={Number(report.totalValue)} currency={currency} /></section>}
         <section className="overflow-hidden rounded-xl border border-line bg-white"><div className="border-b border-line p-4"><h2 className="m-0 text-base font-semibold">{option.label}</h2><p className="mb-0 mt-1 text-sm text-muted">{data.length} rows</p></div><ReportTable rows={data} currency={currency} emptyText="No rows for this report and date range." /></section>

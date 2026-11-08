@@ -41,7 +41,7 @@ const normalizeCashShiftNotification = (notification: { title: string | null; me
 
 export const notificationsRouter = Router();
 export const auditRouter = Router();
-notificationsRouter.use(requireAuth);
+notificationsRouter.use(requireAuth, requireRoles("OWNER"));
 auditRouter.use(requireAuth, requireRoles("OWNER"));
 
 notificationsRouter.get("/", async (request, response) => {

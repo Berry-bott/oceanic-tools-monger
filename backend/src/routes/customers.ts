@@ -5,10 +5,10 @@ import { ApiError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry } from "../lib/accounting.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const customersRouter = Router();
-const customerSchema = z.object({ name: z.string().trim().min(1).max(180), phone: z.string().trim().max(40).optional(), email: z.email().optional(), address: z.string().trim().max(1000).optional(), creditLimit: z.coerce.number().min(0).optional(), creditDays: z.coerce.number().int().min(0).max(365).optional(), emailRemindersAllowed: z.boolean().optional(), smsRemindersAllowed: z.boolean().optional() });
+const customerSchema = z.object({ name: z.string().trim().min(1).max(180), type: z.enum(["PERSONAL", "COMPANY"]).optional(), companyName: z.string().trim().max(180).optional(), contactPerson: z.string().trim().max(180).optional(), phone: z.string().trim().max(40).optional(), email: z.email().optional(), address: z.string().trim().max(1000).optional(), creditLimit: z.coerce.number().min(0).optional(), creditDays: z.coerce.number().int().min(0).max(365).optional(), emailRemindersAllowed: z.boolean().optional(), smsRemindersAllowed: z.boolean().optional() });
 customersRouter.use(requireAuth);
 
 customersRouter.get("/", async (request, response) => {
@@ -18,11 +18,13 @@ customersRouter.get("/", async (request, response) => {
   response.json({ data: customers.map(({ sales, ...customer }) => {
     const invoiced = sales.reduce((sum, sale) => sum + Number(sale.total) - sale.returns.reduce((returnSum, entry) => returnSum + Number(entry.total), 0), 0);
     const paid = sales.reduce((sum, sale) => sum + sale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((subtotal, entry) => subtotal + Number(entry.amount), 0), 0);
-    return { ...customer, totalPurchases: invoiced, totalPayments: paid, outstandingBalance: invoiced - paid };
+    const canSeeMoney = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
+    const { creditLimit, creditDays, ...customerDetails } = customer;
+    return { ...customerDetails, ...(canSeeMoney ? { creditLimit, creditDays, totalPurchases: invoiced, totalPayments: paid, outstandingBalance: invoiced - paid } : {}) };
   }) });
 });
 
-customersRouter.get("/:customerId/statement", async (request, response) => {
+customersRouter.get("/:customerId/statement", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const customer = await prisma.customer.findFirst({
     where: { id: request.params.customerId as string, businessId: auth.businessId },
@@ -40,8 +42,10 @@ customersRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, respon
   const parsed = customerSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the customer details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
+  if (auth.role === "STAFF" && auth.staffAccessRole === "CASHIER" && (parsed.data.creditLimit !== undefined || parsed.data.creditDays !== undefined)) throw new ApiError(403, "Only senior staff or the owner can change customer credit terms.", "FORBIDDEN");
+  if (parsed.data.type === "COMPANY" && !parsed.data.companyName?.trim()) throw new ApiError(400, "Enter the company name.", "COMPANY_NAME_REQUIRED");
   const customer = await prisma.$transaction(async (transaction) => {
-    const created = await transaction.customer.create({ data: { ...parsed.data, businessId: auth.businessId } });
+    const created = await transaction.customer.create({ data: { ...parsed.data, ...(parsed.data.type === "COMPANY" ? { name: parsed.data.companyName!.trim() } : {}), businessId: auth.businessId } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CUSTOMER_CREATED", entityType: "Customer", entityId: created.id, after: { name: created.name } });
     return created;
   });
@@ -52,6 +56,7 @@ customersRouter.patch("/:customerId", requireRoles("OWNER", "STAFF"), async (req
   const parsed = customerSchema.partial().safeParse(request.body);
   if (!parsed.success || !Object.keys(parsed.success ? parsed.data : {}).length) throw new ApiError(400, "Provide valid customer fields to update.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
+  if (auth.role === "STAFF" && auth.staffAccessRole === "CASHIER" && (parsed.data.creditLimit !== undefined || parsed.data.creditDays !== undefined)) throw new ApiError(403, "Only senior staff or the owner can change customer credit terms.", "FORBIDDEN");
   const existing = await prisma.customer.findFirst({ where: { id: request.params.customerId as string, businessId: auth.businessId } });
   if (!existing) throw new ApiError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
   if (parsed.data.emailRemindersAllowed && !(parsed.data.email ?? existing.email)) throw new ApiError(400, "Add an email address before enabling email reminders.", "EMAIL_REQUIRED_FOR_CONSENT");
@@ -67,7 +72,7 @@ customersRouter.patch("/:customerId", requireRoles("OWNER", "STAFF"), async (req
 const allocationSchema = z.object({ saleId: z.string(), amount: z.coerce.number().positive() });
 const paymentSchema = z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), reference: z.string().trim().min(1).max(80), allocations: z.array(allocationSchema).min(1) });
 
-customersRouter.post("/:customerId/payments", requireRoles("OWNER", "STAFF"), async (request, response) => {
+customersRouter.post("/:customerId/payments", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = paymentSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the payment details and allocations.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -109,7 +114,7 @@ customersRouter.post("/:customerId/payments", requireRoles("OWNER", "STAFF"), as
   response.status(201).json({ data: payment });
 });
 
-customersRouter.get("/:customerId/reminders", requireRoles("OWNER", "STAFF"), async (request, response) => {
+customersRouter.get("/:customerId/reminders", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const customer = await prisma.customer.findFirst({ where: { id: request.params.customerId as string, businessId: auth.businessId }, select: { id: true } });
   if (!customer) throw new ApiError(404, "Customer not found.", "CUSTOMER_NOT_FOUND");
@@ -117,7 +122,7 @@ customersRouter.get("/:customerId/reminders", requireRoles("OWNER", "STAFF"), as
   response.json({ data });
 });
 
-customersRouter.post("/:customerId/reminders", requireRoles("OWNER", "STAFF"), async (request, response) => {
+customersRouter.post("/:customerId/reminders", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ channels: z.array(z.enum(["EMAIL", "SMS"])).min(1).max(2) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Choose one or more reminder channels.", "VALIDATION_ERROR", parsed.error.issues);
   if (new Set(parsed.data.channels).size !== parsed.data.channels.length) throw new ApiError(400, "Reminder channels must be unique.", "DUPLICATE_CHANNEL");

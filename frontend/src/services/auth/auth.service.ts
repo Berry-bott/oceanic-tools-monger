@@ -6,6 +6,8 @@ export type CurrentUser = {
   name?: string;
   email?: string;
   role: string;
+  staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null;
+  mustChangePassword?: boolean;
   branchId?: string | null;
 };
 
@@ -31,6 +33,13 @@ export function signOut() {
 
 export function signInUser(input: { email: FormDataEntryValue | null; password: FormDataEntryValue | null }) {
   return apiRequest<CurrentUserSession>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function changePassword(input: { currentPassword: string; newPassword: string }) {
+  return apiRequest<void>("/auth/change-password", {
     method: "POST",
     body: JSON.stringify(input),
   });

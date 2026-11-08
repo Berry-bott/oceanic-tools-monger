@@ -24,7 +24,7 @@ import {
 } from "@/services/inventory/inventory.service";
 import { useInventoryWorkflow } from "@/hooks/mutations/use-inventory-workflow";
 
-type User = { id: string; name: string; email: string; role: string; branchId?: string | null };
+type User = { id: string; name: string; email: string; role: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null; branchId?: string | null };
 type Branch = { id: string; name: string; isDefault: boolean };
 type Product = { id: string; name: string; sku: string; unit?: string };
 type Balance = {
@@ -110,8 +110,8 @@ type ProductStock = Omit<Balance, "branch" | "branchId" | "onHand" | "reserved" 
   reserved: number;
   available: number;
 };
-const manageable = (role?: string) =>
-  role === "OWNER" || role === "STAFF";
+const manageable = (user?: User) =>
+  user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 const fmt = (value: number | string) =>
   new Intl.NumberFormat("en-NG", { maximumFractionDigits: 2 }).format(
     Number(value),
@@ -247,7 +247,7 @@ export default function InventoryPage() {
 
   if (!user)
     return <AdminPageSkeleton />;
-  const canManage = manageable(user.role);
+  const canManage = manageable(user);
   const stockRows = summary?.data ?? [];
   const categories = [...new Set(stockRows.map((row) => row.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const groupedStockRows = useMemo(() => {

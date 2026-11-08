@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
@@ -239,25 +240,25 @@ export default function CategoriesPage() {
         </div>
       </section>
 
-      {deleteTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
-        <AdminDialogPanel role="alertdialog" aria-modal="true" aria-labelledby="delete-category-title" onEscape={() => setDeleteTarget(null)} className="w-full max-w-sm rounded-[14px] border border-line bg-white p-4 shadow-2xl">
+      {deleteTarget && createPortal(<div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}>
+        <AdminDialogPanel role="alertdialog" aria-modal="true" aria-labelledby="delete-category-title" onEscape={() => setDeleteTarget(null)} className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-[14px] border border-line bg-white p-4 shadow-2xl">
           <span className="mb-4 grid size-11 place-items-center rounded-xl bg-red-50 text-red-700"><AdminUiIcon name="trash" size={20} /></span>
           <h2 id="delete-category-title" className="m-0 text-lg font-semibold text-ink">Delete {deleteTarget.type}?</h2>
           <p className="mb-0 mt-2 text-sm leading-6 text-muted"><strong className="font-medium text-ink">{deleteTarget.name}</strong> can only be deleted if nothing is using it.</p>
           <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleting} className={`${secondaryButton} cursor-pointer disabled:cursor-wait`} onClick={() => setDeleteTarget(null)}>Cancel</button><button type="button" disabled={deleting} className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-red-700 bg-red-700 px-4 text-sm text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60" onClick={() => void confirmDelete()}>{deleting ? <><FourDotLoader />Deleting...</> : <><AdminUiIcon name="trash" size={15} />Delete</>}</button></div>
         </AdminDialogPanel>
-      </div>}
-      {subcategoryModalCategory && <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSubcategoryModalId(null); }}>
-        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="subcategory-list-title" onEscape={() => setSubcategoryModal(null)} className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-[#e5ebe6] bg-white shadow-[0_24px_70px_rgba(12,25,25,.24)]">
+      </div>, document.body)}
+      {subcategoryModalCategory && createPortal(<div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSubcategoryModalId(null); }}>
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="subcategory-list-title" onEscape={() => setSubcategoryModalId(null)} className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#e5ebe6] bg-white shadow-[0_24px_70px_rgba(12,25,25,.24)]">
           <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div><p className="mb-1 mt-0 text-xs font-medium tracking-wide text-[#718b79]">SUBCATEGORIES</p><h2 id="subcategory-list-title" className="m-0 text-lg font-semibold text-ink">{subcategoryModalCategory.name}</h2><p className="mb-0 mt-1 text-sm text-muted">{subcategoryModalCategory.subcategories.length} subcategories</p></div>
             <button type="button" aria-label="Close subcategories" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:bg-canvas" onClick={() => setSubcategoryModalId(null)}><AdminUiIcon name="close" size={15} /></button>
           </div>
-          <div className="grid max-h-[min(60vh,420px)] grid-cols-2 gap-2 overflow-y-auto p-5 max-[420px]:grid-cols-1">
+          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto p-5 max-[420px]:grid-cols-1">
             {subcategoryModalCategory.subcategories.map((subcategory) => renderSubcategory(subcategoryModalCategory.id, subcategory, true))}
           </div>
         </AdminDialogPanel>
-      </div>}
+      </div>, document.body)}
     </main>
   );
 }

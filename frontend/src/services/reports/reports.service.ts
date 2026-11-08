@@ -2,6 +2,7 @@ import { apiDownload, apiRequest } from "@/lib/api";
 
 export const adminReportOptions = [
   { label: "Sales and profit", path: "weekly-performance", dated: true, branch: true },
+  { label: "Expenses", path: "expenses", dated: true, branch: true },
   { label: "Profit and loss", path: "profit-loss", dated: true, branch: false },
   { label: "Balance sheet", path: "balance-sheet", dated: true, branch: false },
   { label: "Cash flow", path: "cash-flow", dated: true, branch: false },

@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { AdminDialogPanel } from "@/components/admin-motion";
 
 type AppErrorModalProps = {
@@ -14,8 +15,8 @@ export function AppErrorModal({ message, onClose, title = "Action could not be c
   const insufficientStock = message.toLowerCase().includes("insufficient available stock");
 
   return (
-    <div
-      className="fixed inset-0 z-[100] grid place-items-center bg-[#14201e]/55 p-4 backdrop-blur-sm"
+    createPortal(<div
+      className="fixed inset-0 z-[110] grid place-items-center overflow-y-auto bg-[#14201e]/55 p-4 backdrop-blur-sm"
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
@@ -25,7 +26,7 @@ export function AppErrorModal({ message, onClose, title = "Action could not be c
         aria-labelledby="app-error-title"
         aria-describedby="app-error-description"
         onEscape={onClose}
-        className="w-full max-w-md rounded-2xl border border-[#e6eae7] bg-white p-5 shadow-[0_24px_70px_rgba(12,25,25,.28)]"
+        className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[#e6eae7] bg-white p-5 shadow-[0_24px_70px_rgba(12,25,25,.28)]"
       >
         <div className="mb-4 grid size-11 place-items-center rounded-full bg-[#fff4e8] text-lg font-semibold text-[#a65c19]" aria-hidden="true">!</div>
         <h2 id="app-error-title" className="m-0 text-lg font-semibold text-[#26372d]">
@@ -40,6 +41,6 @@ export function AppErrorModal({ message, onClose, title = "Action could not be c
           <button type="button" autoFocus className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-brand px-5 text-sm font-medium text-white hover:bg-brand-dark" onClick={onClose}>Got it</button>
         </div>
       </AdminDialogPanel>
-    </div>
+    </div>, document.body)
   );
 }

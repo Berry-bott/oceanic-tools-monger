@@ -48,11 +48,15 @@ export default function LoginPage() {
       queryClient.clear();
       usePosCartStore.getState().clearCart();
       useBranchStore.getState().clearSelectedBranch();
+      if (session.user.role === "STAFF" && session.user.mustChangePassword) {
+        router.replace("/staff/change-password");
+        return;
+      }
 
       const next = new URLSearchParams(window.location.search).get("next");
       const destination = next
         ? new URL(next, window.location.origin)
-        : new URL(session.user.role === "STAFF" ? "/staff/dashboard" : "/admin", window.location.origin);
+        : new URL(session.user.role === "STAFF" ? "/admin/sales" : "/admin", window.location.origin);
 
       router.replace(
         destination.origin === window.location.origin

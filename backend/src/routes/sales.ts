@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry, type LedgerLine } from "../lib/accounting.js";
 import { takeFefoLots } from "../lib/stock-lots.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const salesRouter = Router();
 const saleSchema = z.object({ branchId: z.string(), customerId: z.string().optional(), creditReference: z.string().trim().max(100).optional(), dueAt: z.coerce.date().optional(), cashShiftId: z.string().optional(), tax: z.coerce.number().min(0).default(0), channel: z.enum(["POS", "MANUAL"]).default("POS"), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitPrice: z.coerce.number().positive().optional() })).min(1).max(100), payments: z.array(z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), amount: z.coerce.number().positive() })).default([]) });
@@ -29,9 +29,11 @@ salesRouter.get("/", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const channel = typeof request.query.channel === "string" ? request.query.channel : undefined;
   const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
+  if (auth.role === "STAFF" && (!auth.branchId || (branchId && branchId !== auth.branchId))) throw new ApiError(403, "You can only view sales for your assigned branch.", "BRANCH_ACCESS_DENIED");
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const data = await prisma.sale.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(channel ? { channel: channel as never } : {}) }, include: { customer: { select: { id: true, name: true, phone: true } }, user: { select: { id: true, name: true } }, lines: true, payments: { include: { payment: { select: { id: true, method: true, status: true, amount: true, paidAt: true } } } }, returns: { select: { total: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
-  response.json({ data });
+  const scopedBranchId = auth.role === "STAFF" ? auth.branchId : branchId;
+  const data = await prisma.sale.findMany({ where: { businessId: auth.businessId, ...(scopedBranchId ? { branchId: scopedBranchId } : {}), ...(channel ? { channel: channel as never } : {}) }, include: { customer: { select: { id: true, name: true, phone: true } }, user: { select: { id: true, name: true } }, lines: true, payments: { include: { payment: { select: { id: true, method: true, status: true, amount: true, paidAt: true } } } }, returns: { select: { total: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+  response.json({ data: auth.staffAccessRole === "CASHIER" ? data.map(({ lines, returns: _returns, ...sale }) => ({ ...sale, lines: lines.map(({ unitCost: _unitCost, ...line }) => line) })) : data });
 });
 
 salesRouter.get("/lookup", async (request, response) => {
@@ -54,6 +56,10 @@ salesRouter.get("/lookup", async (request, response) => {
     },
   });
   if (!sale || sale.status === "CANCELLED") throw new ApiError(404, "No completed sale was found for that reference.", "SALE_NOT_FOUND");
+  if (auth.staffAccessRole === "CASHIER") {
+    const { lines, ...safeSale } = sale;
+    return response.json({ data: { ...safeSale, lines: lines.map(({ unitCost: _unitCost, ...line }) => line) } });
+  }
   response.json({ data: sale });
 });
 
@@ -99,6 +105,7 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
   if (input.tax > subtotal) throw new ApiError(400, "Tax cannot exceed the sale subtotal.", "INVALID_SALE_TOTAL");
   const total = moneyRound(subtotal + input.tax);
   const paid = moneyRound(input.payments.reduce((sum, payment) => sum + payment.amount, 0));
+  if (auth.role === "STAFF" && auth.staffAccessRole === "CASHIER" && total > paid) throw new ApiError(403, "Cashiers can only complete fully paid sales.", "FORBIDDEN");
   if (paid > total) throw new ApiError(400, "Payment amount cannot exceed the amount due.", "OVERPAYMENT_NOT_SUPPORTED");
   if (input.dueAt && input.dueAt.getTime() < Date.now() && paid < total) throw new ApiError(400, "The payment deadline cannot be in the past.", "INVALID_CREDIT_DUE_DATE");
   if (paid < total && !customer) throw new ApiError(400, "Select a customer to record a credit balance.", "CUSTOMER_REQUIRED_FOR_CREDIT");
@@ -167,7 +174,7 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
 });
 
 const returnSchema = z.object({ reason: z.string().trim().min(3).max(500), method: z.enum(["CASH", "BANK_TRANSFER", "OTHER"]).default("OTHER"), lines: z.array(z.object({ saleLineId: z.string(), quantity: z.coerce.number().positive(), restock: z.boolean().default(true) })).min(1) });
-salesRouter.post("/:saleId/returns", requireRoles("OWNER", "STAFF"), async (request, response) => {
+salesRouter.post("/:saleId/returns", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = returnSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the returned items and reason.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -234,7 +241,7 @@ salesRouter.post("/:saleId/returns", requireRoles("OWNER", "STAFF"), async (requ
   response.status(201).json({ data: result });
 });
 
-salesRouter.post("/returns/:returnId/approve-refund", requireRoles("OWNER", "STAFF"), async (request, response) => {
+salesRouter.post("/returns/:returnId/approve-refund", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const refund = await prisma.refund.findFirst({ where: { saleReturnId: request.params.returnId as string, sale: { businessId: auth.businessId } } });
   if (!refund) throw new ApiError(404, "Refund request not found.", "REFUND_NOT_FOUND");

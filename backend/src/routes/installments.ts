@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { postLedgerEntry, type LedgerLine } from "../lib/accounting.js";
 import { writeAudit } from "../lib/audit.js";
 import { consumeReservedLots, releaseReservedLots, reserveFefoLots } from "../lib/stock-lots.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const installmentsRouter = Router();
 const reference = (prefix: string) => `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
@@ -30,7 +30,7 @@ const createSchema = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitPrice: z.coerce.number().positive() })).min(1).max(100),
 });
 
-installmentsRouter.use(requireAuth);
+installmentsRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 
 async function notifyBusiness(transaction: Prisma.TransactionClient, input: { businessId: string; customerId: string; title: string; message: string; key: string; severity?: string }) {
   const customer = await transaction.customer.findFirst({ where: { id: input.customerId, businessId: input.businessId } });

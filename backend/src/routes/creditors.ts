@@ -3,10 +3,10 @@ import { z } from "zod";
 import { ApiError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const creditorsRouter = Router();
-creditorsRouter.use(requireAuth);
+creditorsRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 
 const creditorSchema = z.object({
   type: z.enum(["PERSONAL", "COMPANY"]),
@@ -75,7 +75,7 @@ creditorsRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, respon
   response.status(201).json({ data: created });
 });
 
-creditorsRouter.patch("/:customerId", requireRoles("OWNER"), async (request, response) => {
+creditorsRouter.patch("/:customerId", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const parsed = creditorSchema.partial().safeParse(request.body);
   if (!parsed.success || !Object.keys(parsed.success ? parsed.data : {}).length) throw new ApiError(400, "Provide valid creditor details to update.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;

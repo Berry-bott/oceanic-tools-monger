@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -16,23 +17,25 @@ import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { AdminPageEntrance } from "@/components/admin-motion";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 
-const navigation: { section: string; label: string; href: string; ownerOnly?: boolean; icon: string }[] = [
-  { section: "Sell", label: "Overview", href: "/admin", icon: "home" },
-  { section: "Sell", label: "Point of sale", href: "/admin/sales", icon: "sales" },
-  { section: "Sell", label: "Installments", href: "/admin/sales/installments", icon: "installments" },
-  { section: "Inventory", label: "Products", href: "/admin/products", icon: "products" },
-  { section: "Inventory", label: "Stock", href: "/admin/inventory", icon: "inventory" },
-  { section: "Inventory", label: "Buy stock", href: "/admin/purchasing", icon: "purchasing" },
-  { section: "Customers", label: "Customers", href: "/admin/customers", icon: "customers" },
-  { section: "Customers", label: "Notes", href: "/admin/notes", icon: "notes" },
-  { section: "Customers", label: "Online orders", href: "/admin/orders", icon: "orders" },
-  { section: "Money", label: "Money & reports", href: "/admin/finance", icon: "finance" },
-  { section: "Money", label: "Reports", href: "/admin/reports", icon: "finance" },
-  { section: "Money", label: "Creditors", href: "/admin/creditors", ownerOnly: true, icon: "creditors" },
-  { section: "Manage", label: "Notifications", href: "/admin/notifications", icon: "notifications" },
-  { section: "Manage", label: "Staff", href: "/admin/staff", ownerOnly: true, icon: "settings" },
-  { section: "Manage", label: "Audit history", href: "/admin/audit-logs", ownerOnly: true, icon: "settings" },
-  { section: "Manage", label: "Settings", href: "/admin/settings", ownerOnly: true, icon: "settings" },
+const navigation: { section: string; label: string; href: string; access?: "owner" | "senior" | "staff"; icon: string }[] = [
+  { section: "Sell", label: "Overview", href: "/admin", access: "owner", icon: "home" },
+  { section: "Sell", label: "Point of sale", href: "/admin/sales", access: "staff", icon: "sales" },
+  { section: "Sell", label: "Installments", href: "/admin/sales/installments", access: "senior", icon: "installments" },
+  { section: "Sell", label: "Returns", href: "/admin/sales/returns", access: "senior", icon: "sales" },
+  { section: "Inventory", label: "Products", href: "/admin/products", access: "senior", icon: "products" },
+  { section: "Inventory", label: "Stock", href: "/admin/inventory", access: "senior", icon: "inventory" },
+  { section: "Inventory", label: "Receive stock", href: "/admin/purchasing", access: "senior", icon: "purchasing" },
+  { section: "Customers", label: "Customers", href: "/admin/customers", access: "staff", icon: "customers" },
+  { section: "Customers", label: "Creditors", href: "/admin/creditors", access: "senior", icon: "creditors" },
+  { section: "Customers", label: "Notes", href: "/admin/notes", access: "staff", icon: "notes" },
+  { section: "Customers", label: "Online orders", href: "/admin/orders", access: "senior", icon: "orders" },
+  { section: "Money", label: "Money & reports", href: "/admin/finance", access: "owner", icon: "finance" },
+  { section: "Money", label: "Expenses", href: "/admin/expenses", access: "owner", icon: "expenses" },
+  { section: "Money", label: "Reports", href: "/admin/reports", access: "owner", icon: "reports" },
+  { section: "Manage", label: "Notifications", href: "/admin/notifications", access: "owner", icon: "notifications" },
+  { section: "Manage", label: "Staff", href: "/admin/staff", access: "owner", icon: "settings" },
+  { section: "Manage", label: "Audit history", href: "/admin/audit-logs", access: "owner", icon: "settings" },
+  { section: "Manage", label: "Settings", href: "/admin/settings", access: "owner", icon: "settings" },
 ];
 
 export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
@@ -43,23 +46,26 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const notificationsQuery = useQuery({
     queryKey: ["workspace-notifications"],
     queryFn: () => apiRequest<{ data: { id: string; title: string; message: string; createdAt: string; readAt: string | null }[]; unreadCount: number }>("/notifications"),
-    enabled: Boolean(currentUserQuery.data),
+    enabled: currentUserQuery.data?.user.role === "OWNER",
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
   const stockAlertsQuery = useQuery({
     queryKey: ["inventory", "sidebar-alert-count"],
     queryFn: () => apiRequest<{ summary: { lowStockCount: number; outOfStockCount: number } }>("/inventory/summary"),
-    enabled: Boolean(currentUserQuery.data),
+    enabled: currentUserQuery.data?.user.role === "OWNER" || (currentUserQuery.data?.user.role === "STAFF" && currentUserQuery.data.user.staffAccessRole === "SENIOR_STAFF"),
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
   const stockAlertCount = (stockAlertsQuery.data?.summary?.lowStockCount ?? 0) + (stockAlertsQuery.data?.summary?.outOfStockCount ?? 0);
   const markNotificationRead = useMarkNotificationRead();
-  const isStaff = currentUserQuery.data?.user.role === "STAFF";
-  const visibleNavigation = navigation.filter((item) => !item.ownerOnly || !isStaff);
+  const user = currentUserQuery.data?.user;
+  const isStaff = user?.role === "STAFF";
+  const isOwner = user?.role === "OWNER";
+  const isSenior = user?.staffAccessRole === "SENIOR_STAFF";
+  const visibleNavigation = navigation.filter((item) => item.access === "owner" ? isOwner : item.access === "senior" ? isOwner || isSenior : item.access === "staff" ? isOwner || isStaff : true);
   const navigationSections = Array.from(new Set(visibleNavigation.map((item) => item.section)));
-  const homeHref = isStaff ? "/staff/dashboard" : "/admin";
+  const homeHref = isStaff ? "/admin/sales" : "/admin";
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -67,7 +73,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const isNavigationItemActive = (item: (typeof navigation)[number]) => item.href === "/admin"
     ? pathname === item.href || pathname.startsWith("/staff")
     : item.href === "/admin/sales"
-      ? pathname === item.href || (pathname.startsWith(`${item.href}/`) && !pathname.startsWith("/admin/sales/installments"))
+      ? pathname === item.href || (pathname.startsWith(`${item.href}/`) && !pathname.startsWith("/admin/sales/installments") && !pathname.startsWith("/admin/sales/returns"))
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
   const current = visibleNavigation.find(isNavigationItemActive) ?? visibleNavigation[0];
 
@@ -116,7 +122,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
       {mobileOpen && <button className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col border-r border-[#203131] bg-[#0c1919] px-4 py-6 text-white transition-transform lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <Link className="mb-9 flex h-10 items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="OceanicToolsMonger home">
-          <span className="grid size-9 place-items-center rounded-xl bg-[#149e8f] text-lg font-normal">O</span>
+          <Image src="/oceantoolslogo.png" alt="" width={640} height={427} priority className="size-9 shrink-0 object-contain" />
           <span className="text-lg font-normal tracking-tight">OceanicToolsMonger</span>
         </Link>
         <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Admin pages">
@@ -129,7 +135,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                 {visibleNavigation
                   .filter((item) => item.section === section)
                   .map((item) => {
-                    const href = isStaff && item.href === "/admin" ? "/staff/dashboard" : item.href;
+                    const href = item.href;
                     const active = isNavigationItemActive(item);
 
                     return (
@@ -186,7 +192,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
               <AdminNavIcon name="notes" />
             </Link>
             <span className="hidden items-center gap-1.5 text-xs text-[#738079] sm:flex"><i className="size-1.5 rounded-full bg-[#54a576]" />Live business data</span>
-            <div className="relative" ref={notificationsRef}>
+            {isOwner && <div className="relative" ref={notificationsRef}>
               <button type="button" className="relative grid size-9 cursor-pointer place-items-center rounded-lg text-[#76837b] hover:bg-[#f1f6f2]" aria-label={`${notificationsQuery.data?.unreadCount ?? 0} unread notifications`} aria-expanded={notificationsOpen} aria-haspopup="true" onClick={() => setNotificationsOpen((value) => !value)}>
                 <AdminNavIcon name="notifications" />
                 {(notificationsQuery.data?.unreadCount ?? 0) > 0 && <span className="absolute right-0.5 top-0.5 grid min-h-4 min-w-4 place-items-center rounded-full bg-[#d56f5c] px-1 text-[10px] text-white">{notificationsQuery.data?.unreadCount}</span>}
@@ -197,7 +203,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                 {!notificationsQuery.data?.data.length && <AdminEmptyState icon="bell" title="You’re all caught up" description="New business alerts will show up here." />}
                 <Link href="/admin/notifications" onClick={() => setNotificationsOpen(false)} className="mt-2 block rounded-lg px-2 py-2 text-center text-sm font-medium text-brand hover:bg-[#f1f6f2]">View all notifications</Link>
               </AdminPageEntrance>}
-            </div>
+            </div>}
             <span className="h-6 w-px bg-line" />
             <span className="grid size-8 place-items-center rounded-full bg-[#153c3a] text-xs text-[#7fddd2]">{(currentUserQuery.data?.user.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
           </div>

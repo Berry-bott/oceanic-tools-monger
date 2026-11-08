@@ -25,7 +25,7 @@ export function useCreateStaffMember() {
 export function useUpdateStaffMember() {
   const refresh = useRefreshStaffList();
   return useMutation({
-    mutationFn: ({ id, changes }: { id: string; changes: { name?: string; isActive?: boolean; branchId?: string } }) =>
+    mutationFn: ({ id, changes }: { id: string; changes: { name?: string; isActive?: boolean; branchId?: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" } }) =>
       updateStaffMember(id, changes),
     onSuccess: refresh,
   });

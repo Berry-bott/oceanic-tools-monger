@@ -7,12 +7,12 @@ import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry } from "../lib/accounting.js";
 import { takeFefoLots } from "../lib/stock-lots.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const inventoryWorkflowRouter = Router();
-const inventoryRoles = ["OWNER", "STAFF"] as const;
+
 const ref = (prefix: string) => `${prefix}-${randomUUID().slice(0, 10).toUpperCase()}`;
-inventoryWorkflowRouter.use(requireAuth);
+inventoryWorkflowRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 
 function scopeBranch(auth: AuthContext, requestedBranchId?: string) {
   if (auth.role === "OWNER") return requestedBranchId;
@@ -103,7 +103,7 @@ inventoryWorkflowRouter.get("/movements", async (request, response) => {
   response.json({ data, meta: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
-inventoryWorkflowRouter.patch("/lots/:lotId/condition", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.patch("/lots/:lotId/condition", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const parsed = z.object({ condition: z.enum(["GOOD", "DAMAGED", "QUARANTINED", "EXPIRED"]), reason: z.string().trim().min(3).max(500) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Choose the stock condition and explain why it changed.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -141,7 +141,7 @@ inventoryWorkflowRouter.get("/transfers", async (_request, response) => {
   response.json({ data });
 });
 
-inventoryWorkflowRouter.post("/transfers", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.post("/transfers", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const parsed = z.object({ sourceBranchId: z.string(), destinationBranchId: z.string(), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive() })).min(1).max(200) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the transfer branches and quantities.", "VALIDATION_ERROR", parsed.error.issues);
   if (parsed.data.sourceBranchId === parsed.data.destinationBranchId) throw new ApiError(400, "Source and destination branches must be different.", "INVALID_TRANSFER");
@@ -162,7 +162,7 @@ inventoryWorkflowRouter.post("/transfers", requireRoles(...inventoryRoles), asyn
   response.status(201).json({ data: transfer });
 });
 
-inventoryWorkflowRouter.post("/transfers/:transferId/dispatch", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.post("/transfers/:transferId/dispatch", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const transfer = await prisma.stockTransfer.findFirst({ where: { id: request.params.transferId as string, businessId: auth.businessId }, include: { lines: true } });
   if (!transfer) throw new ApiError(404, "Transfer not found.", "TRANSFER_NOT_FOUND");
@@ -188,7 +188,7 @@ inventoryWorkflowRouter.post("/transfers/:transferId/dispatch", requireRoles(...
   response.json({ data: result });
 });
 
-inventoryWorkflowRouter.post("/transfers/:transferId/receive", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.post("/transfers/:transferId/receive", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const parsed = z.object({ lines: z.array(z.object({ lineId: z.string(), receivedQuantity: z.coerce.number().min(0), discrepancyReason: z.string().trim().max(500).optional() })).min(1).max(200) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter the quantity received for every transfer item.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -241,7 +241,7 @@ inventoryWorkflowRouter.get("/counts", async (_request, response) => {
   response.json({ data: await prisma.stockCount.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}) }, include: { branch: { select: { name: true } }, createdBy: { select: { name: true, email: true } }, approvedBy: { select: { name: true, email: true } }, postedBy: { select: { name: true, email: true } }, lines: { include: { product: { select: { name: true, sku: true, unit: true, costPrice: true } } } } }, orderBy: { createdAt: "desc" }, take: 100 }) });
 });
 
-inventoryWorkflowRouter.post("/counts", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.post("/counts", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const parsed = z.object({ branchId: z.string(), reason: z.string().trim().max(500).optional(), lines: z.array(z.object({ productId: z.string(), countedQuantity: z.coerce.number().min(0) })).min(1).max(2000) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the branch and counted quantities.", "VALIDATION_ERROR", parsed.error.issues);
   if (new Set(parsed.data.lines.map((line) => line.productId)).size !== parsed.data.lines.length) throw new ApiError(400, "Each product can appear only once in a stock count.", "DUPLICATE_COUNT_LINE");
@@ -265,7 +265,7 @@ inventoryWorkflowRouter.post("/counts", requireRoles(...inventoryRoles), async (
   response.status(201).json({ data: count });
 });
 
-inventoryWorkflowRouter.post("/counts/:countId/submit", requireRoles(...inventoryRoles), async (request, response) => {
+inventoryWorkflowRouter.post("/counts/:countId/submit", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const count = await prisma.stockCount.findFirst({ where: { id: request.params.countId as string, businessId: auth.businessId } });
   if (!count) throw new ApiError(404, "Stock count not found.", "STOCK_COUNT_NOT_FOUND");

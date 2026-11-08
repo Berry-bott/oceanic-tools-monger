@@ -4,43 +4,65 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 
-type GateState = "checking" | "allowed" | "offline" | "server-error" | "blocked";
-
 const adminRoles = new Set(["OWNER", "STAFF"]);
+function hasRouteAccess(user: { role: string; staffAccessRole?: string | null }, pathname: string) {
+  if (user.role === "OWNER") return true;
+  if (user.role !== "STAFF") return false;
+  if (pathname === "/staff/change-password") return true;
+  if (pathname === "/admin" || pathname === "/staff/dashboard") return false;
+  const staffRoutes = ["/admin/customers", "/admin/notes"];
+  const seniorRoutes = ["/admin/sales/installments", "/admin/sales/returns", "/admin/products", "/admin/inventory", "/admin/purchasing", "/admin/orders", "/admin/creditors"];
+  return pathname === "/admin/sales" || staffRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)) || (user.staffAccessRole === "SENIOR_STAFF" && seniorRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)));
+}
 
 export function AdminRouteGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/oceanicadminlogin" || pathname === "/staff/login";
   const currentUserQuery = useCurrentUser(!isLoginPage);
-  const [gate, setGate] = useState<{ pathname: string; state: GateState }>({
-    pathname,
-    state: isLoginPage ? "allowed" : "checking",
-  });
+  const passwordRouteMismatch = currentUserQuery.data?.user.role === "STAFF" &&
+    (currentUserQuery.data.user.mustChangePassword
+      ? pathname !== "/staff/change-password"
+      : pathname === "/staff/change-password");
+  const errorStatus = currentUserQuery.error && "status" in currentUserQuery.error
+    ? Number(currentUserQuery.error.status)
+    : undefined;
   const state = isLoginPage
     ? "allowed"
-    : gate.pathname === pathname
-      ? gate.state
+    : passwordRouteMismatch
+      ? "checking"
       : currentUserQuery.data
-        ? adminRoles.has(currentUserQuery.data.user.role)
-          ? "allowed"
-          : "blocked"
-        : "checking";
+        ? !adminRoles.has(currentUserQuery.data.user.role)
+          ? "blocked"
+          : currentUserQuery.data.user.role === "STAFF" && !hasRouteAccess(currentUserQuery.data.user, pathname)
+            ? "checking"
+            : "allowed"
+        : currentUserQuery.error
+          ? errorStatus === 401
+            ? "checking"
+            : errorStatus !== undefined && errorStatus >= 500
+              ? "server-error"
+              : "offline"
+          : "checking";
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (isLoginPage || currentUserQuery.isPending) return;
 
     if (currentUserQuery.data) {
-      if (currentUserQuery.data.user.role === "STAFF" && pathname === "/admin") {
-        router.replace("/staff/dashboard");
+      const currentUser = currentUserQuery.data.user;
+      if (currentUser.role === "STAFF" && currentUser.mustChangePassword && pathname !== "/staff/change-password") {
+        router.replace("/staff/change-password");
+        return;
       }
-      setGate({
-        pathname,
-        state: adminRoles.has(currentUserQuery.data.user.role)
-          ? "allowed"
-          : "blocked",
-      });
+      if (currentUser.role === "STAFF" && !currentUser.mustChangePassword && pathname === "/staff/change-password") {
+        router.replace("/admin/sales");
+        return;
+      }
+      if (currentUser.role === "STAFF" && !hasRouteAccess(currentUser, pathname)) {
+        router.replace("/admin/sales");
+        return;
+      }
       return;
     }
 
@@ -56,10 +78,6 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
         );
         return;
       }
-      const status = "status" in currentUserQuery.error
-        ? Number(currentUserQuery.error.status)
-        : undefined;
-      setGate({ pathname, state: status !== undefined && status >= 500 ? "server-error" : "offline" });
     }
   }, [currentUserQuery.data, currentUserQuery.error, currentUserQuery.isPending, isLoginPage, pathname, retry, router]);
 
@@ -104,7 +122,6 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
           <button
             className="mt-5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white"
             onClick={() => {
-              setGate({ pathname, state: "checking" });
               setRetry((value) => value + 1);
               void currentUserQuery.refetch();
             }}

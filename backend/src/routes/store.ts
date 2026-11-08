@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry, type LedgerLine } from "../lib/accounting.js";
 import { consumeReservedLots, releaseReservedLots, reserveFefoLots } from "../lib/stock-lots.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const storeRouter = Router();
 export const paystackWebhookRouter = Router();
@@ -16,13 +16,15 @@ const checkoutSchema = z.object({ branchId: z.string().optional(), customerName:
 const orderReference = () => `WEB-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
 const minorUnits = (amount: number) => Math.round(amount * 100);
 
-onlineOrdersRouter.use(requireAuth);
+onlineOrdersRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 onlineOrdersRouter.get("/", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const status = typeof request.query.status === "string" ? request.query.status : undefined;
   const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
+  if (auth.role === "STAFF" && (!auth.branchId || (branchId && branchId !== auth.branchId))) throw new ApiError(403, "You can only view orders for your assigned branch.", "BRANCH_ACCESS_DENIED");
+  const scopedBranchId = auth.role === "STAFF" ? auth.branchId : branchId;
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const where = { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(status && Object.values(["PENDING_PAYMENT", "PAYMENT_FAILED", "PAID", "PROCESSING", "READY_FOR_COLLECTION", "DISPATCHED", "DELIVERED", "COLLECTED", "PARTIALLY_FULFILLED", "CANCELLED", "RETURN_REQUESTED"]).includes(status) ? { status: status as never } : {}) };
+  const where = { businessId: auth.businessId, ...(scopedBranchId ? { branchId: scopedBranchId } : {}), ...(status && Object.values(["PENDING_PAYMENT", "PAYMENT_FAILED", "PAID", "PROCESSING", "READY_FOR_COLLECTION", "DISPATCHED", "DELIVERED", "COLLECTED", "PARTIALLY_FULFILLED", "CANCELLED", "RETURN_REQUESTED"]).includes(status) ? { status: status as never } : {}) };
   const [data, statusCounts] = await Promise.all([
     prisma.onlineOrder.findMany({ where, include: { lines: true, payments: { select: { method: true, status: true, amount: true, reference: true } }, reservations: true }, orderBy: { createdAt: "desc" }, take: 200 }),
     prisma.onlineOrder.groupBy({ by: ["status"], where, _count: { _all: true } }),
@@ -34,7 +36,7 @@ onlineOrdersRouter.post("/:orderId/transition", requireRoles("OWNER", "STAFF"), 
   const parsed = z.object({ status: z.enum(["PROCESSING", "READY_FOR_COLLECTION", "DISPATCHED", "DELIVERED", "COLLECTED", "CANCELLED", "RETURN_REQUESTED"]) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Choose a valid order status.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
-  const order = await prisma.onlineOrder.findFirst({ where: { id: request.params.orderId as string, businessId: auth.businessId } });
+  const order = await prisma.onlineOrder.findFirst({ where: { id: request.params.orderId as string, businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) } });
   if (!order) throw new ApiError(404, "Online order not found.", "ORDER_NOT_FOUND");
   const transitions: Record<string, string[]> = { PENDING_PAYMENT: ["CANCELLED"], PAID: ["PROCESSING"], PROCESSING: ["READY_FOR_COLLECTION", "DISPATCHED"], READY_FOR_COLLECTION: ["COLLECTED"], DISPATCHED: ["DELIVERED"], DELIVERED: ["RETURN_REQUESTED"], COLLECTED: ["RETURN_REQUESTED"] };
   const nextStatus = parsed.data.status;

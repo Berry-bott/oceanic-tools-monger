@@ -25,7 +25,7 @@ import {
   salesKeys,
 } from "@/services/sales/sales.service";
 
-type User = { id: string; name: string; email: string; role: string };
+type User = { id: string; name: string; email: string; role: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null };
 type Branch = { id: string; name: string; isDefault: boolean };
 type Product = {
   id: string;
@@ -89,6 +89,7 @@ const fmtDate = (value: string) =>
     timeStyle: "short",
   }).format(new Date(value));
 const posRoles = (role?: string) => role === "OWNER" || role === "STAFF";
+const canCreateCredit = (user?: User) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 const paymentMethods = [
   { value: "CASH", label: "Cash", icon: "cash" },
   { value: "BANK_TRANSFER", label: "Transfer", icon: "transfer" },
@@ -101,7 +102,7 @@ export default function SalesPage() {
   const queryClient = useQueryClient();
   const branchesQuery = useBranches<Branch>();
   const customersQuery = useCustomers<Customer>();
-  const creditorsQuery = useQuery({ queryKey: creditorKeys.all, queryFn: getCreditors, enabled: user?.role === "OWNER" || user?.role === "STAFF", staleTime: 30_000 });
+  const creditorsQuery = useQuery({ queryKey: creditorKeys.all, queryFn: getCreditors, enabled: user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF"), staleTime: 30_000 });
   const productsQuery = useProducts("");
   const branches = branchesQuery.data?.data ?? [];
   const customers = customersQuery.data?.data ?? [];
@@ -334,9 +335,9 @@ export default function SalesPage() {
         lines: cart.map((row) => ({ productId: row.product.id, quantity: row.quantity, unitPrice: row.unitPrice })),
         payments: payPartNow ? [{ method: partPaymentMethod, amount: paidNow }] : [],
       }, crypto.randomUUID());
+      setCreditOpen(false);
       setNotice(`Credit sale ${result.data.number} recorded${paidNow ? ` with ${fmtMoney(paidNow)} paid` : ""}.`);
       clearCart();
-      setCreditOpen(false);
       setSelectedCreditorId("");
       setPayPartNow(false);
       setPartPaymentAmount("");
@@ -523,13 +524,14 @@ export default function SalesPage() {
             </section>
             {canPos ? (
               <>
-              {checkoutExpanded && (
+              {checkoutExpanded && createPortal(
                 <button
                   type="button"
                   className="fixed inset-0 z-[70] cursor-default border-0 bg-[#14201e66] backdrop-blur-[2px]"
                   aria-label="Close expanded checkout"
                   onClick={() => setCheckoutExpanded(false)}
-                />
+                />,
+                document.body,
               )}
               <section
                 className={`min-w-0 rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 [&>.panel-heading]:mb-2 ${checkoutExpanded ? "fixed inset-x-3 top-3 bottom-6 z-[71] mx-auto flex max-h-[calc(100dvh-2.25rem)] w-[calc(100vw-1.5rem)] max-w-[680px] flex-col overflow-hidden !p-3 shadow-[0_24px_70px_#17251f42] max-[620px]:!p-2.5" : "sticky top-3 flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden max-[950px]:static max-[950px]:max-h-[calc(100dvh-8rem)]"}`}
@@ -650,7 +652,7 @@ export default function SalesPage() {
                       </button>
                     );
                   })}
-                  {canPos && (
+                  {canPos && canCreateCredit(user) && (
                     <button
                       type="button"
                       title="Record this cart as a credit sale"
@@ -787,7 +789,7 @@ export default function SalesPage() {
       </main>
       {creditOpen && createPortal((
         <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setCreditOpen(false); }}>
-          <AdminDialogPanel className="max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4" role="dialog" aria-modal="true" aria-labelledby="credit-sale-title" onEscape={() => { if (!busy) setCreditOpen(false); }}>
+          <AdminDialogPanel className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4" role="dialog" aria-modal="true" aria-labelledby="credit-sale-title" onEscape={() => { if (!busy) setCreditOpen(false); }}>
             <div className="mb-5 flex items-start justify-between gap-4">
               <div><h2 id="credit-sale-title" className="m-0 text-lg font-semibold text-[#26372d]">Complete credit sale</h2><p className="mb-0 mt-1 text-sm text-muted">Your {cart.length} selected item line(s) will stay in the sale.</p></div>
               <button type="button" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line bg-white text-muted hover:bg-canvas" onClick={() => setCreditOpen(false)} aria-label="Close"><AdminUiIcon name="close" size={15} /></button>

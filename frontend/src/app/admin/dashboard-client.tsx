@@ -685,8 +685,8 @@ export default function HomePage() {
                     <DashboardIcon name="cart" />
                   </span>
                   <span className="grid min-w-0 flex-1 gap-1">
-                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-normal">Purchasing</strong>
-                    <small className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#929d96]">Review stock orders</small>
+                    <strong className="overflow-hidden text-ellipsis whitespace-nowrap text-sm font-normal">Receive stock</strong>
+                    <small className="overflow-hidden text-ellipsis whitespace-nowrap text-sm text-[#929d96]">Record supplier deliveries</small>
                   </span>
                   <span className="text-[#9aa59e]"><DashboardIcon name="chevron" size={15} /></span>
                 </Link>

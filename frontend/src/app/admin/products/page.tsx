@@ -16,10 +16,10 @@ import { AppErrorModal } from "@/components/app-error-modal";
 import { FourDotLoader } from "@/components/four-dot-loader";
 
 type Role = "OWNER" | "STAFF";
-type User = { id: string; name: string; email: string; role: Role };
+type User = { id: string; name: string; email: string; role: Role; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null };
 type StockFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
-const canManage = (role: Role) =>
-  role === "OWNER" || role === "STAFF";
+const canManage = (user: User | null) =>
+  user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 const currency = (amount: number | string) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -148,7 +148,7 @@ export default function ProductsPage() {
               <h1>Products</h1>
               <p>Manage your catalogue, pricing and stock health.</p>
             </div>
-            {canManage(user.role) && (
+            {canManage(user) && (
               <div className="flex gap-2">
                 {user.role === "OWNER" && <Link href="/admin/products/merge" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Merge duplicates</Link>}
                 <Link href="/admin/products/import" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Import</Link>
@@ -279,8 +279,8 @@ export default function ProductsPage() {
               <AdminEmptyState
                 icon="box"
                 title={search || stockFilter !== "ALL" || category !== "ALL" ? "No matching products" : "Your catalogue is empty"}
-                description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canManage(user.role) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
-                action={canManage(user.role) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
+                description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canManage(user) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
+                action={canManage(user) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
               />
             ) : (
               <>
@@ -367,7 +367,7 @@ export default function ProductsPage() {
                             <td className="px-2 py-2">
                               <div className="flex items-center justify-end gap-1">
                                 <button type="button" aria-label={`View ${product.name} details`} title="View details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dce8f2] bg-[#f3f8fc] text-[#507597] transition-colors hover:bg-[#e4eff8] hover:text-[#315f84]" onClick={() => setViewingProduct(product)}><AdminUiIcon name="eye" size={15} /></button>
-                                {canManage(user.role) && <>
+                                {canManage(user) && <>
                                   <Link
                                     aria-label={`Edit ${product.name}`}
                                     title="Edit product"
@@ -442,7 +442,7 @@ export default function ProductsPage() {
         </div>
       </main>
       {viewingProduct && createPortal(<div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 [backdrop-filter:blur(2px)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setViewingProduct(null); }}>
-        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="view-product-title" onEscape={() => setViewingProduct(null)} className="max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4">
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="view-product-title" onEscape={() => setViewingProduct(null)} className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-y-auto rounded-2xl border border-line bg-white p-5 shadow-[0_24px_70px_#17251f42] max-[620px]:p-4">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5f0] text-[#2a6a51]"><AdminUiIcon name="eye" size={19} /></span><div className="min-w-0"><p className="mb-1 mt-0 text-[10px] font-medium tracking-wide text-[#718b79]">PRODUCT DETAILS</p><h2 id="view-product-title" className="m-0 truncate text-base font-semibold tracking-[-.3px] text-ink">{viewingProduct.name}</h2><p className="mb-0 mt-1 text-sm text-[#89948b]">{viewingProduct.sku} · per {viewingProduct.unit}</p></div></div>
             <button type="button" aria-label="Close product details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#76837b] transition-colors hover:bg-[#f1f6f2] hover:text-[#28644c]" onClick={() => setViewingProduct(null)}><AdminUiIcon name="close" size={15} /></button>
@@ -469,7 +469,7 @@ export default function ProductsPage() {
             {viewingProduct.balances.length > 0 && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Branch stock</h3><div className="grid gap-2">{viewingProduct.balances.map((balance) => <div key={balance.branchId} className="grid grid-cols-2 gap-2 rounded-lg bg-[#f7f9f7] px-3 py-3 text-xs sm:grid-cols-4"><strong className="col-span-2 font-medium text-[#35453b] sm:col-span-1">{balance.branch?.name ?? "Branch"}</strong><span>On hand <strong>{quantity(Number(balance.onHand))}</strong></span><span>Reserved <strong>{quantity(Number(balance.reserved))}</strong></span><span>Available <strong>{quantity(Number(balance.onHand) - Number(balance.reserved))}</strong></span></div>)}</div></section>}
             {!!viewingProduct.specifications?.length && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Specifications</h3><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{viewingProduct.specifications.map((spec) => <div key={spec.id} className="flex justify-between gap-3 rounded-lg bg-[#f7f9f7] px-3 py-2.5 text-xs"><span className="text-muted">{spec.name}</span><strong className="text-right font-medium text-ink">{spec.value}</strong></div>)}</div></section>}
           </div>
-          <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canManage(user.role) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
+          <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canManage(user) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
         </AdminDialogPanel>
       </div>, document.body)}
       <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Product update could not be completed" />

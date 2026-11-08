@@ -14,7 +14,7 @@ export const accountingRouter = Router();
 const paymentInput = z.object({ amount: z.coerce.number().positive(), method: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]), reference: z.string().trim().min(1).max(80) });
 const paymentRef = (prefix: string) => `${prefix}-${randomUUID().slice(0, 12).toUpperCase()}`;
 
-paymentsRouter.use(requireAuth);
+paymentsRouter.use(requireAuth, requireRoles("OWNER"));
 paymentsRouter.get("/payables", requireRoles("OWNER", "STAFF"), async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
   const invoices = await prisma.supplierInvoice.findMany({ where: { businessId: auth.businessId }, include: { supplier: { select: { id: true, name: true } }, allocations: { include: { payment: { select: { status: true } } } }, returns: { select: { creditAmount: true } } }, orderBy: { dueAt: "asc" }, take: 500 });
@@ -81,7 +81,7 @@ paymentsRouter.post("/supplier-invoices/:invoiceId/payments", requireRoles("OWNE
   response.status(201).json({ data: payment });
 });
 
-expensesRouter.use(requireAuth);
+expensesRouter.use(requireAuth, requireRoles("OWNER"));
 expensesRouter.get("/", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const from = typeof request.query.from === "string" ? new Date(request.query.from) : undefined;
@@ -107,7 +107,7 @@ expensesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, respons
   response.status(201).json({ data: expense });
 });
 
-accountingRouter.use(requireAuth);
+accountingRouter.use(requireAuth, requireRoles("OWNER"));
 accountingRouter.get("/accounts", requireRoles("OWNER", "STAFF"), async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
   response.json({ data: await prisma.account.findMany({ where: { businessId: auth.businessId }, orderBy: { code: "asc" } }) });

@@ -11,6 +11,7 @@ import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
+import { customerKeys, saveCustomer } from "@/services/customers/customer.service";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import {
   cancelInstallmentAgreement,
@@ -67,6 +68,9 @@ export default function InstallmentsPage() {
   const [customerId, setCustomerId] = useState("");
   const [agreementFilter, setAgreementFilter] = useState<AgreementFilter>("ALL");
   const [createAgreementOpen, setCreateAgreementOpen] = useState(false);
+  const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
+  const [newCustomerType, setNewCustomerType] = useState<"PERSONAL" | "COMPANY">("PERSONAL");
+  const [customerError, setCustomerError] = useState("");
   const [agreementSearch, setAgreementSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [dueFrom, setDueFrom] = useState("");
@@ -135,6 +139,37 @@ export default function InstallmentsPage() {
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the instalment agreement.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  async function submitNewCustomer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const personName = String(form.get("personName") ?? "").trim();
+    const companyName = String(form.get("companyName") ?? "").trim();
+    setBusy(true);
+    setCustomerError("");
+    try {
+      const created = await saveCustomer<Customer>(undefined, {
+        name: newCustomerType === "COMPANY" ? companyName : personName,
+        type: newCustomerType,
+        ...(newCustomerType === "COMPANY" ? { companyName } : {}),
+        contactPerson: String(form.get("contactPerson") ?? "").trim() || undefined,
+        phone: String(form.get("phone") ?? "").trim() || undefined,
+        email: String(form.get("email") ?? "").trim() || undefined,
+        address: String(form.get("address") ?? "").trim() || undefined,
+      });
+      await queryClient.invalidateQueries({ queryKey: customerKeys.all });
+      await customersQuery.refetch();
+      setCustomerId(created.data.id);
+      setCreateCustomerOpen(false);
+      setNewCustomerType("PERSONAL");
+      setNotice(`${created.data.name} was added and selected for this payment plan.`);
+    } catch (cause) {
+      setCustomerError(cause instanceof Error ? cause.message : "Could not add this customer.");
     } finally {
       setBusy(false);
     }
@@ -209,7 +244,7 @@ export default function InstallmentsPage() {
           <section className="grid gap-4 rounded-xl border border-[#e7ece8] bg-[#fbfcfb] p-4 sm:p-5">
             <div><h3 className="m-0 text-sm font-semibold text-[#35453b]">Customer and schedule</h3><p className="mb-0 mt-1 text-xs text-[#829087]">Set who the plan is for and when payments are due.</p></div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelClass}>Customer<select className={inputClass} required={customers.length > 0} name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="" disabled>Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` - ${customer.phone}` : ""}</option>)}</select></label>
+            <div className="grid gap-1.5"><span className="text-sm text-[#536159]">Customer</span><div className="flex min-w-0 gap-2"><select aria-label="Customer" className={`${inputClass} min-w-0 flex-1`} required={customers.length > 0} name="customerId" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="" disabled>Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.phone ? ` - ${customer.phone}` : ""}</option>)}</select><button type="button" className={secondaryButton} onClick={() => { setCustomerError(""); setNewCustomerType("PERSONAL"); setCreateCustomerOpen(true); }}><AdminUiIcon name="plus" size={15} />Add customer</button></div></div>
             <label className={labelClass}>Branch<select className={inputClass} required={branches.length > 0} name="branchId" defaultValue={user.role === "STAFF" ? user.branchId ?? "" : branches.find((branch) => branch.isDefault)?.id ?? ""} disabled={user.role === "STAFF"}><option value="" disabled>Select branch</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>{user.role === "STAFF" && <input type="hidden" name="branchId" value={user.branchId ?? ""} />}</label>
             <label className={labelClass}>Number of payments<select className={inputClass} name="count" defaultValue="3">{Array.from({ length: 23 }, (_, index) => index + 2).map((count) => <option key={count} value={count}>{count} payments</option>)}</select></label>
             <label className={labelClass}>Payment frequency<select className={inputClass} name="frequency" defaultValue="MONTHLY"><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label>
@@ -234,6 +269,18 @@ export default function InstallmentsPage() {
           <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-[#edf1ed] bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:-mb-7 sm:px-7"><button type="button" className={secondaryButton} disabled={busy} onClick={closeCreateAgreement}>Cancel</button><button className={primaryButton} disabled={busy}>{busy ? "Saving agreement..." : "Create payment plan"}</button></div>
         </form>
         </div>
+        </AdminDialogPanel>
+      </div>, document.body)}
+
+      {createCustomerOpen && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[120] grid place-items-center overflow-y-auto bg-[#14201e]/65 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setCreateCustomerOpen(false); }}>
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="installment-customer-title" onEscape={() => { if (!busy) setCreateCustomerOpen(false); }} className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#e4eae5] bg-white p-5 shadow-[0_24px_70px_rgba(12,25,25,.32)] sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-4"><div><p className="mb-1 text-[11px] font-semibold uppercase tracking-[.14em] text-brand">Installment customer</p><h2 id="installment-customer-title" className="m-0 text-xl font-semibold tracking-tight text-[#1a2a22]">Add a customer</h2><p className="mb-0 mt-1 text-sm text-[#75827a]">Create a person or company, then continue setting up the payment plan.</p></div><button type="button" className="grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-white text-muted hover:bg-canvas" disabled={busy} onClick={() => setCreateCustomerOpen(false)} aria-label="Close"><AdminUiIcon name="close" size={15} /></button></div>
+          <form className="grid gap-4" onSubmit={(event) => void submitNewCustomer(event)}>
+            <div className="flex w-fit rounded-[10px] bg-[#f3f5f3] p-1" role="group" aria-label="Customer type">{(["PERSONAL", "COMPANY"] as const).map((type) => <button key={type} type="button" aria-pressed={newCustomerType === type} onClick={() => setNewCustomerType(type)} className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${newCustomerType === type ? "bg-white text-brand shadow-sm" : "text-muted hover:text-[#26372d]"}`}><AdminUiIcon name={type === "COMPANY" ? "company" : "person"} size={15} />{type === "COMPANY" ? "Company" : "Person"}</button>)}</div>
+            <div className="grid gap-3 sm:grid-cols-2">{newCustomerType === "COMPANY" ? <label className={labelClass}>Company name<input name="companyName" className={inputClass} required maxLength={180} /></label> : <label className={labelClass}>Full name<input name="personName" className={inputClass} required maxLength={180} /></label>}<label className={labelClass}>{newCustomerType === "COMPANY" ? "Contact person" : "Contact name (optional)"}<input name="contactPerson" className={inputClass} maxLength={180} /></label><label className={labelClass}>Phone number<input name="phone" className={inputClass} type="tel" maxLength={40} /></label><label className={labelClass}>Email address<input name="email" className={inputClass} type="email" maxLength={254} /></label><label className={`${labelClass} sm:col-span-2`}>Address<input name="address" className={inputClass} maxLength={1000} /></label></div>
+            {customerError && <p role="alert" className="m-0 rounded-lg border border-[#f0d7d2] bg-[#fff5f2] px-3 py-2 text-sm text-[#a5554a]">{customerError}</p>}
+            <div className="flex justify-end gap-2 border-t border-[#edf1ed] pt-4"><button type="button" className={secondaryButton} disabled={busy} onClick={() => setCreateCustomerOpen(false)}>Cancel</button><button type="submit" className={primaryButton} disabled={busy}>{busy ? "Saving customer..." : "Save and select customer"}</button></div>
+          </form>
         </AdminDialogPanel>
       </div>, document.body)}
 
@@ -281,8 +328,8 @@ export default function InstallmentsPage() {
         </table></div>
       </section>
 
-      {action && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[100] grid place-items-center bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setAction(null); }}>
-        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="action-title" onEscape={() => setAction(null)} className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-[14px] border border-line bg-white p-4 shadow-2xl">
+      {action && typeof document !== "undefined" && createPortal(<div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#14201e66] p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setAction(null); }}>
+        <AdminDialogPanel role="dialog" aria-modal="true" aria-labelledby="action-title" onEscape={() => setAction(null)} className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-auto rounded-[14px] border border-line bg-white p-4 shadow-2xl">
           <div className="mb-4"><h2 id="action-title" className="m-0 text-lg font-semibold text-[#1a2a22]">{action.kind === "pay" ? "Record customer payment" : action.kind === "extend" ? "Extend payment deadline" : "Cancel agreement and refund"}</h2><p className="mb-0 mt-1 text-sm text-[#75827a]">{action.agreement.number} · {action.agreement.customer.name}</p></div>
           <form onSubmit={(event) => void submitAction(event)} className="grid gap-3">
             {action.kind === "pay" && <>

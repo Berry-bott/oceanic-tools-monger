@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { ApiError } from "../lib/errors.js";
 import { prisma } from "../lib/prisma.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry } from "../lib/accounting.js";
 import ExcelJS from "exceljs-hardened";
@@ -44,7 +44,7 @@ const adjustStockSchema = z.object({
   quantity: z.coerce.number().refine((value) => value !== 0, "Quantity cannot be zero."),
   reason: z.string().trim().min(3).max(500),
 });
-const inventoryRoles = ["OWNER", "STAFF"] as const;
+
 const productImageUpload = createMediaUploadMiddleware("PRODUCT_IMAGE", "image");
 const normalizeName = (value: string) => value.toLocaleLowerCase("en-NG").normalize("NFKC").trim().replace(/\s+/g, " ").replace(/\s*(\d)\s*(kg|g|ml|l|cl)\b/gi, "$1$2");
 const importRowSchema = createProductSchema.omit({ quantity: true, publishOnSave: true }).extend({ openingStock: z.coerce.number().min(0).max(1_000_000), duplicateOverrideReason: z.string().trim().min(5).max(500).optional() });
@@ -139,7 +139,7 @@ productsRouter.get("/categories", async (request, response) => {
   response.json({ data });
 });
 
-productsRouter.post("/categories", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/categories", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({
     name: z.string().trim().min(1).max(100),
     subcategoryName: z.string().trim().max(100).optional().or(z.literal("")),
@@ -169,7 +169,7 @@ productsRouter.post("/categories", requireRoles(...inventoryRoles), async (reque
   response.status(201).json({ data });
 });
 
-productsRouter.patch("/categories/:categoryId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.patch("/categories/:categoryId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ name: z.string().trim().min(1).max(100) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter a category name up to 100 characters.", "INVALID_CATEGORY", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -187,7 +187,7 @@ productsRouter.patch("/categories/:categoryId", requireRoles(...inventoryRoles),
   response.json({ data });
 });
 
-productsRouter.delete("/categories/:categoryId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.delete("/categories/:categoryId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const categoryId = request.params.categoryId as string;
   const category = await prisma.category.findFirst({ where: { id: categoryId, businessId: auth.businessId }, include: { _count: { select: { products: true, subcategories: true } } } });
@@ -197,7 +197,7 @@ productsRouter.delete("/categories/:categoryId", requireRoles(...inventoryRoles)
   response.status(204).end();
 });
 
-productsRouter.post("/categories/:categoryId/subcategories", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/categories/:categoryId/subcategories", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ name: z.string().trim().min(1).max(100) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter a subcategory name up to 100 characters.", "INVALID_SUBCATEGORY", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -210,7 +210,7 @@ productsRouter.post("/categories/:categoryId/subcategories", requireRoles(...inv
   response.status(201).json({ data });
 });
 
-productsRouter.patch("/categories/:categoryId/subcategories/:subcategoryId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.patch("/categories/:categoryId/subcategories/:subcategoryId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ name: z.string().trim().min(1).max(100) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter a subcategory name up to 100 characters.", "INVALID_SUBCATEGORY", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -229,7 +229,7 @@ productsRouter.patch("/categories/:categoryId/subcategories/:subcategoryId", req
   response.json({ data });
 });
 
-productsRouter.delete("/categories/:categoryId/subcategories/:subcategoryId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.delete("/categories/:categoryId/subcategories/:subcategoryId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const subcategoryId = request.params.subcategoryId as string;
   const subcategory = await prisma.subcategory.findFirst({ where: { id: subcategoryId, categoryId: request.params.categoryId as string, category: { businessId: auth.businessId } }, include: { _count: { select: { products: true } } } });
@@ -239,18 +239,18 @@ productsRouter.delete("/categories/:categoryId/subcategories/:subcategoryId", re
   response.status(204).end();
 });
 
-productsRouter.post("/import/csv/parse", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/import/csv/parse", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ csv: z.string().min(1).max(1_000_000) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Provide a CSV file as UTF-8 text under 1 MB.", "INVALID_CSV", parsed.error.issues);
   response.json({ data: { rows: parseCsv(parsed.data.csv), next: "POST /api/v1/products/import/validate with these rows, then /import/commit after review." } });
 });
 
-productsRouter.post("/import/xlsx/parse", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/import/xlsx/parse", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   if (!Buffer.isBuffer(request.body) || request.body.length === 0) throw new ApiError(400, "Upload an XLSX workbook with the supported spreadsheet content type, up to 5 MB.", "INVALID_XLSX");
   response.json({ data: { rows: await parseXlsx(request.body), next: "POST /api/v1/products/import/validate with these rows, then /import/commit after review." } });
 });
 
-productsRouter.post("/:productId/image", requireRoles(...inventoryRoles), productImageUpload, async (request, response) => {
+productsRouter.post("/:productId/image", requireStaffAccess("SENIOR_STAFF"), productImageUpload, async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const productId = request.params.productId as string;
   const file = request.file;
@@ -283,7 +283,7 @@ productsRouter.post("/:productId/image", requireRoles(...inventoryRoles), produc
   response.json({ data: { id: product.id, imageUrl: uploaded.secureUrl, imagePublicId: uploaded.asset.publicId } });
 });
 
-productsRouter.delete("/:productId/image", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.delete("/:productId/image", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, select: { id: true, imagePublicId: true, productImages: { where: { isPrimary: true }, include: { mediaAsset: true }, take: 1 } } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
@@ -317,7 +317,7 @@ productsRouter.delete("/:productId/image", requireRoles(...inventoryRoles), asyn
 const productImageViewSchema = z.enum(["FRONT", "BACK", "SIDE", "ADDITIONAL"]);
 const productImageInclude = { mediaAsset: { select: { id: true, secureUrl: true, publicId: true, originalFilename: true, mimeType: true, status: true } } } as const;
 
-productsRouter.post("/:productId/images", requireRoles(...inventoryRoles), productImageUpload, async (request, response) => {
+productsRouter.post("/:productId/images", requireStaffAccess("SENIOR_STAFF"), productImageUpload, async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const parsed = z.object({ view: productImageViewSchema, imageId: z.string().optional(), isPrimary: z.coerce.boolean().optional() }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Choose Front, Back, Side, or Additional for this image.", "INVALID_PRODUCT_IMAGE_VIEW", parsed.error.issues);
@@ -370,7 +370,7 @@ productsRouter.post("/:productId/images", requireRoles(...inventoryRoles), produ
   response.status(existing ? 200 : 201).json({ data: image });
 });
 
-productsRouter.patch("/:productId/images/:imageId/primary", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.patch("/:productId/images/:imageId/primary", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const image = await prisma.productImage.findFirst({ where: { id: request.params.imageId as string, productId: request.params.productId as string, product: { businessId: auth.businessId }, mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, include: { mediaAsset: true } });
   if (!image) throw new ApiError(404, "Active product photo not found.", "PRODUCT_IMAGE_NOT_FOUND");
@@ -383,7 +383,7 @@ productsRouter.patch("/:productId/images/:imageId/primary", requireRoles(...inve
   response.json({ data: { id: image.id, isPrimary: true } });
 });
 
-productsRouter.delete("/:productId/images/:imageId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.delete("/:productId/images/:imageId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const image = await prisma.productImage.findFirst({ where: { id: request.params.imageId as string, productId: request.params.productId as string, product: { businessId: auth.businessId } }, include: { mediaAsset: true } });
   if (!image) throw new ApiError(404, "Product image not found.", "PRODUCT_IMAGE_NOT_FOUND");
@@ -402,7 +402,7 @@ productsRouter.delete("/:productId/images/:imageId", requireRoles(...inventoryRo
   response.json({ data: { id: image.id, view: image.view, deleted, status: deleted ? "DELETED" : "DELETE_PENDING" } });
 });
 
-productsRouter.post("/import/validate", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/import/validate", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ branchId: z.string().optional(), rows: z.array(z.unknown()).min(1).max(5000) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Upload between 1 and 5,000 product rows.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -437,7 +437,7 @@ productsRouter.post("/import/validate", requireRoles(...inventoryRoles), async (
   response.json({ data: { branchId: branch.id, total: results.length, valid: results.filter((row) => row.status !== "invalid").length, invalid: results.filter((row) => row.status === "invalid").length, rows: results } });
 });
 
-productsRouter.post("/import/commit", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/import/commit", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = z.object({ branchId: z.string().optional(), rows: z.array(importRowSchema).min(1).max(5000) }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the import rows and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -498,15 +498,15 @@ productsRouter.get("/", async (request, response) => {
       ...(state ? { state } : {}),
       ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }] } : {}),
     },
-    include: { balances: { where: { branch: { businessId: auth.businessId } }, select: { branchId: true, onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } },
+    include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, select: { branchId: true, onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } },
     orderBy: { name: "asc" },
     take: 100,
   });
-  const canSeeCost = ["OWNER", "STAFF"].includes(auth.role);
+  const canSeeCost = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
   response.json({ data: canSeeCost ? products : products.map(({ costPrice: _costPrice, ...product }) => product), meta: { count: products.length, limit: 100 } });
 });
 
-productsRouter.get("/check-duplicates", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.get("/check-duplicates", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const query = z.object({ sku: z.string().trim().min(1).max(80).optional(), barcode: z.string().trim().min(1).max(80).optional(), name: z.string().trim().min(1).max(180).optional(), excludeId: z.string().optional() }).safeParse(request.query);
   if (!query.success || !Object.values(query.data ?? {}).some(Boolean)) throw new ApiError(400, "Provide a product SKU, barcode, or name to check.", "VALIDATION_ERROR", query.success ? undefined : query.error.issues);
@@ -520,14 +520,14 @@ productsRouter.get("/check-duplicates", requireRoles(...inventoryRoles), async (
 
 productsRouter.get("/:productId", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, include: { balances: { where: { branch: { businessId: auth.businessId } }, include: { branch: { select: { name: true } } } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } } });
+  const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, include: { branch: { select: { name: true } } } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
-  const canSeeCost = ["OWNER", "STAFF"].includes(auth.role);
+  const canSeeCost = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
   const { costPrice, ...safeProduct } = product;
   response.json({ data: canSeeCost ? product : safeProduct });
 });
 
-productsRouter.post("/", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = createProductSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the product details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -613,7 +613,7 @@ productsRouter.post("/", requireRoles(...inventoryRoles), async (request, respon
   response.status(201).json({ data: result.product, openingStockValue: result.openingStockValue, possibleMatches });
 });
 
-productsRouter.patch("/:productId", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.patch("/:productId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = updateProductSchema.safeParse(request.body);
   if (!parsed.success || Object.keys(parsed.data ?? {}).length === 0) throw new ApiError(400, "Provide at least one valid product field.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
@@ -677,7 +677,7 @@ productsRouter.patch("/:productId", requireRoles(...inventoryRoles), async (requ
   response.json({ data: product });
 });
 
-productsRouter.post("/:productId/adjustments", requireRoles(...inventoryRoles), async (request, response) => {
+productsRouter.post("/:productId/adjustments", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = adjustStockSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter a non-zero quantity and a reason for the adjustment.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;

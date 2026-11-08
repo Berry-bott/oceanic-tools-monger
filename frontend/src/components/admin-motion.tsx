@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode, type ComponentProps } from "react";
 
 function playEntrance(element: HTMLElement | null, keyframes: Keyframe[], duration: number) {
   if (!element || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  element.animate(keyframes, { duration, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)", fill: "both" });
+  element.animate(keyframes, { duration, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" });
 }
 
 export function AdminPageEntrance({ children, className }: { children: ReactNode; className?: string }) {

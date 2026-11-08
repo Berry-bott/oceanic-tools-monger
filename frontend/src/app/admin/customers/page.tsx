@@ -23,7 +23,7 @@ import {
   type CustomerReminder,
 } from "@/services/customers/customer.service";
 
-type User = { name: string; role: string };
+type User = { name: string; role: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null };
 type Business = { currency: string };
 type Customer = {
   id: string;
@@ -119,8 +119,8 @@ export default function CustomersPage() {
       : "");
 
   const canManage = user?.role === "OWNER" || user?.role === "STAFF";
-  const canPay = user?.role === "OWNER" || user?.role === "STAFF";
-  const canRemind = user?.role === "OWNER" || user?.role === "STAFF";
+  const canPay = user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
+  const canRemind = user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 
   const loadCustomers = useCallback(async () => {
     setError("");
@@ -202,13 +202,13 @@ export default function CustomersPage() {
     setBusy("customer");
     setError("");
     setNotice("");
+    const { creditLimit, creditDays, ...customerDetails } = draft;
     const payload = {
-      ...draft,
+      ...customerDetails,
       phone: draft.phone || undefined,
       email: draft.email || undefined,
       address: draft.address || undefined,
-      creditLimit: Number(draft.creditLimit),
-      creditDays: Number(draft.creditDays),
+      ...(canPay ? { creditLimit: Number(creditLimit), creditDays: Number(creditDays) } : {}),
     };
     try {
       const result = await saveCustomerRequest<Customer>(
@@ -324,7 +324,7 @@ export default function CustomersPage() {
             </p>
             <h1 className="text-2xl font-normal tracking-tight">Customers</h1>
             <p className="mt-1 text-sm text-muted">
-              Contact details, balances, statements, and reminder consent.
+              {canPay ? "Contact details, balances, statements, and reminder consent." : "Customer contact details and sales references."}
             </p>
           </div>
           {canManage && !creating && !editing && (
@@ -366,7 +366,7 @@ export default function CustomersPage() {
             </button>
           </div>
         )}
-        <section className="grid gap-3 sm:grid-cols-3">
+        <section className={`grid gap-3 ${canPay ? "sm:grid-cols-3" : "sm:grid-cols-1"}`}>
           <article className="rounded-lg border border-line bg-white p-4">
             <p className="text-xs text-muted">Customers listed</p>
             <strong className="mt-2 block text-2xl font-normal">
@@ -376,6 +376,7 @@ export default function CustomersPage() {
               The API returns up to 200 matching customers
             </p>
           </article>
+          {canPay && <>
           <article className="rounded-lg border border-line bg-white p-4">
             <p className="text-xs text-muted">Money still owed</p>
             <strong className="mt-2 block text-2xl font-normal">
@@ -392,6 +393,7 @@ export default function CustomersPage() {
               Listed customers with a positive receivable
             </p>
           </article>
+          </>}
         </section>
 
         {(creating || editing) && typeof document !== "undefined" && createPortal(
@@ -498,7 +500,7 @@ export default function CustomersPage() {
                 />
               </label>
               </section>
-              <section className="grid gap-4 rounded-xl border border-[#e7ece8] bg-[#fbfcfb] p-4 sm:col-span-2 sm:grid-cols-2 sm:p-5">
+              {canPay && <section className="grid gap-4 rounded-xl border border-[#e7ece8] bg-[#fbfcfb] p-4 sm:col-span-2 sm:grid-cols-2 sm:p-5">
                 <div className="sm:col-span-2">
                   <h3 className="m-0 text-sm font-semibold text-[#35453b]">Credit and reminders</h3>
                   <p className="mb-0 mt-1 text-xs text-muted">Set account terms and only enable reminders when the customer has given consent.</p>
@@ -560,7 +562,7 @@ export default function CustomersPage() {
                   Permission to send text reminders
                 </label>
               </div>
-              </section>
+              </section>}
               {error && <p role="alert" className="m-0 text-sm text-[#b44f44] sm:col-span-2">{error}</p>}
               <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-[#edf1ed] bg-white/95 px-5 py-4 backdrop-blur sm:col-span-2 sm:-mx-7 sm:-mb-7 sm:px-7">
                 <button
@@ -631,24 +633,17 @@ export default function CustomersPage() {
                       <td className="px-4 py-4">
                         <strong>{customer.name}</strong>
                         <p className="mt-1 text-xs text-muted">
-                          {customer._count.sales} sales | credit{" "}
-                          {money(customer.creditLimit, currency)} /{" "}
-                          {customer.creditDays} days
+                          {customer._count.sales} sales{canPay ? <> | credit {money(customer.creditLimit, currency)} / {customer.creditDays} days</> : null}
                         </p>
                       </td>
                       <td className="px-4 py-4 text-xs text-muted">
                         {customer.email || "No email"}
                         <p className="mt-1">{customer.phone || "No phone"}</p>
                       </td>
-                      <td className="px-4 py-4">
-                        {money(customer.totalPurchases, currency)}
-                      </td>
-                      <td className="px-4 py-4">
-                        {money(customer.totalPayments, currency)}
-                      </td>
-                      <td className="px-4 py-4 font-normal">
-                        {money(customer.outstandingBalance, currency)}
-                      </td>
+                      {canPay && <>
+                      <td className="px-4 py-4">{money(customer.totalPurchases, currency)}</td>
+                      <td className="px-4 py-4">{money(customer.totalPayments, currency)}</td>
+                      <td className="px-4 py-4 font-normal">{money(customer.outstandingBalance, currency)}</td>
                       <td className="px-4 py-4">
                         <div className="flex flex-col gap-1 text-xs">
                           <span>
@@ -663,14 +658,15 @@ export default function CustomersPage() {
                           </span>
                         </div>
                       </td>
+                      </>}
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
-                          <button
+                          {canPay && <button
                             onClick={() => void loadStatement(customer.id)}
                             className="rounded border border-line px-2.5 py-1.5 text-xs font-normal hover:bg-canvas"
                           >
                             Account history
-                          </button>
+                          </button>}
                           {canRemind && <button onClick={() => void showReminderHistory(customer)} className="rounded border border-line px-2.5 py-1.5 text-xs font-normal hover:bg-canvas">Reminder history</button>}
                           {canManage && (
                             <button

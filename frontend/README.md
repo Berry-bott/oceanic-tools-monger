@@ -19,9 +19,11 @@ The dashboard visual language takes cues from the `skipdq` admin shell while usi
 
 - `/products`: business-scoped search, category and stock filters, draft product creation, activate/deactivate, and Cloudinary image upload/replacement/removal.
 - `/inventory`: branch balances, movement history, FEFO lot visibility, stock adjustments, inter-branch transfers, and stock-count submit/approve/post actions.
-- `/purchasing`: supplier records, purchase-order creation and approval, partial receipts, and receipt-driven inventory updates.
+- `/purchasing`: receive goods from existing or new suppliers, record invoices, due dates and payments, and manage purchase-order approvals and receipts.
 - `/sales`: branch stock-aware POS, cashier shift open/close and variance display, recent sales, item returns, and owner refund approval.
 - `/finance`: profit and loss, balance sheet, supplier payables/payments, expenses, journal drafts and posting. Financial requests are available only to owner, accountant, and auditor roles; write actions are limited to owner and accountant.
+- `/expenses`: owner-only manual expense and staff payment recording, with payment references, branch/date tracking, ledger posting, and searchable history. This does not calculate payroll or deductions.
+- `/reports`: includes an expenses report with date and branch filters, category and staff-payment totals, transaction details, and CSV/XLSX/PDF export. Profit and loss continues to include posted expense ledger entries in its expense total.
 - `/settings`: owner-only business details, branches, staff invitations, role changes, and account deactivation.
 
 - `/orders`: business-scoped online-order queue with branch, status, and customer filters, payment and line-item details, and role-limited fulfillment transitions. The API returns the latest 200 orders per request.

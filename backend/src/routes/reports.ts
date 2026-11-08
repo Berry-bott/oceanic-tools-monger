@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
 
 export const reportsRouter = Router();
-reportsRouter.use(requireAuth, requireRoles("OWNER", "STAFF"));
+reportsRouter.use(requireAuth, requireRoles("OWNER"));
 
 function zonedMidnight(date: string, timeZone: string) {
   const [year, month, day] = date.split("-").map(Number);
@@ -444,6 +444,50 @@ reportsRouter.get("/profit-loss", async (request, response) => {
   const summary = { revenue, contraRevenue, netSales: revenue - contraRevenue, costOfGoodsSold, grossProfit, expenses, otherIncome, netProfit: grossProfit - expenses + otherIncome, currency: business.currency };
   if (await respondReportExport(response, request.query.format, data, `profit-loss-${range.fromDate}-${range.toDate}.csv`, "Profit and loss")) return;
   else response.json({ data, summary, period: { from: range.fromDate, to: range.toDate, timezone: business.timezone } });
+});
+
+reportsRouter.get("/expenses", async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: auth.businessId }, select: { timezone: true, currency: true } });
+  const range = parseRange(request.query, business.timezone);
+  const expenses = await prisma.expense.findMany({
+    where: {
+      businessId: auth.businessId,
+      incurredAt: { gte: range.start, lt: range.end },
+      ...(range.branchId ? { branchId: range.branchId } : {}),
+    },
+    include: {
+      payment: { select: { method: true, reference: true, status: true } },
+      branch: { select: { name: true } },
+      user: { select: { name: true } },
+    },
+    orderBy: [{ incurredAt: "desc" }, { id: "desc" }],
+  });
+  const data = expenses.map((expense) => ({
+    incurredAt: expense.incurredAt.toISOString().slice(0, 10),
+    category: expense.category,
+    description: expense.description,
+    amount: Number(expense.amount),
+    paymentMethod: expense.payment?.method ?? "Unspecified",
+    paymentStatus: expense.payment?.status ?? "Unspecified",
+    reference: expense.payment?.reference ?? "—",
+    branch: expense.branch?.name ?? "Business-wide",
+    recordedBy: expense.user.name,
+  }));
+  const byCategory = [...expenses.reduce((totals, expense) => {
+    const category = expense.category;
+    totals.set(category, (totals.get(category) ?? 0) + Number(expense.amount));
+    return totals;
+  }, new Map<string, number>())]
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((left, right) => right.amount - left.amount);
+  const totalExpenses = expenses.reduce((total, expense) => total + Number(expense.amount), 0);
+  const staffPayments = expenses
+    .filter((expense) => expense.category.trim().toLowerCase() === "staff payment")
+    .reduce((total, expense) => total + Number(expense.amount), 0);
+  const summary = { totalExpenses, expenseCount: expenses.length, staffPayments, byCategory, currency: business.currency };
+  if (await respondReportExport(response, request.query.format, data, `expenses-${range.fromDate}-${range.toDate}.csv`, "Expenses")) return;
+  response.json({ data, summary, period: { from: range.fromDate, to: range.toDate, timezone: business.timezone } });
 });
 
 reportsRouter.get("/balance-sheet", async (request, response) => {

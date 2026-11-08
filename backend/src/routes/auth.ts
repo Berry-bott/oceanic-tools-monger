@@ -85,7 +85,7 @@ authRouter.post("/login", requireFrontendOrigin, async (request, response) => {
   const email = parsed.data.email.trim().toLowerCase();
   const user = await prisma.user.findFirst({
     where: { email },
-    select: { id: true, businessId: true, branchId: true, name: true, email: true, passwordHash: true, role: true, isActive: true },
+    select: { id: true, businessId: true, branchId: true, name: true, email: true, passwordHash: true, role: true, staffAccessRole: true, mustChangePassword: true, isActive: true },
   });
   if (!user || !user.isActive || !(await argon2.verify(user.passwordHash, parsed.data.password))) {
     throw new ApiError(401, "Email or password is incorrect.", "INVALID_CREDENTIALS");
@@ -113,7 +113,7 @@ authRouter.post("/login", requireFrontendOrigin, async (request, response) => {
 
   setSessionCookies(response, user.role, accessToken, refreshToken, accessExpiresAt, refreshExpiresAt);
   response.json({
-    user: { id: user.id, businessId: user.businessId, branchId: user.branchId, name: user.name, email: user.email, role: user.role },
+    user: { id: user.id, businessId: user.businessId, branchId: user.branchId, name: user.name, email: user.email, role: user.role, staffAccessRole: user.staffAccessRole, mustChangePassword: user.mustChangePassword },
     accessExpiresAt,
   });
 });
@@ -223,7 +223,7 @@ authRouter.post("/refresh", requireFrontendOrigin, async (request, response) => 
 authRouter.get("/me", requireAuth, (_request, response) => {
   const auth = response.locals.auth as AuthContext;
   response.json({
-    user: { id: auth.userId, businessId: auth.businessId, branchId: auth.branchId, name: auth.name, email: auth.email, role: auth.role },
+    user: { id: auth.userId, businessId: auth.businessId, branchId: auth.branchId, name: auth.name, email: auth.email, role: auth.role, staffAccessRole: auth.staffAccessRole, mustChangePassword: auth.mustChangePassword },
     accessExpiresAt: auth.accessExpiresAt,
   });
 });
@@ -277,7 +277,7 @@ authRouter.post("/change-password", requireFrontendOrigin, requireAuth, async (r
   const passwordHash = await argon2.hash(parsed.data.newPassword, { type: argon2.argon2id });
   const revokedAt = new Date();
   await prisma.$transaction(async (transaction) => {
-    await transaction.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await transaction.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false } });
     await transaction.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt } });
     await transaction.refreshToken.updateMany({ where: { session: { userId: user.id }, revokedAt: null }, data: { revokedAt } });
   });

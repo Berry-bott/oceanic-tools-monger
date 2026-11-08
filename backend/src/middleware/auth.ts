@@ -11,6 +11,8 @@ export type AuthContext = {
   name: string;
   email: string;
   role: "OWNER" | "STAFF";
+  staffAccessRole: "CASHIER" | "SENIOR_STAFF" | null;
+  mustChangePassword: boolean;
   accessExpiresAt: Date;
 };
 
@@ -61,13 +63,19 @@ export const requireAuth = async (_request: Request, response: Response, next: N
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const session = await prisma.session.findUnique({
       where: { tokenHash },
-      include: { user: { select: { id: true, businessId: true, branchId: true, name: true, email: true, role: true, isActive: true } } },
+      include: { user: { select: { id: true, businessId: true, branchId: true, name: true, email: true, role: true, staffAccessRole: true, mustChangePassword: true, isActive: true } } },
     });
     if (!session || session.revokedAt || session.expiresAt <= new Date() || !session.user.isActive) {
       throw new ApiError(401, "Your session has expired. Sign in again.", "SESSION_EXPIRED");
     }
     if (session.user.role !== workspaceRole) {
       throw new ApiError(401, "Sign in to this workspace to continue.", "WORKSPACE_ROLE_MISMATCH");
+    }
+    if (
+      session.user.mustChangePassword &&
+      !( _request.baseUrl === "/api/v1/auth" && ["/me", "/change-password"].includes(_request.path))
+    ) {
+      throw new ApiError(403, "Change your temporary password before continuing.", "PASSWORD_CHANGE_REQUIRED");
     }
     response.locals.auth = {
       sessionId: session.id,
@@ -77,6 +85,8 @@ export const requireAuth = async (_request: Request, response: Response, next: N
       name: session.user.name,
       email: session.user.email,
       role: session.user.role,
+      staffAccessRole: session.user.staffAccessRole,
+      mustChangePassword: session.user.mustChangePassword,
       accessExpiresAt: session.expiresAt,
     } satisfies AuthContext;
     next();
@@ -91,5 +101,25 @@ export function requireRoles(...roles: AuthContext["role"][]) {
     if (!auth) return next(new ApiError(401, "Sign in to continue.", "UNAUTHENTICATED"));
     if (!roles.includes(auth.role)) return next(new ApiError(403, "You do not have permission to perform this action.", "FORBIDDEN"));
     next();
+  };
+}
+
+/** Owners always have full access; staff accounts must match an assigned access role. */
+export function requireStaffAccess(...roles: NonNullable<AuthContext["staffAccessRole"]>[]) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const auth = response.locals.auth as AuthContext | undefined;
+    if (!auth) return next(new ApiError(401, "Sign in to continue.", "UNAUTHENTICATED"));
+    if (auth.role === "OWNER" || (auth.role === "STAFF" && auth.staffAccessRole && roles.includes(auth.staffAccessRole))) return next();
+    return next(new ApiError(403, "You do not have permission to perform this action.", "FORBIDDEN"));
+  };
+}
+
+/** For actions explicitly assigned to staff, without allowing the owner account to use them. */
+export function requireAssignedStaffAccess(...roles: NonNullable<AuthContext["staffAccessRole"]>[]) {
+  return (_request: Request, response: Response, next: NextFunction) => {
+    const auth = response.locals.auth as AuthContext | undefined;
+    if (!auth) return next(new ApiError(401, "Sign in to continue.", "UNAUTHENTICATED"));
+    if (auth.role === "STAFF" && auth.staffAccessRole && roles.includes(auth.staffAccessRole)) return next();
+    return next(new ApiError(403, "This action is reserved for staff with the required access.", "FORBIDDEN"));
   };
 }

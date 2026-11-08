@@ -7,17 +7,17 @@ import { prisma } from "../lib/prisma.js";
 import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry, type LedgerLine } from "../lib/accounting.js";
 import { takeFefoLots } from "../lib/stock-lots.js";
-import { requireAuth, requireRoles, type AuthContext } from "../middleware/auth.js";
+import { requireAuth, requireRoles, requireStaffAccess, requireAssignedStaffAccess, type AuthContext } from "../middleware/auth.js";
 
 export const suppliersRouter = Router();
 export const purchasesRouter = Router();
 const supplierSchema = z.object({ name: z.string().trim().min(1).max(180), phone: z.string().trim().max(40).optional(), email: z.email().optional(), address: z.string().trim().max(1000).optional(), paymentTermsDays: z.coerce.number().int().min(0).max(365).default(0) });
 const purchaseSchema = z.object({ branchId: z.string(), supplierId: z.string(), expectedAt: z.coerce.date().optional(), notes: z.string().max(2000).optional(), lines: z.array(z.object({ productId: z.string(), quantity: z.coerce.number().positive(), unitCost: z.coerce.number().min(0) })).min(1).max(500) });
-const receiveSchema = z.object({ notes: z.string().max(2000).optional(), invoice: z.object({ invoiceNumber: z.string().trim().min(1).max(80), totalAmount: z.coerce.number().positive(), dueAt: z.coerce.date().optional(), amountPaid: z.coerce.number().min(0).default(0), paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]).optional(), paymentReference: z.string().trim().max(80).optional() }).optional(), lines: z.array(z.object({ purchaseOrderLineId: z.string(), acceptedQuantity: z.coerce.number().min(0), rejectedQuantity: z.coerce.number().min(0).default(0), unitCost: z.coerce.number().min(0), batchNumber: z.string().max(100).optional(), expiresAt: z.coerce.date().optional() })).min(1).max(500) });
+const receiveSchema = z.object({ notes: z.string().max(2000).optional(), preserveProductCostPrice: z.boolean().default(false), invoice: z.object({ invoiceNumber: z.string().trim().min(1).max(80), totalAmount: z.coerce.number().positive(), dueAt: z.coerce.date().optional(), amountPaid: z.coerce.number().min(0).default(0), paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "CARD", "OTHER"]).optional(), paymentReference: z.string().trim().max(80).optional() }).optional(), lines: z.array(z.object({ purchaseOrderLineId: z.string(), acceptedQuantity: z.coerce.number().min(0), rejectedQuantity: z.coerce.number().min(0).default(0), unitCost: z.coerce.number().min(0), batchNumber: z.string().max(100).optional(), expiresAt: z.coerce.date().optional() })).min(1).max(500) });
 const makeReference = (prefix: string) => `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
-suppliersRouter.use(requireAuth);
-purchasesRouter.use(requireAuth);
+suppliersRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
+purchasesRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
 
 suppliersRouter.get("/", async (_request, response) => {
   const auth = response.locals.auth as AuthContext;
@@ -27,7 +27,7 @@ suppliersRouter.get("/", async (_request, response) => {
     const totalPaid = invoices.reduce((sum, invoice) => sum + invoice.allocations.filter((allocation) => allocation.payment.status === "SUCCEEDED").reduce((paid, allocation) => paid + Number(allocation.amount), 0), 0);
     const credits = invoices.reduce((sum, invoice) => sum + invoice.returns.reduce((credit, entry) => credit + Number(entry.creditAmount), 0), 0);
     const overdue = invoices.filter((invoice) => invoice.dueAt && invoice.dueAt < new Date()).reduce((sum, invoice) => sum + Number(invoice.totalAmount) - invoice.returns.reduce((credit, entry) => credit + Number(entry.creditAmount), 0) - invoice.allocations.filter((allocation) => allocation.payment.status === "SUCCEEDED").reduce((paid, allocation) => paid + Number(allocation.amount), 0), 0);
-    return { ...supplier, totalInvoiced, totalPaid, credits, outstanding: totalInvoiced - totalPaid - credits, overdue };
+    return auth.role === "OWNER" ? { ...supplier, totalInvoiced, totalPaid, credits, outstanding: totalInvoiced - totalPaid - credits, overdue } : { ...supplier };
   }) });
 });
 
@@ -47,8 +47,10 @@ purchasesRouter.get("/", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const status = typeof request.query.status === "string" ? request.query.status : undefined;
   const branchId = typeof request.query.branchId === "string" ? request.query.branchId : undefined;
+  if (auth.role === "STAFF" && (!auth.branchId || (branchId && branchId !== auth.branchId))) throw new ApiError(403, "You can only view purchase orders for your assigned branch.", "BRANCH_ACCESS_DENIED");
+  const scopedBranchId = auth.role === "STAFF" ? auth.branchId : branchId;
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
-  const data = await prisma.purchaseOrder.findMany({ where: { businessId: auth.businessId, ...(branchId ? { branchId } : {}), ...(status ? { status: status as never } : {}) }, include: { supplier: { select: { id: true, name: true } }, branch: { select: { id: true, name: true } }, lines: { include: { product: { select: { id: true, name: true, sku: true } }, receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } }, receipts: { select: { id: true, reference: true, receivedAt: true } }, invoices: { include: { allocations: { include: { payment: { select: { status: true } } } } } } }, orderBy: { createdAt: "desc" }, take: 100 });
+  const data = await prisma.purchaseOrder.findMany({ where: { businessId: auth.businessId, ...(scopedBranchId ? { branchId: scopedBranchId } : {}), ...(status ? { status: status as never } : {}) }, include: { supplier: { select: { id: true, name: true } }, branch: { select: { id: true, name: true } }, lines: { include: { product: { select: { id: true, name: true, sku: true } }, receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } }, receipts: { select: { id: true, reference: true, receivedAt: true } }, ...(auth.role === "OWNER" ? { invoices: { include: { allocations: { include: { payment: { select: { status: true } } } } } } } : {}) }, orderBy: { createdAt: "desc" }, take: 100 });
   response.json({ data });
 });
 
@@ -57,6 +59,7 @@ purchasesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, respon
   if (!parsed.success) throw new ApiError(400, "Check the purchase order details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const input = parsed.data;
+  if (auth.role === "STAFF" && (!auth.branchId || input.branchId !== auth.branchId)) throw new ApiError(403, "You can only create purchase orders for your assigned branch.", "BRANCH_ACCESS_DENIED");
   const [supplier, branch, products] = await Promise.all([
     prisma.supplier.findFirst({ where: { id: input.supplierId, businessId: auth.businessId } }),
     prisma.branch.findFirst({ where: { id: input.branchId, businessId: auth.businessId } }),
@@ -72,7 +75,7 @@ purchasesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, respon
   response.status(201).json({ data: order });
 });
 
-purchasesRouter.post("/:purchaseOrderId/submit", requireRoles("OWNER", "STAFF"), async (request, response) => {
+purchasesRouter.post("/:purchaseOrderId/submit", requireAssignedStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const order = await prisma.purchaseOrder.findFirst({ where: { id: request.params.purchaseOrderId as string, businessId: auth.businessId }, select: { id: true, status: true } });
   if (!order) throw new ApiError(404, "Purchase order not found.", "PURCHASE_NOT_FOUND");
@@ -81,11 +84,11 @@ purchasesRouter.post("/:purchaseOrderId/submit", requireRoles("OWNER", "STAFF"),
   response.json({ data: { id: order.id, status: "SUBMITTED" } });
 });
 
-purchasesRouter.post("/:purchaseOrderId/approve", requireRoles("OWNER", "STAFF"), async (request, response) => {
+purchasesRouter.post("/:purchaseOrderId/approve", requireRoles("OWNER"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const order = await prisma.purchaseOrder.findFirst({ where: { id: request.params.purchaseOrderId as string, businessId: auth.businessId }, select: { id: true, status: true } });
   if (!order) throw new ApiError(404, "Purchase order not found.", "PURCHASE_NOT_FOUND");
-  if (order.status !== "SUBMITTED") throw new ApiError(409, "Only submitted purchase orders can be approved.", "INVALID_PURCHASE_TRANSITION");
+  if (!["DRAFT", "SUBMITTED"].includes(order.status)) throw new ApiError(409, "Only draft or submitted purchase orders can be approved.", "INVALID_PURCHASE_TRANSITION");
   const updated = await prisma.$transaction(async (transaction) => {
     const approved = await transaction.purchaseOrder.update({ where: { id: order.id }, data: { status: "APPROVED", approvedById: auth.userId, approvedAt: new Date() } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "PURCHASE_ORDER_APPROVED", entityType: "PurchaseOrder", entityId: order.id, before: { status: "SUBMITTED" }, after: { status: "APPROVED" } });
@@ -99,10 +102,11 @@ purchasesRouter.post("/:purchaseOrderId/receive", requireRoles("OWNER", "STAFF")
   if (!parsed.success) throw new ApiError(400, "Check the received quantities and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const input = parsed.data;
+  if (auth.role !== "OWNER" && input.invoice && input.invoice.amountPaid > 0) throw new ApiError(403, "Only the owner can record a supplier payment.", "FORBIDDEN");
   if (input.invoice && input.invoice.amountPaid > 0 && (!input.invoice.paymentMethod || !input.invoice.paymentReference)) throw new ApiError(400, "Add the payment method and reference for the amount already paid.", "PAYMENT_DETAILS_REQUIRED");
   if (input.invoice && input.invoice.amountPaid > input.invoice.totalAmount) throw new ApiError(400, "Amount paid cannot be more than the supplier invoice.", "PAYMENT_EXCEEDS_INVOICE");
   const po = await prisma.purchaseOrder.findFirst({
-    where: { id: request.params.purchaseOrderId as string, businessId: auth.businessId },
+    where: { id: request.params.purchaseOrderId as string, businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) },
     include: { lines: { include: { receiptLines: { select: { acceptedQuantity: true, rejectedQuantity: true } } } } },
   });
   if (!po) throw new ApiError(404, "Purchase order not found.", "PURCHASE_NOT_FOUND");
@@ -128,7 +132,7 @@ purchasesRouter.post("/:purchaseOrderId/receive", requireRoles("OWNER", "STAFF")
         if (line.acceptedQuantity > 0) await transaction.stockLot.create({ data: { productId: poLine.productId, branchId: po.branchId, sourceReceiptLineId: receiptLine.id, batchNumber: line.batchNumber, expiresAt: line.expiresAt, unitCost: line.unitCost, quantity: line.acceptedQuantity, origin: "PURCHASE" } });
         await transaction.stockBalance.upsert({ where: { productId_branchId: { productId: poLine.productId, branchId: po.branchId } }, create: { productId: poLine.productId, branchId: po.branchId, onHand: line.acceptedQuantity }, update: { onHand: { increment: line.acceptedQuantity } } });
         if (line.acceptedQuantity > 0) await transaction.stockMovement.create({ data: { productId: poLine.productId, branchId: po.branchId, userId: auth.userId, type: "PURCHASE_RECEIPT", quantity: line.acceptedQuantity, unitCost: line.unitCost, reference: created.reference } });
-        if (line.acceptedQuantity > 0) {
+        if (line.acceptedQuantity > 0 && !input.preserveProductCostPrice) {
           const priorValue = Number(oldQuantity) * Number((await transaction.product.findUniqueOrThrow({ where: { id: poLine.productId }, select: { costPrice: true } })).costPrice);
           const nextCost = (priorValue + line.acceptedQuantity * line.unitCost) / (Number(oldQuantity) + line.acceptedQuantity);
           await transaction.product.update({ where: { id: poLine.productId }, data: { costPrice: nextCost } });
