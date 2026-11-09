@@ -50,6 +50,9 @@ export function HeroCarousel() {
           src={slide.image}
           alt={slide.title}
           className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = "/workshop-drill.jpg";
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent" />
       </div>

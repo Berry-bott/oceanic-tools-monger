@@ -72,16 +72,22 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
       <div className="relative overflow-hidden bg-peach-xlight aspect-[3/3.5]">
         <Link href={detailUrl}>
           <img
-            src={product.images[0]}
+            src={product.images[0] || "/workshop-drill.jpg"}
             alt={product.name}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
+            onError={(e) => {
+              e.currentTarget.src = "/workshop-drill.jpg";
+            }}
           />
           {product.images[1] && (
             <img
               src={product.images[1]}
               alt={`${product.name} alternate`}
               className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
             />
           )}
         </Link>

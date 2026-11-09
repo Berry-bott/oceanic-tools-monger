@@ -203,6 +203,9 @@ function Face({
         className="w-full h-full object-cover"
         style={scaleX === 1 ? undefined : { transform: `scaleX(${scaleX})`, transformOrigin: "center" }}
         draggable={false}
+        onError={(e) => {
+          e.currentTarget.src = "/workshop-drill.jpg";
+        }}
       />
     </div>
   );

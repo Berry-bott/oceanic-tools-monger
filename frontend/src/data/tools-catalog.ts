@@ -129,7 +129,7 @@ export const STORE_CATEGORIES: StoreCategory[] = [
     name: "Welding & Equipment",
     slug: "welding-generators",
     count: 20,
-    image: "https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=400&h=500&fit=crop&auto=format",
+    image: "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=400&h=500&fit=crop&auto=format",
     description: "Inverter ARC welders, TIG/MIG torches, generators, and compressors.",
   },
 ];
@@ -300,8 +300,8 @@ export const TOOLS_PRODUCTS: StoreProduct[] = [
     price: 68000,
     originalPrice: 78000,
     images: [
-      "https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=600&h=700&fit=crop&auto=format",
-      "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=600&h=700&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1770822662967-7f66605f9103?w=600&h=700&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&h=700&fit=crop&auto=format",
     ],
     badge: "TRENDING",
     rating: 4.8,
@@ -410,7 +410,7 @@ export const TOOLS_PRODUCTS: StoreProduct[] = [
     price: 115000,
     originalPrice: 135000,
     images: [
-      "https://images.unsplash.com/photo-1504917599217-d4dc5ebe6122?w=600&h=700&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=600&h=700&fit=crop&auto=format",
       "https://images.unsplash.com/photo-1581147036324-c17ac41dfa6c?w=600&h=700&fit=crop&auto=format",
     ],
     badge: "NEW",

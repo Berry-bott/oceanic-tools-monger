@@ -161,9 +161,12 @@ export function ProductDetailClient({
               <div className="space-y-3">
                 <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-6 border border-peach-light">
                   <img
-                    src={product.images[activePhotoIdx] || product.images[0]}
+                    src={product.images[activePhotoIdx] || product.images[0] || "/workshop-drill.jpg"}
                     alt={product.name}
                     className="w-full h-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = "/workshop-drill.jpg";
+                    }}
                   />
                 </div>
                 {product.images.length > 1 && (
@@ -179,7 +182,14 @@ export function ProductDetailClient({
                             : "border-transparent opacity-60 hover:opacity-100"
                         }`}
                       >
-                        <img src={img} alt="" className="w-full h-full object-contain" />
+                        <img
+                          src={img}
+                          alt=""
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = "/workshop-drill.jpg";
+                          }}
+                        />
                       </button>
                     ))}
                   </div>

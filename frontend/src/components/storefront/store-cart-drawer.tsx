@@ -163,6 +163,9 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
                       src={item.imageUrl}
                       alt={item.name}
                       className="w-full h-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.src = "/workshop-drill.jpg";
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-peach-dark font-bold text-xs">

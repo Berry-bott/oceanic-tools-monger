@@ -444,7 +444,14 @@ export default function CheckoutPage() {
                   <div key={item.productId} className="py-3 flex gap-3 items-center text-xs">
                     <div className="w-14 h-14 rounded-2xl bg-peach-xlight flex-shrink-0 overflow-hidden border border-peach-light p-1 flex items-center justify-center">
                       {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = "/workshop-drill.jpg";
+                          }}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center font-bold text-peach-dark text-xs">
                           TOOL

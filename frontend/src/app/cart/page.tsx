@@ -80,6 +80,9 @@ export default function CartPage() {
                           src={item.imageUrl}
                           alt={item.name}
                           className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = "/workshop-drill.jpg";
+                          }}
                         />
                       ) : (
                         <span className="text-peach-dark font-bold text-xs">TOOLS</span>
