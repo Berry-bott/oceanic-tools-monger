@@ -300,8 +300,8 @@ export const TOOLS_PRODUCTS: StoreProduct[] = [
     price: 68000,
     originalPrice: 78000,
     images: [
-      "https://images.unsplash.com/photo-1770822662967-7f66605f9103?w=600&h=700&fit=crop&auto=format",
-      "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=600&h=700&fit=crop&auto=format",
+      "/makita-mixer.jpg",
+      "/mixer.jpg",
     ],
     badge: "TRENDING",
     rating: 4.8,

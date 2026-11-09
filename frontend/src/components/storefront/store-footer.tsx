@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
 
 export function StoreFooter() {
+  const currentYear = 2026;
+
   return (
     <footer className="bg-charcoal text-white font-sans">
       <div className="max-w-7xl mx-auto px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
@@ -121,7 +125,7 @@ export function StoreFooter() {
       <div className="border-t border-white/10 px-6 py-5">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-white/40">
-            © {new Date().getFullYear()} Oceanic Tools Monger (OceanicToolsMonger Ltd). All rights reserved.
+            © {currentYear} Oceanic Tools Monger (OceanicToolsMonger Ltd). All rights reserved.
           </p>
           <div className="flex items-center gap-3 flex-wrap justify-center">
             {["Paystack", "Flutterwave", "Visa", "Mastercard", "Bank Transfer"].map((method) => (
