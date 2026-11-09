@@ -1,0 +1,218 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useStoreCart } from "@/stores/store-cart.store";
+
+const NAV_LINKS = [
+  { label: "Shop", href: "/store" },
+  { label: "Power Tools", href: "/store?category=Power Tools" },
+  { label: "Saws & Cutters", href: "/store?category=Saw & Cutting Tools" },
+  { label: "Safety & Boots", href: "/store?category=Safety & Boots" },
+  { label: "Fasteners & Nails", href: "/store?category=Fasteners & Nails" },
+  { label: "New Arrivals", href: "/store?badge=NEW" },
+  { label: "Deals", href: "/store?badge=BEST SELLER" },
+];
+
+export interface StoreHeaderProps {
+  branches?: any[];
+  storeSlug?: string;
+  searchQuery?: string;
+  onSearchChange?: (q: string) => void;
+  selectedCategory?: string;
+  onCategorySelect?: (c: string) => void;
+}
+
+export function StoreHeader({}: StoreHeaderProps = {}) {
+  const router = useRouter();
+  const { items, setDrawerOpen } = useStoreCart();
+  const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 40);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/store?search=${encodeURIComponent(searchQuery.trim())}`);
+      setIsSearchOpen(false);
+      setSearchQuery("");
+    }
+  };
+
+  return (
+    <>
+      {/* Announcement Bar */}
+      <div className="bg-charcoal text-white text-center text-xs py-2 px-4 font-medium tracking-wide">
+        Free delivery on orders over ₦100,000 &nbsp;•&nbsp; Secure payment &nbsp;•&nbsp; Shop authentic industrial tools with Oceanic Tools Monger
+      </div>
+
+      {/* Main Header */}
+      <header
+        className={`sticky top-0 z-50 bg-white transition-shadow duration-300 ${
+          isScrolled ? "shadow-md" : "border-b border-peach-light"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
+          {/* Mobile Menu Button */}
+          <button
+            type="button"
+            className="lg:hidden p-2 text-charcoal"
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            aria-label="Menu"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              {isMobileMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
+              )}
+            </svg>
+          </button>
+
+          {/* Logo with public folder image */}
+          <Link href="/" className="flex-shrink-0 mr-4 flex items-center gap-2.5">
+            <img
+              src="/oceantoolslogo.png"
+              alt="Oceanic Tools Monger"
+              className="h-10 md:h-12 w-auto object-contain"
+            />
+            <span className="font-display text-2xl italic font-bold text-charcoal leading-none hidden sm:inline-block">
+              Oceanic
+              <span className="block text-[10px] not-italic font-normal tracking-[0.25em] text-peach-dark uppercase -mt-1 font-sans">
+                Tools Monger
+              </span>
+            </span>
+          </Link>
+
+          {/* Desktop Nav */}
+          <nav className="hidden lg:flex items-center gap-1 flex-1">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="px-3 py-2 text-sm font-medium text-charcoal-light hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors duration-150 whitespace-nowrap"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Right Action Icons */}
+          <div className="flex items-center gap-1 ml-auto">
+            {/* Search */}
+            <button
+              type="button"
+              onClick={() => setIsSearchOpen((prev) => !prev)}
+              className="p-2 text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors"
+              aria-label="Search"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+            </button>
+
+            {/* Account */}
+            <Link
+              href="/oceanicadminlogin"
+              className="p-2 text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors hidden sm:block"
+              aria-label="Account"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+              </svg>
+            </Link>
+
+            {/* Wishlist */}
+            <Link
+              href="/store"
+              className="relative p-2 text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors hidden sm:block"
+              aria-label="Wishlist"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                />
+              </svg>
+            </Link>
+
+            {/* Cart Button */}
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              className="relative p-2 text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors"
+              aria-label="Cart"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" />
+              </svg>
+              {totalItemCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-peach-dark text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {totalItemCount > 9 ? "9+" : totalItemCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Collapsible Search */}
+        {isSearchOpen && (
+          <div className="border-t border-peach-light bg-cream px-4 py-3">
+            <form onSubmit={handleSearchSubmit} className="max-w-2xl mx-auto flex gap-2">
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search for drills, saws, boots, fasteners, brands…"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-peach/40 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-peach"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-peach-dark text-white rounded-xl text-sm font-semibold hover:bg-peach-deep transition-colors"
+              >
+                Search
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Mobile Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-peach-light bg-white px-4 py-4 space-y-1">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="block px-3 py-2.5 text-sm font-medium text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <div className="pt-2 border-t border-peach-light flex gap-4 px-3">
+              <Link href="/oceanicadminlogin" className="text-sm text-charcoal-light hover:text-peach-dark">
+                My Account
+              </Link>
+              <Link href="/store" className="text-sm text-charcoal-light hover:text-peach-dark">
+                Wishlist
+              </Link>
+            </div>
+          </div>
+        )}
+      </header>
+    </>
+  );
+}

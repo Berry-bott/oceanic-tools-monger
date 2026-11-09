@@ -1,21 +1,60 @@
+@import "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=Jost:wght@300;400;500;600;700&display=swap";
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f8f9fa;
-  --color-foreground: #1a1d1f;
-  --color-ink: #1a1d1f;
-  --color-muted: #757780;
-  --color-line: #e7e9eb;
-  --color-canvas: #f8f9fa;
-  --color-brand: #149e8f;
-  --color-brand-dark: #108578;
+  --color-background: #ffffff;
+  --color-foreground: #2a2a2a;
+  --color-ink: #2a2a2a;
+  --color-muted: #555555;
+  --color-line: #ffe8d9;
+  --color-canvas: #fff8f3;
+
+  /* Exact Figma Make App Colors */
+  --color-peach: #ffab84;
+  --color-peach-light: #ffe8d9;
+  --color-peach-xlight: #fff3ec;
+  --color-peach-dark: #e8724a;
+  --color-peach-deep: #c85a32;
+  --color-cream: #fff8f3;
+  --color-charcoal: #2a2a2a;
+  --color-charcoal-light: #555555;
+  --color-warm-gray: #f5f0ed;
+
+  --color-brand: #e8724a;
+  --color-brand-dark: #c85a32;
   --color-teal: #149e8f;
+
   --text-xs: 0.8125rem;
-  --font-sans: var(--font-nunito), "Nunito", sans-serif;
+  --font-sans: "Jost", var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Playfair Display", var(--font-display), Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+:root {
+  --font-sans: "Jost", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Playfair Display", Georgia, serif;
+}
+
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans), "Jost", sans-serif;
+    color: #2a2a2a;
+    background-color: #ffffff;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-display {
+    font-family: var(--font-display), "Playfair Display", Georgia, serif !important;
+  }
+
+  .font-sans {
+    font-family: var(--font-sans), "Jost", sans-serif !important;
+  }
+
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
   select,
   textarea {
@@ -25,7 +64,7 @@
   input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus,
   select:focus,
   textarea:focus {
-    @apply border-brand outline-none ring-2 ring-brand/20;
+    @apply border-peach outline-none ring-2 ring-peach/20;
   }
 
   button:not(:disabled),
@@ -43,4 +82,108 @@
   [aria-disabled="true"] {
     @apply cursor-not-allowed;
   }
+}
+
+/* Custom scrollbars matching Figma Make App */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ffab8480;
+  border-radius: 9999px;
+  transition: opacity 0.2s;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  opacity: 1;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 3D Cube Viewer & Store Animations */
+.viewer-stage {
+  perspective: 900px;
+}
+
+.viewer-cube {
+  transform-style: preserve-3d;
+}
+
+.product-card {
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px #0000001a;
+}
+
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOutRight {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+
+@keyframes slideInFromRight {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-enter {
+  animation: 0.3s forwards slideInRight;
+}
+
+.toast-exit {
+  animation: 0.3s forwards slideOutRight;
+}
+
+.drawer-open {
+  animation: 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards slideInFromRight;
+}
+
+.hero-content-enter {
+  animation: 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards fadeInUp;
 }

@@ -79,11 +79,36 @@ async function paystackRequest<T>(path: string, init: RequestInit): Promise<T> {
   return result.data;
 }
 
+async function resolveStoreBusiness(storeSlug?: string) {
+  if (storeSlug) {
+    const business = await prisma.business.findUnique({
+      where: { storeSlug },
+      select: { id: true, name: true, storeSlug: true, currency: true }
+    });
+    if (business) return business;
+  }
+  const fallback = await prisma.business.findFirst({
+    select: { id: true, name: true, storeSlug: true, currency: true }
+  });
+  if (!fallback) throw new ApiError(404, "Store not found.", "STORE_NOT_FOUND");
+  return fallback;
+}
+
+storeRouter.get("/info", async (request, response) => {
+  const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
+  const business = await resolveStoreBusiness(storeSlug);
+  const branches = await prisma.branch.findMany({
+    where: { businessId: business.id },
+    select: { id: true, name: true, isDefault: true },
+    orderBy: [{ isDefault: "desc" }, { name: "asc" }]
+  });
+  response.set("Cache-Control", "public, max-age=60, stale-while-revalidate=60");
+  response.json({ data: { ...business, branches } });
+});
+
 storeRouter.get("/products", async (request, response) => {
   const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
-  if (!storeSlug) throw new ApiError(400, "Select a store.", "STORE_REQUIRED");
-  const business = await prisma.business.findUnique({ where: { storeSlug }, select: { id: true } });
-  if (!business) throw new ApiError(404, "Store not found.", "STORE_NOT_FOUND");
+  const business = await resolveStoreBusiness(storeSlug);
   const search = typeof request.query.search === "string" ? request.query.search.trim() : "";
   const products = await prisma.product.findMany({ where: { businessId: business.id, state: "ACTIVE", isPublished: true, ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { category: { contains: search, mode: "insensitive" } }] } : {}) }, include: { balances: { where: { branch: { businessId: business.id, isDefault: true } }, select: { onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: { mediaAsset: { select: { id: true, secureUrl: true, originalFilename: true, mimeType: true } } } } }, orderBy: { name: "asc" }, take: 100 });
   response.set("Cache-Control", "public, max-age=30, stale-while-revalidate=30");
@@ -92,9 +117,7 @@ storeRouter.get("/products", async (request, response) => {
 
 storeRouter.get("/products/:sku", async (request, response) => {
   const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
-  if (!storeSlug) throw new ApiError(400, "Select a store.", "STORE_REQUIRED");
-  const business = await prisma.business.findUnique({ where: { storeSlug }, select: { id: true } });
-  if (!business) throw new ApiError(404, "Store not found.", "STORE_NOT_FOUND");
+  const business = await resolveStoreBusiness(storeSlug);
   const product = await prisma.product.findFirst({ where: { businessId: business.id, sku: request.params.sku as string, state: "ACTIVE", isPublished: true }, include: { balances: { where: { branch: { businessId: business.id, isDefault: true } }, select: { onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: { mediaAsset: { select: { id: true, secureUrl: true, originalFilename: true, mimeType: true } } } }, specifications: { orderBy: { position: "asc" } } } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const { costPrice: _cost, createdById: _createdBy, normalizedName: _normalizedName, balances, ...publicProduct } = product;
@@ -109,9 +132,7 @@ storeRouter.post("/orders", async (request, response) => {
   const input = parsed.data;
   if (input.fulfillmentMethod === "DELIVERY" && !input.deliveryAddress) throw new ApiError(400, "Enter a delivery address.", "DELIVERY_ADDRESS_REQUIRED");
   const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
-  if (!storeSlug) throw new ApiError(400, "Select a store.", "STORE_REQUIRED");
-  const business = await prisma.business.findUnique({ where: { storeSlug }, select: { id: true } });
-  if (!business) throw new ApiError(404, "Store not found.", "STORE_NOT_FOUND");
+  const business = await resolveStoreBusiness(storeSlug);
   const branch = input.branchId
     ? await prisma.branch.findFirst({ where: { id: input.branchId, businessId: business.id }, include: { business: true } })
     : await prisma.branch.findFirst({ where: { businessId: business.id, isDefault: true }, include: { business: true } });

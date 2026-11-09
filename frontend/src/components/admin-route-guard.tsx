@@ -19,7 +19,16 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/oceanicadminlogin" || pathname === "/staff/login";
-  const currentUserQuery = useCurrentUser(!isLoginPage);
+  const isPublicStoreRoute =
+    pathname === "/" ||
+    pathname === "/store" ||
+    pathname.startsWith("/store/") ||
+    pathname === "/checkout" ||
+    pathname.startsWith("/checkout/") ||
+    pathname === "/order-confirmation" ||
+    pathname.startsWith("/order-confirmation/");
+  const isExemptRoute = isLoginPage || isPublicStoreRoute;
+  const currentUserQuery = useCurrentUser(!isExemptRoute);
   const passwordRouteMismatch = currentUserQuery.data?.user.role === "STAFF" &&
     (currentUserQuery.data.user.mustChangePassword
       ? pathname !== "/staff/change-password"
@@ -27,7 +36,7 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
   const errorStatus = currentUserQuery.error && "status" in currentUserQuery.error
     ? Number(currentUserQuery.error.status)
     : undefined;
-  const state = isLoginPage
+  const state = isExemptRoute
     ? "allowed"
     : passwordRouteMismatch
       ? "checking"
@@ -47,7 +56,7 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (isLoginPage || currentUserQuery.isPending) return;
+    if (isExemptRoute || currentUserQuery.isPending) return;
 
     if (currentUserQuery.data) {
       const currentUser = currentUserQuery.data.user;
@@ -81,7 +90,7 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
     }
   }, [currentUserQuery.data, currentUserQuery.error, currentUserQuery.isPending, isLoginPage, pathname, retry, router]);
 
-  if (isLoginPage || state === "allowed") return children;
+  if (isExemptRoute || state === "allowed") return children;
 
   if (state === "blocked") {
     return (

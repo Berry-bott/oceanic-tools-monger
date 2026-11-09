@@ -1,30 +1,52 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { Nunito } from "next/font/google";
+import { Playfair_Display, Jost } from "next/font/google";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { QueryProvider } from "@/providers/query-provider";
 import "./globals.css";
 
-const nunito = Nunito({
-  variable: "--font-nunito",
+const playfair = Playfair_Display({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-display",
+  display: "swap",
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
+});
+
+const jost = Jost({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "OceanicToolsMonger Admin",
-  description: "Manage inventory, sales and business finances with OceanicToolsMonger.",
+  title: "Oceanic Tools Monger | Industrial Power Tools & Construction Supplies",
+  description:
+    "Oceanic Tools Monger — An online store offering genuine industrial power tools, construction hardware, and site supplies with 3D product views and seamless ordering in a peach and white design.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className={`${nunito.variable} min-h-full flex flex-col bg-background font-sans text-foreground antialiased`}>
+    <html lang="en" className={`${playfair.variable} ${jost.variable} h-full antialiased`}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=Jost:wght@300;400;500;600;700&display=swap"
+        />
+      </head>
+      <body className={`${jost.className} min-h-full flex flex-col bg-white font-sans text-charcoal antialiased`}>
         <QueryProvider>
           <Suspense
             fallback={
-              <main className="grid min-h-screen place-items-center bg-background text-sm text-muted">
-                Loading OceanicToolsMonger...
+              <main className="grid min-h-screen place-items-center bg-white text-sm text-charcoal-light">
+                Loading Oceanic Tools Monger...
               </main>
             }
           >
