@@ -15,7 +15,7 @@ export type StaffMember = {
 export type CreateStaffInput = {
   name: string;
   email: string;
-  password: string;
+  password?: string;
   branchId: string;
   staffAccessRole: "CASHIER" | "SENIOR_STAFF";
 };
@@ -30,8 +30,12 @@ export async function getStaffMembers() {
   return response.data;
 }
 
+export type CreatedStaffMember = StaffMember & {
+  emailSent?: boolean;
+};
+
 export async function createStaffMember(input: CreateStaffInput) {
-  const response = await apiRequest<{ data: StaffMember }>("/users", {
+  const response = await apiRequest<{ data: CreatedStaffMember }>("/users", {
     method: "POST",
     body: JSON.stringify(input),
   });

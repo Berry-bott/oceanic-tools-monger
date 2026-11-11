@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -25,15 +25,20 @@ export default function StaffManagementClient() {
   const removeStaff = useRemoveStaffMember();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [branchId, setBranchId] = useState("");
   const [staffAccessRole, setStaffAccessRole] = useState<"CASHIER" | "SENIOR_STAFF">("SENIOR_STAFF");
-  const [passwordVisible, setPasswordVisible] = useState(false);
   const [search, setSearch] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
+  const [createdAccount, setCreatedAccount] = useState<{
+    name: string;
+    email: string;
+    emailSent?: boolean;
+  } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<StaffMember | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<StaffMember | null>(null);
+  const [removeError, setRemoveError] = useState("");
   const [editName, setEditName] = useState("");
   const [editBranchId, setEditBranchId] = useState("");
   const [editStaffAccessRole, setEditStaffAccessRole] = useState<"CASHIER" | "SENIOR_STAFF">("SENIOR_STAFF");
@@ -52,15 +57,19 @@ export default function StaffManagementClient() {
     setFormError("");
     setNotice("");
     try {
-      await createStaff.mutateAsync({ name: name.trim(), email: email.trim(), password, branchId, staffAccessRole });
+      const staffEmail = email.trim();
+      const staffName = name.trim();
+      const result = await createStaff.mutateAsync({ name: staffName, email: staffEmail, branchId, staffAccessRole });
       setName("");
       setEmail("");
-      setPassword("");
       setBranchId("");
       setStaffAccessRole("SENIOR_STAFF");
-      setPasswordVisible(false);
       setCreateOpen(false);
-      setNotice("Staff account created. Share the temporary password privately.");
+      setCreatedAccount({
+        name: staffName,
+        email: staffEmail,
+        emailSent: result.emailSent,
+      });
     } catch (cause) {
       const error = cause as Error & { code?: string; requestId?: string };
       setFormError(error.code === "STAFF_ROLE_MIGRATION_REQUIRED"
@@ -92,18 +101,29 @@ export default function StaffManagementClient() {
   async function toggleAccess(member: StaffMember) {
     setFormError("");
     setNotice("");
+    if (member.isActive) {
+      setRemoveError("");
+      setRemoveTarget(member);
+      return;
+    }
+
     try {
-      if (member.isActive) {
-        const confirmed = window.confirm(`Remove ${member.name}'s access? Their records will stay in your business history.`);
-        if (!confirmed) return;
-        await removeStaff.mutateAsync(member.id);
-        setNotice(`${member.name}'s access has been removed.`);
-      } else {
-        await updateStaff.mutateAsync({ id: member.id, changes: { isActive: true } });
-        setNotice(`${member.name}'s access has been restored.`);
-      }
+      await updateStaff.mutateAsync({ id: member.id, changes: { isActive: true } });
+      setNotice(`${member.name}'s access has been restored.`);
     } catch (cause) {
       setFormError(cause instanceof Error ? cause.message : "Could not update this staff account.");
+    }
+  }
+
+  async function confirmRemoveAccess() {
+    if (!removeTarget) return;
+    setRemoveError("");
+    try {
+      await removeStaff.mutateAsync(removeTarget.id);
+      setNotice(`${removeTarget.name}'s access has been removed.`);
+      setRemoveTarget(null);
+    } catch (cause) {
+      setRemoveError(cause instanceof Error ? cause.message : "Could not remove this staff account's access.");
     }
   }
 
@@ -147,7 +167,14 @@ export default function StaffManagementClient() {
         </div>
       )}
       {branchQuery.isError && <div role="alert" className="mb-4 rounded-lg border border-[#f0d2cd] bg-[#fff5f2] p-3 text-sm text-[#a75043]">Branches could not be loaded: {branchQuery.error instanceof Error ? branchQuery.error.message : "Please try again."}</div>}
-      {notice && <div role="status" className="mb-4 rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">{notice}</div>}
+      {notice && !createdAccount && <div role="status" className="mb-4 rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">{notice}</div>}
+
+      {createdAccount && <p role="status" className="mb-4 rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]">
+        Staff account created for {createdAccount.name}!{" "}
+        {createdAccount.emailSent
+          ? <>✓ Sign-in instructions were sent to this address <a className="font-medium underline" href={`mailto:${createdAccount.email}`}>{createdAccount.email}</a>.</>
+          : <>Invitation email was not sent to <a className="font-medium underline" href={`mailto:${createdAccount.email}`}>{createdAccount.email}</a>. Check email delivery status.</>}
+      </p>}
 
       <div>
         <section className="overflow-hidden rounded-2xl border border-[#e3ebe4] bg-white shadow-[0_4px_16px_#1c30240b]">
@@ -187,7 +214,15 @@ export default function StaffManagementClient() {
           ) : <form className="grid gap-4" onSubmit={(event) => void handleCreate(event)}>
             <label className="grid gap-1.5 text-sm text-[#536159]">Full name<input autoFocus className="h-11 rounded-lg border border-line px-3 text-sm" value={name} onChange={(event) => setName(event.target.value)} required maxLength={180} placeholder="Staff member’s name" /></label>
             <label className="grid gap-1.5 text-sm text-[#536159]">Email address<input type="email" autoComplete="email" className="h-11 rounded-lg border border-line px-3 text-sm" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} placeholder="name@example.com" /></label>
-            <label className="grid gap-1.5 text-sm text-[#536159]">Temporary password<div className="flex gap-2"><input type={passwordVisible ? "text" : "password"} autoComplete="new-password" className="h-11 min-w-0 flex-1 rounded-lg border border-line px-3 text-sm" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={6} maxLength={6} placeholder="Exactly 6 characters" /><button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="rounded-lg border border-line px-3 text-sm text-muted">{passwordVisible ? "Hide" : "Show"}</button></div><span className="text-xs text-muted">The staff member must replace this temporary password after signing in.</span></label>
+            <div className="rounded-xl border border-[#dcebe0] bg-[#f7faf8] p-3.5 text-xs text-[#35533f]">
+              <div className="flex items-center gap-2 font-semibold text-[#294e35]">
+                <span className="grid size-5 place-items-center rounded-full bg-[#e2f0e6] text-[#2d6842]">✓</span>
+                Automatic credentials delivery
+              </div>
+              <p className="mb-0 mt-1.5 text-[#587361] leading-relaxed">
+                A secure temporary password and direct sign-in instructions will be automatically generated and emailed to this address upon creation.
+              </p>
+            </div>
             <label className="grid gap-1.5 text-sm text-[#536159]">Staff role<select className="h-11 rounded-lg border border-line bg-white px-3 text-sm" value={staffAccessRole} onChange={(event) => setStaffAccessRole(event.target.value as "CASHIER" | "SENIOR_STAFF")}><option value="CASHIER">Cashier</option><option value="SENIOR_STAFF">Senior staff</option></select></label>
             <label className="grid gap-1.5 text-sm text-[#536159]">Assigned branch<select className="h-11 rounded-lg border border-line bg-white px-3 text-sm" value={branchId} onChange={(event) => setBranchId(event.target.value)} required><option value="">Choose a branch</option>{(branchQuery.data?.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
             <div className="flex justify-end gap-2 border-t border-line pt-4"><button type="button" disabled={createStaff.isPending} onClick={() => setCreateOpen(false)} className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50">Cancel</button><button type="submit" disabled={createStaff.isPending || branchQuery.isError} className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-60">{createStaff.isPending ? <><LoadingMark /> Creating…</> : "Create staff account"}</button></div>
@@ -204,6 +239,20 @@ export default function StaffManagementClient() {
             <label className="grid gap-1.5 text-sm text-[#536159]">Staff role<select className="h-11 rounded-lg border border-line bg-white px-3 text-sm" value={editStaffAccessRole} onChange={(event) => setEditStaffAccessRole(event.target.value as "CASHIER" | "SENIOR_STAFF")}><option value="CASHIER">Cashier</option><option value="SENIOR_STAFF">Senior staff</option></select></label><label className="grid gap-1.5 text-sm text-[#536159]">Assigned branch<select className="h-11 rounded-lg border border-line bg-white px-3 text-sm" value={editBranchId} onChange={(event) => setEditBranchId(event.target.value)} required>{(branchQuery.data?.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
             <div className="flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-line px-4 py-2 text-sm">Cancel</button><button type="submit" disabled={updateStaff.isPending} className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-60">{updateStaff.isPending ? <><LoadingMark /> Saving...</> : "Save changes"}</button></div>
           </form>
+        </AdminDialogPanel>
+      </div>, document.body)}
+
+      {removeTarget && createPortal(<div className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto bg-[#14201e]/50 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !removeStaff.isPending) setRemoveTarget(null); }}>
+        <AdminDialogPanel role="alertdialog" aria-modal="true" aria-labelledby="remove-staff-title" aria-describedby="remove-staff-description" onEscape={() => { if (!removeStaff.isPending) setRemoveTarget(null); }} className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-[14px] border border-line bg-white p-5 shadow-2xl">
+          <h2 id="remove-staff-title" className="m-0 text-lg font-semibold text-ink">Remove staff access?</h2>
+          <p id="remove-staff-description" className="mb-0 mt-2 text-sm leading-6 text-muted"><strong className="font-medium text-ink">{removeTarget.name}</strong> will no longer be able to sign in. Their records will stay in your business history.</p>
+          {removeError && <p role="alert" className="mb-0 mt-4 rounded-lg border border-[#f0d2cd] bg-[#fff5f2] p-3 text-sm text-[#a75043]">{removeError}</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" autoFocus disabled={removeStaff.isPending} onClick={() => setRemoveTarget(null)} className="rounded-lg border border-line px-4 py-2 text-sm disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={removeStaff.isPending} onClick={() => void confirmRemoveAccess()} className="inline-flex items-center gap-2 rounded-lg border border-[#a75043] bg-[#a75043] px-4 py-2 text-sm text-white hover:bg-[#913d32] disabled:opacity-60">
+              {removeStaff.isPending ? <><LoadingMark /> Removing...</> : "Remove access"}
+            </button>
+          </div>
         </AdminDialogPanel>
       </div>, document.body)}
     </main>

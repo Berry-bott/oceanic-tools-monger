@@ -18,61 +18,74 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
   const { sku } = await params;
   const decodedSku = decodeURIComponent(sku).toLowerCase();
 
-  // Check tools catalog first (by slug, sku, or id)
-  let product: StoreProduct | undefined = TOOLS_PRODUCTS.find(
-    (p) =>
-      p.slug.toLowerCase() === decodedSku ||
-      p.sku.toLowerCase() === decodedSku ||
-      p.id.toLowerCase() === decodedSku
-  );
+  let product: StoreProduct | undefined;
 
-  // If not found in static catalog, attempt backend database lookup
-  if (!product) {
-    try {
-      const backendProduct = await fetchStoreProductBySku(sku);
-      if (backendProduct) {
-        const extractedImages =
-          backendProduct.images && backendProduct.images.length > 0
-            ? backendProduct.images
-                .map((img) => (typeof img === "string" ? img : img.imageUrl))
-                .filter((url): url is string => Boolean(url))
-            : [];
+  // 1. Check backend database first (primary source of truth for products & live images)
+  try {
+    const backendProduct = await fetchStoreProductBySku(sku);
+    if (backendProduct) {
+      const extractedImages =
+        backendProduct.images && backendProduct.images.length > 0
+          ? backendProduct.images
+              .map((img) => (typeof img === "string" ? img : img.imageUrl))
+              .filter((url): url is string => Boolean(url))
+          : [];
 
-        product = {
-          id: backendProduct.id,
-          sku: backendProduct.sku,
-          slug: backendProduct.sku,
-          name: backendProduct.name,
-          brand: backendProduct.brand || "Oceanic Tools Monger Professional",
-          category: backendProduct.category || "Power Tools",
-          categorySlug: (backendProduct.category || "power-tools")
-            .toLowerCase()
-            .replace(/\s+/g, "-"),
-          price: Number(backendProduct.sellingPrice || 25000),
-          originalPrice: Math.round(Number(backendProduct.sellingPrice || 25000) * 1.15),
-          images:
-            extractedImages.length > 0
-              ? extractedImages
-              : ["https://images.unsplash.com/photo-1504148455328-c376907d081c?w=600&h=700&fit=crop&auto=format"],
-          badge: backendProduct.available > 0 && backendProduct.available < 15 ? "LIMITED" : "POPULAR",
-          rating: 4.8,
-          reviewCount: 120,
-          inStock: backendProduct.available > 0,
-          stockCount: backendProduct.available,
-          description:
-            backendProduct.description ||
-            "Heavy-duty industrial equipment built for high performance and durability on Nigerian jobsites.",
-          benefits: [
-            "Continuous duty motor built for heavy site operations",
-            "Thermal overload and surge protection",
-            "Comprehensive 1-year manufacturer warranty",
-          ],
-          unit: backendProduct.unit || "Unit",
-        };
-      }
-    } catch {
-      // Backend not available or product doesn't exist
+      // Find any rich catalog specs or benefits if present
+      const catalogMatch = TOOLS_PRODUCTS.find(
+        (c) =>
+          c.sku.toLowerCase() === backendProduct.sku.toLowerCase() ||
+          c.name.toLowerCase() === backendProduct.name.toLowerCase() ||
+          c.slug.toLowerCase() === decodedSku
+      );
+
+      product = {
+        id: backendProduct.id,
+        sku: backendProduct.sku,
+        slug: backendProduct.sku,
+        name: backendProduct.name,
+        brand: backendProduct.brand || catalogMatch?.brand || "Oceanic Tools Monger Professional",
+        category: backendProduct.category || catalogMatch?.category || "Power Tools",
+        categorySlug: (backendProduct.category || catalogMatch?.category || "power-tools")
+          .toLowerCase()
+          .replace(/\s+/g, "-"),
+        price: Number(backendProduct.sellingPrice || 25000),
+        originalPrice: catalogMatch?.originalPrice || Math.round(Number(backendProduct.sellingPrice || 25000) * 1.15),
+        images:
+          extractedImages.length > 0
+            ? extractedImages
+            : catalogMatch?.images || ["/workshop-drill.jpg"],
+        badge: catalogMatch?.badge || (backendProduct.available > 0 && backendProduct.available < 15 ? "LIMITED" : "POPULAR"),
+        rating: catalogMatch?.rating || 4.8,
+        reviewCount: catalogMatch?.reviewCount || 120,
+        inStock: backendProduct.available > 0,
+        stockCount: backendProduct.available,
+        description:
+          backendProduct.description ||
+          catalogMatch?.description ||
+          "Heavy-duty industrial equipment built for high performance and durability on Nigerian jobsites.",
+        benefits: catalogMatch?.benefits || [
+          "Continuous duty motor built for heavy site operations",
+          "Thermal overload and surge protection",
+          "Comprehensive 1-year manufacturer warranty",
+        ],
+        specifications: catalogMatch?.specifications,
+        unit: backendProduct.unit || catalogMatch?.unit || "Unit",
+        warranty: catalogMatch?.warranty || "1 Year Oceanic Tools Monger Warranty",
+      };
     }
+  } catch {
+    // If backend request fails, fall through to static catalog fallback
+  }
+
+  // 2. Fallback to tools-catalog if product is not in backend database
+  if (!product) {
+    product = TOOLS_PRODUCTS.find(
+      (p) =>
+        p.slug.toLowerCase() === decodedSku ||
+        p.sku.toLowerCase() === decodedSku ||
+        p.id.toLowerCase() === decodedSku
+    );
   }
 
   if (!product) {

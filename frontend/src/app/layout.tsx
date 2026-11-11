@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Playfair_Display, Jost } from "next/font/google";
-import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { QueryProvider } from "@/providers/query-provider";
 import "./globals.css";
 
@@ -24,6 +23,15 @@ export const metadata: Metadata = {
   title: "Oceanic Tools Monger | Industrial Power Tools & Construction Supplies",
   description:
     "Oceanic Tools Monger — An online store offering genuine industrial power tools, construction hardware, and site supplies with 3D product views and seamless ordering in a peach and white design.",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png", sizes: "256x256" },
+      { url: "/favicon.ico" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({
@@ -43,14 +51,8 @@ export default function RootLayout({
       </head>
       <body className={`${jost.className} min-h-full flex flex-col bg-white font-sans text-charcoal antialiased`}>
         <QueryProvider>
-          <Suspense
-            fallback={
-              <main className="grid min-h-screen place-items-center bg-white text-sm text-charcoal-light">
-                Loading Oceanic Tools Monger...
-              </main>
-            }
-          >
-            <AdminRouteGuard>{children}</AdminRouteGuard>
+          <Suspense fallback={null}>
+            {children}
           </Suspense>
         </QueryProvider>
       </body>

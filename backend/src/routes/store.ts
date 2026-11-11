@@ -106,6 +106,196 @@ storeRouter.get("/info", async (request, response) => {
   response.json({ data: { ...business, branches } });
 });
 
+storeRouter.get("/categories", async (request, response) => {
+  const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
+  const business = await resolveStoreBusiness(storeSlug);
+
+  const products = await prisma.product.findMany({
+    where: { businessId: business.id, state: "ACTIVE", isPublished: true },
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      productImages: {
+        where: { mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } },
+        orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }],
+        take: 1,
+        select: { mediaAsset: { select: { secureUrl: true } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const categoryMap = new Map<string, { name: string; slug: string; count: number; image: string | null }>();
+
+  for (const product of products) {
+    const rawCategory = product.category?.trim();
+    if (!rawCategory) continue;
+
+    const lower = rawCategory.toLowerCase();
+    let displayName = rawCategory;
+    if (lower === "power tools" || lower === "power tool") {
+      displayName = "Power Tools";
+    } else if (lower === "nail" || lower === "nails" || lower === "fasteners & nails") {
+      displayName = "Fasteners & Nails";
+    } else if (lower === "safety & boots" || lower === "safety" || lower === "boots") {
+      displayName = "Safety & Boots";
+    } else if (lower === "saw & cutting tools" || lower === "saw tools" || lower === "sawing") {
+      displayName = "Saw & Cutting Tools";
+    } else if (lower === "hand tools" || lower === "hand tool") {
+      displayName = "Hand Tools";
+    } else if (lower === "welding & equipment" || lower === "welding") {
+      displayName = "Welding & Equipment";
+    } else {
+      displayName = rawCategory.replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    const key = displayName.toLowerCase();
+    const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const imgUrl = product.productImages[0]?.mediaAsset?.secureUrl || null;
+
+    const existing = categoryMap.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (!existing.image && imgUrl) {
+        existing.image = imgUrl;
+      }
+    } else {
+      categoryMap.set(key, {
+        name: displayName,
+        slug,
+        count: 1,
+        image: imgUrl,
+      });
+    }
+  }
+
+  const result = Array.from(categoryMap.values()).sort((a, b) => b.count - a.count);
+  response.set("Cache-Control", "public, max-age=30, stale-while-revalidate=30");
+  response.json({ data: result });
+});
+
+storeRouter.get("/collections", async (request, response) => {
+  const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
+  const business = await resolveStoreBusiness(storeSlug);
+  const salesSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [saleProductTotals, onlineProductTotals] = await Promise.all([
+    prisma.saleLine.groupBy({
+      by: ["productId"],
+      where: {
+        sale: {
+          businessId: business.id,
+          status: { in: ["COMPLETED", "PARTIALLY_RETURNED"] },
+          createdAt: { gte: salesSince },
+        },
+        product: { businessId: business.id, state: "ACTIVE", isPublished: true },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.onlineOrderLine.groupBy({
+      by: ["productId"],
+      where: {
+        order: {
+          businessId: business.id,
+          status: {
+            in: [
+              "PAID",
+              "PROCESSING",
+              "READY_FOR_COLLECTION",
+              "DISPATCHED",
+              "DELIVERED",
+              "COLLECTED",
+              "PARTIALLY_FULFILLED",
+            ],
+          },
+          createdAt: { gte: salesSince },
+        },
+        product: { businessId: business.id, state: "ACTIVE", isPublished: true },
+      },
+      _sum: { quantity: true },
+    }),
+  ]);
+
+  const unitsSoldByProduct = new Map<string, number>();
+  for (const total of [...saleProductTotals, ...onlineProductTotals]) {
+    unitsSoldByProduct.set(
+      total.productId,
+      (unitsSoldByProduct.get(total.productId) ?? 0) + Number(total._sum.quantity ?? 0),
+    );
+  }
+
+  const trendingProductIds = [...unitsSoldByProduct.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([productId]) => productId);
+
+  const productInclude = {
+    balances: {
+      where: { branch: { businessId: business.id, isDefault: true } },
+      select: { onHand: true, reserved: true },
+    },
+    productImages: {
+      where: { mediaAsset: { status: "ACTIVE" as const, secureUrl: { not: null } } },
+      orderBy: [{ isPrimary: "desc" as const }, { view: "asc" as const }, { position: "asc" as const }],
+      include: { mediaAsset: { select: { id: true, secureUrl: true, originalFilename: true, mimeType: true } } },
+    },
+  };
+  const [trendingRows, newArrivalRows] = await Promise.all([
+    trendingProductIds.length
+      ? prisma.product.findMany({
+          where: {
+            businessId: business.id,
+            id: { in: trendingProductIds },
+            state: "ACTIVE",
+            isPublished: true,
+          },
+          include: productInclude,
+        })
+      : Promise.resolve([]),
+    prisma.product.findMany({
+      where: { businessId: business.id, state: "ACTIVE", isPublished: true },
+      include: productInclude,
+      orderBy: { createdAt: "desc" },
+      take: 4,
+    }),
+  ]);
+
+  const toStoreProduct = (product: (typeof newArrivalRows)[number]) => {
+    const {
+      costPrice: _costPrice,
+      createdById: _createdBy,
+      normalizedName: _normalized,
+      balances,
+      productImages,
+      ...fields
+    } = product;
+    return {
+      ...fields,
+      images: productImages.map(({ id, view, position, mediaAsset }) => ({
+        id,
+        view,
+        position,
+        imageUrl: mediaAsset.secureUrl,
+        originalFilename: mediaAsset.originalFilename,
+        mimeType: mediaAsset.mimeType,
+      })),
+      available: balances.reduce(
+        (sum, balance) => sum + Number(balance.onHand) - Number(balance.reserved),
+        0,
+      ),
+    };
+  };
+  const trendingById = new Map(trendingRows.map((product) => [product.id, product]));
+  const trending = trendingProductIds
+    .map((productId) => trendingById.get(productId))
+    .filter((product): product is NonNullable<typeof product> => Boolean(product))
+    .map(toStoreProduct);
+
+  response.set("Cache-Control", "public, max-age=30, stale-while-revalidate=30");
+  response.json({ data: { trending, newArrivals: newArrivalRows.map(toStoreProduct) } });
+});
+
 storeRouter.get("/products", async (request, response) => {
   const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
   const business = await resolveStoreBusiness(storeSlug);

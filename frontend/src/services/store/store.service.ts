@@ -14,6 +14,14 @@ export type StoreInfo = {
   branches: StoreBranch[];
 };
 
+export type StoreCategorySummary = {
+  name: string;
+  slug: string;
+  count: number;
+  image?: string | null;
+  description?: string;
+};
+
 export type StoreProductImage = {
   id: string;
   view: "FRONT" | "BACK" | "SIDE" | "ADDITIONAL";
@@ -42,8 +50,14 @@ export type StoreProduct = {
   available: number;
   brand: string | null;
   model: string | null;
+  createdAt?: string;
   specifications?: StoreProductSpecification[];
   images?: StoreProductImage[];
+};
+
+export type StoreCollections = {
+  trending: StoreProduct[];
+  newArrivals: StoreProduct[];
 };
 
 export type CreateStoreOrderInput = {
@@ -91,6 +105,22 @@ export async function fetchStoreProducts(storeSlug?: string, search?: string): P
   if (!res?.ok) return [];
   const json = await res.json().catch(() => null);
   return json?.data ?? [];
+}
+
+export async function fetchStoreCategories(storeSlug?: string): Promise<StoreCategorySummary[]> {
+  const query = storeSlug ? `?store=${encodeURIComponent(storeSlug)}` : "";
+  const res = await fetch(`${API_BASE_URL}/store/categories${query}`, { cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return [];
+  const json = await res.json().catch(() => null);
+  return json?.data ?? [];
+}
+
+export async function fetchStoreCollections(storeSlug?: string): Promise<StoreCollections> {
+  const query = storeSlug ? `?store=${encodeURIComponent(storeSlug)}` : "";
+  const res = await fetch(`${API_BASE_URL}/store/collections${query}`, { cache: "no-store" }).catch(() => null);
+  if (!res?.ok) return { trending: [], newArrivals: [] };
+  const json = await res.json().catch(() => null);
+  return json?.data ?? { trending: [], newArrivals: [] };
 }
 
 export async function fetchStoreProductBySku(sku: string, storeSlug?: string): Promise<StoreProduct | null> {

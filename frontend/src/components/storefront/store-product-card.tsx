@@ -71,15 +71,18 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
     <div className="product-card group relative bg-white rounded-2xl overflow-hidden border border-peach-light/60 hover:border-peach/40 shadow-sm">
       <div className="relative overflow-hidden bg-peach-xlight aspect-[3/3.5]">
         <Link href={detailUrl}>
-          <img
-            src={product.images[0] || "/workshop-drill.jpg"}
-            alt={product.name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-            onError={(e) => {
-              e.currentTarget.src = "/workshop-drill.jpg";
-            }}
-          />
+          {product.images[0] ? (
+            <img
+              src={product.images[0]}
+              alt={product.name}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div aria-hidden="true" className="grid h-full w-full place-items-center bg-peach-xlight text-sm text-charcoal-light">
+              No image available
+            </div>
+          )}
           {product.images[1] && (
             <img
               src={product.images[1]}
@@ -138,7 +141,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
 
         {/* Slide-Up Add to Cart */}
         {showQuickView && (
-          <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <div className="absolute bottom-0 left-0 right-0 translate-y-0 transition-transform duration-300 [@media(hover:hover)]:translate-y-full [@media(hover:hover)]:group-hover:translate-y-0">
             <button
               type="button"
               onClick={handleAddToCart}
@@ -151,24 +154,24 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
         )}
       </div>
 
-      <div className="p-3.5">
-        <p className="text-[11px] text-peach-dark font-semibold tracking-wide uppercase mb-1">
+      <div className="p-2.5 sm:p-3.5">
+        {product.brand && <p className="text-[11px] text-peach-dark font-semibold tracking-wide uppercase mb-1">
           {product.brand}
-        </p>
+        </p>}
         <Link
           href={detailUrl}
           className="block text-sm font-semibold text-charcoal hover:text-peach-dark transition-colors leading-snug mb-2 line-clamp-2"
         >
           {product.name}
         </Link>
-        <div className="flex items-center gap-1.5 mb-2.5">
+        {product.rating > 0 && product.reviewCount > 0 && <div className="flex items-center gap-1.5 mb-2.5">
           <StarRating rating={product.rating} />
           <span className="text-[11px] text-charcoal-light">
             {product.rating} ({product.reviewCount.toLocaleString()})
           </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-baseline gap-1.5">
+        </div>}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-1.5 gap-y-1">
+          <div className="flex min-w-0 items-baseline gap-1.5">
             <span className="text-base font-bold text-charcoal">
               ₦{product.price.toLocaleString("en-NG")}
             </span>

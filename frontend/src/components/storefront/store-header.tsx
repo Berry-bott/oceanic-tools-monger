@@ -82,18 +82,20 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
           </button>
 
           {/* Logo with public folder image */}
-          <Link href="/" className="flex-shrink-0 mr-4 flex items-center gap-2.5">
+          <Link href="/" className="flex-shrink-0 mr-3 sm:mr-4 flex items-center gap-1.5 sm:gap-2 group">
             <img
               src="/oceantoolslogo.png"
               alt="Oceanic Tools Monger"
-              className="h-10 md:h-12 w-auto object-contain"
+              className="h-10 sm:h-11 md:h-12 w-auto object-contain shrink-0 transition-transform duration-200 group-hover:scale-105"
             />
-            <span className="font-display text-2xl italic font-bold text-charcoal leading-none hidden sm:inline-block">
-              Oceanic
-              <span className="block text-[10px] not-italic font-normal tracking-[0.25em] text-peach-dark uppercase -mt-1 font-sans">
+            <div className="flex flex-col justify-center">
+              <span className="font-display text-xl sm:text-2xl md:text-[26px] font-black tracking-tight text-charcoal leading-none">
+                Oceanic
+              </span>
+              <span className="text-[9px] sm:text-[10px] md:text-[11px] font-bold uppercase tracking-[0.22em] text-peach-dark font-sans leading-none mt-1">
                 Tools Monger
               </span>
-            </span>
+            </div>
           </Link>
 
           {/* Desktop Nav */}
@@ -123,14 +125,15 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
               </svg>
             </button>
 
-            {/* Account */}
+            {/* Track Order */}
             <Link
-              href="/oceanicadminlogin"
+              href="/track-order"
               className="p-2 text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors hidden sm:block"
-              aria-label="Account"
+              aria-label="Track Order"
+              title="Track Order"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.25V3.75m0 3.75h3.75m-3.75 0V18.75m-6.75-9.75h6.75" />
               </svg>
             </Link>
 
@@ -203,8 +206,8 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
               </Link>
             ))}
             <div className="pt-2 border-t border-peach-light flex gap-4 px-3">
-              <Link href="/oceanicadminlogin" className="text-sm text-charcoal-light hover:text-peach-dark">
-                My Account
+              <Link href="/track-order" className="text-sm text-charcoal-light hover:text-peach-dark">
+                Track Order
               </Link>
               <Link href="/store" className="text-sm text-charcoal-light hover:text-peach-dark">
                 Wishlist

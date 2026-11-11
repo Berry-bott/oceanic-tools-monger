@@ -19,18 +19,29 @@ function AdminSessionLifecycle() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  // Internal workspace detection: session management and guards apply ONLY to admin/staff areas
+  const isAdminOrStaff = pathname.startsWith("/admin") || pathname.startsWith("/staff");
   const isLoginPage = pathname === "/oceanicadminlogin" || pathname === "/staff/login";
-  const currentUserQuery = useCurrentUser(!isLoginPage);
+
+  // Only query user session if the visitor is browsing an internal admin or staff route
+  const currentUserQuery = useCurrentUser(isAdminOrStaff && !isLoginPage);
   const accessExpiresAt = currentUserQuery.data?.accessExpiresAt;
 
   useEffect(() => {
     const onExpired = () => {
+      // Do NOT redirect if browsing the public website (home, store, product, cart, checkout, etc.)
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith("/admin") && !currentPath.startsWith("/staff")) {
+        return;
+      }
+
       queryClient.clear();
       usePosCartStore.getState().clearCart();
       useBranchStore.getState().clearSelectedBranch();
 
-      if (window.location.pathname === "/oceanicadminlogin" || window.location.pathname === "/staff/login") return;
-      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (currentPath === "/oceanicadminlogin" || currentPath === "/staff/login") return;
+      const current = `${currentPath}${window.location.search}${window.location.hash}`;
       const loginPath = getWorkspaceRole() === "STAFF" ? "/staff/login" : "/oceanicadminlogin";
       router.replace(`${loginPath}?next=${encodeURIComponent(current)}`);
     };
@@ -54,7 +65,8 @@ function AdminSessionLifecycle() {
   }, [queryClient, router]);
 
   useEffect(() => {
-    if (isLoginPage || !accessExpiresAt) return;
+    // Session renewal timer only runs for signed-in admins and staff on internal routes
+    if (!isAdminOrStaff || isLoginPage || !accessExpiresAt) return;
     const expiry = new Date(accessExpiresAt).getTime();
     if (!Number.isFinite(expiry)) return;
 
@@ -85,7 +97,7 @@ function AdminSessionLifecycle() {
       if (retryTimer) clearTimeout(retryTimer);
       document.removeEventListener("visibilitychange", renewIfNearExpiry);
     };
-  }, [accessExpiresAt, isLoginPage]);
+  }, [accessExpiresAt, isAdminOrStaff, isLoginPage]);
 
   return null;
 }

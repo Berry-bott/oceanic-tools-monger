@@ -10,18 +10,20 @@ export function StoreFooter() {
       <div className="max-w-7xl mx-auto px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
         {/* Brand & Socials Column */}
         <div className="col-span-2 md:col-span-1">
-          <Link href="/" className="inline-block">
+          <Link href="/" className="inline-flex items-center gap-2 group">
             <img
               src="/oceantoolslogo.png"
               alt="Oceanic Tools Monger Logo"
-              className="h-10 w-auto object-contain mb-2 brightness-110"
+              className="h-12 w-auto object-contain brightness-110 shrink-0 transition-transform duration-200 group-hover:scale-105"
             />
-            <span className="font-display text-2xl italic font-bold text-white block mb-1">
-              Oceanic
-            </span>
-            <span className="text-[10px] tracking-[0.25em] text-peach uppercase font-medium">
-              Tools Monger
-            </span>
+            <div className="flex flex-col justify-center">
+              <span className="font-display text-2xl font-black text-white leading-none">
+                Oceanic
+              </span>
+              <span className="text-[10px] font-bold tracking-[0.24em] text-peach uppercase leading-none mt-1">
+                Tools Monger
+              </span>
+            </div>
           </Link>
           <p className="mt-4 text-sm text-white/60 leading-relaxed">
             Nigeria&apos;s leading distributor of genuine heavy industrial power tools, construction hardware, workshop machinery, and jobsite safety equipment.
@@ -103,7 +105,7 @@ export function StoreFooter() {
             {[
               { name: "About Oceanic Tools Monger", href: "/store" },
               { name: "Our Story & Depots", href: "/store" },
-              { name: "Contractor Portal", href: "/oceanicadminlogin" },
+              { name: "Track Your Order", href: "/track-order" },
               { name: "Authorized Service Centers", href: "/store" },
               { name: "Privacy Policy", href: "/store" },
               { name: "Terms & Conditions", href: "/store" },

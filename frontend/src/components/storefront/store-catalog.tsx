@@ -4,20 +4,20 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { HeroCarousel } from "./hero-carousel";
 import { StoreProductCard } from "./store-product-card";
-import {
-  TOOLS_PRODUCTS,
-  STORE_CATEGORIES,
-  type StoreProduct,
-} from "@/data/tools-catalog";
+import type { StoreProduct } from "@/data/tools-catalog";
+import type { StoreBranch, StoreCategorySummary } from "@/services/store/store.service";
 
 interface StoreCatalogProps {
   initialProducts?: StoreProduct[];
+  categories?: StoreCategorySummary[];
+  trendingProducts?: StoreProduct[];
+  newArrivals?: StoreProduct[];
   storeName?: string;
   storeSlug?: string;
   selectedCategory?: string;
   selectedBadge?: string;
   searchFilter?: string;
-  branches?: any[];
+  branches?: StoreBranch[];
   searchQuery?: string;
   onCategorySelect?: (c: string) => void;
 }
@@ -70,7 +70,10 @@ const TRUST_BADGES = [
 ];
 
 export function StoreCatalog({
-  initialProducts = TOOLS_PRODUCTS,
+  initialProducts = [],
+  categories,
+  trendingProducts = [],
+  newArrivals = [],
   selectedCategory,
   selectedBadge,
   searchFilter,
@@ -81,11 +84,40 @@ export function StoreCatalog({
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
 
-  const products = initialProducts.length > 0 ? initialProducts : TOOLS_PRODUCTS;
+  const products = initialProducts;
+
+  const catalogCategories = useMemo(() => {
+    if (categories && categories.length > 0) {
+      return categories;
+    }
+
+    // Derive categories from backend products when category summaries are unavailable.
+    const map = new Map<string, { name: string; slug: string; count: number; image?: string }>();
+    for (const p of products) {
+      if (!p.category) continue;
+      const raw = p.category.trim();
+      const key = raw.toLowerCase();
+      const slug = key.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const existing = map.get(key);
+      const prodImg = p.images?.[0] || null;
+      if (existing) {
+        existing.count += 1;
+        if (!existing.image && prodImg) existing.image = prodImg;
+      } else {
+        map.set(key, {
+          name: raw,
+          slug,
+          count: 1,
+          image: prodImg || undefined,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [categories, products]);
 
   // Filtered & sorted catalog
   const filteredProducts = useMemo(() => {
-    let result = products.filter((p) => {
+    const result = [...products].filter((p) => {
       if (activeCategory !== "all" && p.category.toLowerCase() !== activeCategory.toLowerCase()) {
         return false;
       }
@@ -122,26 +154,16 @@ export function StoreCatalog({
     return result;
   }, [products, activeCategory, selectedBadge, searchFilter, inStockOnly, maxPrice, sortOption]);
 
-  const trendingProducts = useMemo(
-    () => products.filter((p) => p.isBestSeller || p.badge === "TRENDING").slice(0, 8),
-    [products]
-  );
-
-  const newArrivals = useMemo(
-    () => products.filter((p) => p.isNew || p.badge === "NEW" || p.badge === "POPULAR").slice(0, 4),
-    [products]
-  );
-
   const isFiltering = activeCategory !== "all" || Boolean(selectedBadge) || Boolean(searchFilter);
 
   return (
     <div className="min-h-screen bg-white font-sans">
       {/* Hero Carousel on Home */}
-      {!isFiltering && <HeroCarousel />}
+      {!isFiltering && <HeroCarousel products={products} />}
 
       {/* Trust Badges Strip */}
       <div className="bg-peach-xlight border-b border-peach-light">
-        <div className="max-w-7xl mx-auto px-6 py-5 grid grid-cols-2 md:grid-cols-4 gap-5">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
           {TRUST_BADGES.map((e) => (
             <div key={e.title} className="flex items-center gap-3">
               <div className="text-peach-dark flex-shrink-0">{e.icon}</div>
@@ -201,7 +223,7 @@ export function StoreCatalog({
                         All Products
                       </button>
                     </li>
-                    {STORE_CATEGORIES.map((cat) => (
+                    {catalogCategories.map((cat) => (
                       <li key={cat.slug}>
                         <button
                           onClick={() => setActiveCategory(cat.name)}
@@ -212,7 +234,7 @@ export function StoreCatalog({
                           }`}
                         >
                           <span>{cat.name}</span>
-                          <span className="text-[11px] opacity-60">{cat.count}</span>
+                          <span className="text-[11px] opacity-60 font-semibold">{cat.count}</span>
                         </button>
                       </li>
                     ))}
@@ -291,33 +313,35 @@ export function StoreCatalog({
               </div>
 
               {/* Horizontal Scroll Pill Filters on Mobile */}
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-6 lg:hidden pb-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveCategory("all")}
-                  className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                    activeCategory === "all"
-                      ? "bg-peach-dark text-white border-peach-dark"
-                      : "border-peach-light text-charcoal-light"
-                  }`}
-                >
-                  All
-                </button>
-                {STORE_CATEGORIES.map((cat) => (
+              {showMobileFilters && (
+                <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-6 lg:hidden pb-1">
                   <button
-                    key={cat.slug}
                     type="button"
-                    onClick={() => setActiveCategory(cat.name)}
+                    onClick={() => setActiveCategory("all")}
                     className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                      activeCategory.toLowerCase() === cat.name.toLowerCase()
+                      activeCategory === "all"
                         ? "bg-peach-dark text-white border-peach-dark"
                         : "border-peach-light text-charcoal-light"
                     }`}
                   >
-                    {cat.name}
+                    All
                   </button>
-                ))}
-              </div>
+                  {catalogCategories.map((cat) => (
+                    <button
+                      key={cat.slug}
+                      type="button"
+                      onClick={() => setActiveCategory(cat.name)}
+                      className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        activeCategory.toLowerCase() === cat.name.toLowerCase()
+                          ? "bg-peach-dark text-white border-peach-dark"
+                          : "border-peach-light text-charcoal-light"
+                      }`}
+                    >
+                      {cat.name} ({cat.count})
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Empty state or Product grid */}
               {filteredProducts.length === 0 ? (
@@ -347,13 +371,13 @@ export function StoreCatalog({
       ) : (
         <>
           {/* Shop by Category */}
-          <section className="max-w-7xl mx-auto px-6 py-16">
-            <div className="flex items-end justify-between mb-8">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+            <div className="flex items-end justify-between mb-5 sm:mb-8">
               <div>
                 <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
                   Shop by Category
                 </p>
-                <h2 className="font-display text-3xl font-bold text-charcoal">
+                <h2 className="font-display text-2xl sm:text-3xl font-bold text-charcoal">
                   Explore Our Equipment
                 </h2>
               </div>
@@ -365,47 +389,48 @@ export function StoreCatalog({
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {STORE_CATEGORIES.map((e) => (
-                <Link
+            <div className="-mx-4 flex gap-3 overflow-x-auto hide-scrollbar snap-x snap-mandatory px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-6">
+              {catalogCategories.map((e) => (
+                <button
                   key={e.slug}
-                  href={`/store?category=${e.name}`}
-                  className="group relative overflow-hidden rounded-2xl aspect-[3/4] bg-peach-xlight hover:shadow-xl transition-all duration-300"
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory(e.name);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="group relative aspect-[4/5] w-[44vw] max-w-[190px] flex-none snap-start overflow-hidden rounded-2xl bg-peach-xlight text-left transition-all duration-300 hover:shadow-xl cursor-pointer sm:aspect-[3/4] sm:w-auto sm:max-w-none"
                 >
-                  <img
+                  {e.image ? <img
                     src={e.image}
                     alt={e.name}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    onError={(e) => {
-                      e.currentTarget.src = "/workshop-drill.jpg";
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                    <p className="font-display font-bold text-base leading-tight">
+                  /> : <div aria-hidden="true" className="grid h-full w-full place-items-center bg-peach-xlight text-4xl font-semibold text-peach-dark">{e.name.slice(0, 1)}</div>}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-white">
+                    <p className="font-display font-bold text-sm sm:text-base leading-tight">
                       {e.name}
                     </p>
-                    <p className="text-[11px] text-white/70 mt-0.5">
-                      {e.count} products
+                    <p className="text-[10px] sm:text-[11px] text-white/80 mt-1 font-medium">
+                      {e.count} {e.count === 1 ? "product" : "products"}
                     </p>
-                    <span className="inline-block mt-2 text-[10px] font-bold tracking-wide text-peach uppercase opacity-0 group-hover:opacity-100 transition-opacity">
-                      Explore →
+                    <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold tracking-wide text-peach uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                      Explore <span>→</span>
                     </span>
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
           </section>
 
           {/* Trending Now */}
-          <section className="bg-warm-gray py-16">
-            <div className="max-w-7xl mx-auto px-6">
-              <div className="flex items-end justify-between mb-8">
+          <section className="bg-warm-gray py-10 sm:py-16">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <div className="flex items-end justify-between mb-5 sm:mb-8">
                 <div>
                   <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
                     Curated Picks
                   </p>
-                  <h2 className="font-display text-3xl font-bold text-charcoal">
+                  <h2 className="font-display text-2xl sm:text-3xl font-bold text-charcoal">
                     Trending Now
                   </h2>
                 </div>
@@ -417,20 +442,24 @@ export function StoreCatalog({
                 </Link>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-                {trendingProducts.map((p) => (
-                  <StoreProductCard key={p.id} product={p} />
-                ))}
-              </div>
+              {trendingProducts.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+                  {trendingProducts.map((p) => (
+                    <StoreProductCard key={p.id} product={p} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-charcoal-light">No recent sales yet.</p>
+              )}
             </div>
           </section>
 
           {/* Split Banners */}
-          <section className="max-w-7xl mx-auto px-6 py-16">
-            <div className="grid md:grid-cols-2 gap-6">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+            <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
               {/* Banner 1 */}
               <div
-                className="relative overflow-hidden rounded-3xl min-h-64 flex items-end p-8 bg-charcoal"
+                className="relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-64 flex items-end p-5 sm:p-8 bg-charcoal shadow-xl"
                 style={{
                   backgroundImage:
                     "url(https://images.unsplash.com/photo-1504148455328-c376907d081c?w=700&h=450&fit=crop&auto=format)",
@@ -443,7 +472,7 @@ export function StoreCatalog({
                   <p className="text-xs font-bold tracking-[0.2em] text-peach uppercase mb-2">
                     Complete Kit
                   </p>
-                  <h3 className="font-display text-3xl font-bold mb-3">
+                  <h3 className="font-display text-2xl sm:text-3xl font-bold mb-3">
                     Cordless Power Sets
                   </h3>
                   <p className="text-white/70 text-sm mb-5">
@@ -460,7 +489,7 @@ export function StoreCatalog({
 
               {/* Banner 2 */}
               <div
-                className="relative overflow-hidden rounded-3xl min-h-64 flex items-end p-8"
+                className="relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-64 flex items-end p-5 sm:p-8 shadow-xl"
                 style={{
                   backgroundImage:
                     "url(https://images.unsplash.com/photo-1544816155-12df9643f363?w=700&h=450&fit=crop&auto=format)",
@@ -473,7 +502,7 @@ export function StoreCatalog({
                   <p className="text-xs font-bold tracking-[0.2em] text-peach uppercase mb-2">
                     Certified Protection
                   </p>
-                  <h3 className="font-display text-3xl font-bold mb-3">
+                  <h3 className="font-display text-2xl sm:text-3xl font-bold mb-3">
                     Safety & Footwear
                   </h3>
                   <p className="text-white/70 text-sm mb-5">
@@ -491,41 +520,43 @@ export function StoreCatalog({
           </section>
 
           {/* New Arrivals */}
-          {newArrivals.length > 0 && (
-            <section className="bg-peach-xlight py-16">
-              <div className="max-w-7xl mx-auto px-6">
-                <div className="flex items-end justify-between mb-8">
-                  <div>
-                    <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
-                      Just In
-                    </p>
-                    <h2 className="font-display text-3xl font-bold text-charcoal">
-                      New Arrivals
-                    </h2>
-                  </div>
+          <section className="bg-peach-xlight py-10 sm:py-16">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <div className="flex items-end justify-between mb-5 sm:mb-8">
+                <div>
+                  <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
+                    Just In
+                  </p>
+                  <h2 className="font-display text-2xl sm:text-3xl font-bold text-charcoal">
+                    New Arrivals
+                  </h2>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+              {newArrivals.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-5">
                   {newArrivals.map((p) => (
                     <StoreProductCard key={p.id} product={p} />
                   ))}
                 </div>
-              </div>
-            </section>
-          )}
+              ) : (
+                <p className="text-sm text-charcoal-light">No published products yet.</p>
+              )}
+            </div>
+          </section>
 
           {/* Why Shop With Oceanic Tools Monger? */}
-          <section className="max-w-7xl mx-auto px-6 py-16">
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
             <div className="text-center mb-12">
               <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-3">
                 Our Promise
               </p>
-              <h2 className="font-display text-4xl font-bold text-charcoal">
+              <h2 className="font-display text-2xl sm:text-4xl font-bold text-charcoal">
                 Why Shop With Oceanic Tools Monger?
               </h2>
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
               {TRUST_BADGES.map((e) => (
                 <div key={e.title} className="text-center group">
                   <div className="w-16 h-16 rounded-2xl bg-peach-light text-peach-dark flex items-center justify-center mx-auto mb-4 group-hover:bg-peach-dark group-hover:text-white transition-all duration-300">
@@ -544,17 +575,17 @@ export function StoreCatalog({
 
           {/* Stay in the Loop (Newsletter) */}
           <section className="bg-charcoal text-white py-16">
-            <div className="max-w-2xl mx-auto px-6 text-center">
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 text-center">
               <p className="text-xs font-bold tracking-[0.25em] text-peach uppercase mb-4">
                 Stay in the Loop
               </p>
-              <h2 className="font-display text-4xl font-bold mb-4">
+              <h2 className="font-display text-2xl sm:text-4xl font-bold mb-4">
                 Equipment Updates & Exclusive Offers
               </h2>
               <p className="text-white/60 text-base mb-8">
                 Get new arrivals, equipment guides, and exclusive discounts delivered directly to your inbox.
               </p>
-              <form className="flex gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
+              <form className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto" onSubmit={(e) => e.preventDefault()}>
                 <input
                   type="email"
                   placeholder="Enter your email address"

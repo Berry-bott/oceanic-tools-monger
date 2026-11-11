@@ -75,7 +75,10 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
     : item.href === "/admin/sales"
       ? pathname === item.href || (pathname.startsWith(`${item.href}/`) && !pathname.startsWith("/admin/sales/installments") && !pathname.startsWith("/admin/sales/returns"))
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
-  const current = visibleNavigation.find(isNavigationItemActive) ?? visibleNavigation[0];
+  const current = visibleNavigation.find(isNavigationItemActive)
+    ?? visibleNavigation[0]
+    ?? navigation.find(isNavigationItemActive)
+    ?? navigation[0];
 
   useEffect(() => {
     const openNavigation = () => setMobileOpen(true);
@@ -121,9 +124,12 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-[#f8f9fa] text-[#1a1d1f] [&_h1]:[font-weight:700] [&_h2]:[font-weight:700] [&_h3]:[font-weight:700] [&_strong]:[font-weight:400] [&_b]:[font-weight:400]">
       {mobileOpen && <button className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col border-r border-[#203131] bg-[#0c1919] px-4 py-6 text-white transition-transform lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <Link className="mb-9 flex h-10 items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="OceanicToolsMonger home">
-          <Image src="/oceantoolslogo.png" alt="" width={640} height={427} priority className="size-9 shrink-0 object-contain" />
-          <span className="text-lg font-normal tracking-tight">OceanicToolsMonger</span>
+        <Link className="mb-9 flex items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="Oceanic Tools Monger home">
+          <Image src="/oceantoolslogo.png" alt="Oceanic Tools Monger Logo" width={245} height={236} priority className="size-9 shrink-0 object-contain" />
+          <div className="flex flex-col justify-center">
+            <span className="text-base font-extrabold tracking-tight text-white leading-none">Oceanic</span>
+            <span className="text-[9px] font-bold tracking-[0.2em] text-[#8de2d6] uppercase leading-none mt-1">Tools Monger</span>
+          </div>
         </Link>
         <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Admin pages">
           {navigationSections.map((section) => (

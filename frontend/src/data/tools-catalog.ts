@@ -6,6 +6,7 @@ export interface StoreProduct {
   brand: string;
   category: string;
   categorySlug: string;
+  createdAt?: string;
   price: number;
   originalPrice?: number;
   images: string[];
@@ -56,7 +57,7 @@ export const HERO_SLIDES: HeroSlide[] = [
     price: 150000,
     originalPrice: 175000,
     discount: 14,
-    image: "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=1200&h=700&fit=crop&auto=format",
+    image: "/images/hero/hero-bosch-drill-3d.jpg",
     productSlug: "BOS-GSR180LI",
     cta: "Shop Power Drills",
     accent: "#FFAB84",
@@ -69,7 +70,7 @@ export const HERO_SLIDES: HeroSlide[] = [
     price: 185000,
     originalPrice: 210000,
     discount: 12,
-    image: "https://images.unsplash.com/photo-1581147036324-c17ac41dfa6c?w=1200&h=700&fit=crop&auto=format",
+    image: "/images/hero/hero-dewalt-saw-3d.jpg",
     productSlug: "DEW-CSAW-7",
     cta: "Explore Saws & Cutters",
     accent: "#F5C6C6",
@@ -82,7 +83,7 @@ export const HERO_SLIDES: HeroSlide[] = [
     price: 75000,
     originalPrice: 90000,
     discount: 17,
-    image: "https://images.unsplash.com/photo-1544816155-12df9643f363?w=1200&h=700&fit=crop&auto=format",
+    image: "/images/hero/hero-cat-boots-3d.jpg",
     productSlug: "CAT-BOOT-ST",
     cta: "Shop Safety Boots",
     accent: "#FFD5B8",
