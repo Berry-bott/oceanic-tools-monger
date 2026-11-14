@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { HeroCarousel } from "./hero-carousel";
 import { StoreProductCard } from "./store-product-card";
@@ -127,6 +127,9 @@ export function StoreCatalog({
   catalogView = false,
 }: StoreCatalogProps) {
   const [activeCategory, setActiveCategory] = useState<string>(selectedCategory || "all");
+  useEffect(() => {
+    setActiveCategory(selectedCategory || "all");
+  }, [selectedCategory]);
   const [sortOption, setSortOption] = useState<string>("recommended");
   const [maxPrice, setMaxPrice] = useState<number>(350000);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);

@@ -113,7 +113,7 @@ export function StorePageClient({
   }, [currentProducts, currentCollections]);
 
   return (
-    <div className="min-h-screen bg-cream text-charcoal flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 font-sans selection:bg-peach-light selection:text-peach-deep">
+    <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans selection:bg-peach-light selection:text-peach-deep">
       {/* Oceanic Tools Header */}
       <StoreHeader />
 

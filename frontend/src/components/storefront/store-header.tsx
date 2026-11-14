@@ -2,20 +2,19 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useStoreCart } from "@/stores/store-cart.store";
 import { useCustomerAuth } from "@/stores/customer-auth.store";
 import { CustomerProfileDropdown } from "./customer-profile-dropdown";
 
-const NAV_LINKS = [
-  { label: "Shop", href: "/store" },
-  { label: "Power Tools", href: "/store?category=Power Tools" },
-  { label: "Saws & Cutters", href: "/store?category=Saw & Cutting Tools" },
-  { label: "Safety & Boots", href: "/store?category=Safety & Boots" },
-  { label: "Fasteners & Nails", href: "/store?category=Fasteners & Nails" },
-  { label: "New Arrivals", href: "/store?badge=NEW" },
-  { label: "Deals", href: "/store?badge=BEST SELLER" },
+const CATEGORY_LINKS = [
+  { label: "Power Tools", href: `/store?${new URLSearchParams({ category: "Power Tools" })}` },
+  { label: "Saws & Cutters", href: `/store?${new URLSearchParams({ category: "Saw & Cutting Tools" })}` },
+  { label: "Safety & Boots", href: `/store?${new URLSearchParams({ category: "Safety & Boots" })}` },
+  { label: "Fasteners & Nails", href: `/store?${new URLSearchParams({ category: "Fasteners & Nails" })}` },
+  { label: "New Arrivals", href: `/store?${new URLSearchParams({ badge: "NEW" })}` },
 ];
+const NAV_LINKS = [{ label: "Shop", href: "/store" }, ...CATEGORY_LINKS];
 
 export interface StoreHeaderProps {
   branches?: any[];
@@ -28,9 +27,18 @@ export interface StoreHeaderProps {
 
 export function StoreHeader({}: StoreHeaderProps = {}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { items, setDrawerOpen } = useStoreCart();
-  const { customer } = useCustomerAuth();
+  const { customer, logout } = useCustomerAuth();
   const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const isCurrentLink = (href: string) => {
+    const [path, query = ""] = href.split("?");
+    if (pathname !== path) return false;
+    const params = new URLSearchParams(query);
+    if (!query) return searchParams.size === 0;
+    return Array.from(params.entries()).every(([key, value]) => searchParams.get(key) === value);
+  };
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -160,7 +168,22 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
             </button>
 
             {/* Customer Account & Profile Dropdown (Positioned after Cart) */}
-            <CustomerProfileDropdown />
+            <div className="hidden lg:block"><CustomerProfileDropdown /></div>
+
+            {/* Profile image is display-only; the hamburger controls the menu. */}
+            <div className="lg:hidden flex h-10 w-10 shrink-0 items-center justify-center" aria-hidden="true">
+              {customer?.avatarUrl ? (
+                <img src={customer.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+              ) : customer ? (
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-peach-dark text-xs font-bold text-white">
+                  {(customer.name || customer.email || "C").charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                </svg>
+              )}
+            </div>
 
             {/* Keep the mobile menu at the far right of the header */}
             <button
@@ -203,48 +226,54 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
         )}
 
         {/* Mobile Navigation Menu */}
-        {isMobileMenuOpen && (
-          <div className="lg:hidden border-t border-peach-light bg-white px-4 py-4 space-y-1">
-            {NAV_LINKS.map((link) => (
+        <div
+          className={`lg:hidden fixed inset-x-0 bottom-0 top-24 z-40 transition-[background-color] duration-300 ${isMobileMenuOpen ? "bg-black/30" : "pointer-events-none bg-transparent"}`}
+          aria-hidden={!isMobileMenuOpen}
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <nav
+            className={`absolute right-0 top-0 flex h-full w-[80vw] max-w-sm flex-col overflow-y-auto border-l border-peach-light bg-white px-4 py-4 shadow-2xl transition-transform duration-300 ease-out ${isMobileMenuOpen ? "translate-x-0" : "translate-x-full"}`}
+            aria-label="Mobile navigation"
+            aria-hidden={!isMobileMenuOpen}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors ${isCurrentLink("/") ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Home</Link>
+              <Link href="/store" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors ${isCurrentLink("/store") ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Shop</Link>
+              <button type="button" onClick={() => { setDrawerOpen(true); setIsMobileMenuOpen(false); }} className="block w-full rounded-xl border border-transparent px-3.5 py-3 text-left text-sm font-semibold text-charcoal transition-colors hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark">Cart{totalItemCount ? ` (${totalItemCount})` : ""}</button>
+              <Link href="/account" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === "/account" ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Account</Link>
+              <Link href="/track-order" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors ${pathname === "/track-order" ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Track order</Link>
+            </div>
+            <div className="my-3 border-t border-peach-light" />
+            {customer ? (
+              <div className="space-y-1">
+                <Link href="/account?tab=orders" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-medium transition-colors ${isCurrentLink("/account?tab=orders") ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Purchases</Link>
+                <Link href="/account?tab=statement" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-medium transition-colors ${isCurrentLink("/account?tab=statement") ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Account Statement</Link>
+              </div>
+            ) : (
+              <Link href="/account" onClick={() => setIsMobileMenuOpen(false)} className="block rounded-lg px-3 py-2 text-sm font-medium text-charcoal hover:bg-peach-xlight">Sign In / Register</Link>
+            )}
+            <div className="my-3 border-t border-peach-light" />
+            <p className="px-3.5 pb-1 text-[11px] font-bold uppercase tracking-wider text-charcoal-light">Browse filters</p>
+            <div className="space-y-1">
+            {CATEGORY_LINKS.map((link) => (
               <Link
                 key={link.label}
                 href={link.href}
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="block px-3 py-2.5 text-sm font-medium text-charcoal hover:text-peach-dark hover:bg-peach-xlight rounded-lg transition-colors"
+                className={`block rounded-xl border px-3.5 py-3 text-sm font-medium transition-colors ${isCurrentLink(link.href) ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}
               >
                 {link.label}
               </Link>
             ))}
-            <div className="pt-2 border-t border-peach-light flex flex-col gap-2 px-3">
-              <Link
-                href="/account"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="flex items-center gap-2 text-sm font-semibold text-charcoal hover:text-peach-dark py-1"
-              >
-                <svg className="w-4 h-4 text-peach-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                </svg>
-                {customer ? `Account (${customer.firstName || customer.name || customer.email})` : "Customer Sign In / Register"}
-              </Link>
-              <div className="flex gap-4 pt-1">
-                <Link
-                  href="/track-order"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-xs text-charcoal-light hover:text-peach-dark"
-                >
-                  Track Order
-                </Link>
-                <Link
-                  href="/store"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="text-xs text-charcoal-light hover:text-peach-dark"
-                >
-                  Shop Products
-                </Link>
-              </div>
             </div>
-          </div>
-        )}
+            {customer && <>
+              <div className="my-3 border-t border-peach-light" />
+              <Link href="/account?tab=profile" onClick={() => setIsMobileMenuOpen(false)} className={`block rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors ${isCurrentLink("/account?tab=profile") ? "border-peach-light bg-peach-xlight text-peach-dark" : "border-transparent text-charcoal hover:border-peach-light hover:bg-peach-xlight hover:text-peach-dark"}`}>Profile Settings</Link>
+              <button type="button" onClick={async () => { setIsMobileMenuOpen(false); await logout(); router.push("/account"); }} className="mt-1 block w-full rounded-xl border border-transparent px-3.5 py-3 text-left text-sm font-semibold text-rose-600 transition-colors hover:border-rose-100 hover:bg-rose-50">Sign Out</button>
+            </>}
+          </nav>
+        </div>
       </header>
     </>
   );
