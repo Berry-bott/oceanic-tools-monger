@@ -27,12 +27,12 @@ export default function CartPage() {
   ).slice(0, 4);
 
   return (
-    <div className="min-h-screen bg-white text-charcoal flex flex-col font-sans">
+    <div className="min-h-screen bg-white text-charcoal flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 font-sans">
       <StoreHeader />
 
-      <main className="flex-1 pb-16">
+      <main className="flex-1 sm:pb-16">
         {items.length === 0 ? (
-          <div className="max-w-7xl mx-auto px-6 py-20 flex flex-col items-center text-center gap-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 flex flex-col items-center text-center gap-6">
             <div className="w-24 h-24 rounded-full bg-peach-xlight flex items-center justify-center">
               <svg className="w-12 h-12 text-peach" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" />
@@ -55,7 +55,7 @@ export default function CartPage() {
           <div>
             {/* Header Banner */}
             <div className="bg-peach-xlight border-b border-peach-light">
-              <div className="max-w-7xl mx-auto px-6 py-8">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
                 <h1 className="font-display text-3xl font-bold text-charcoal">
                   Shopping Cart
                   <span className="ml-3 text-lg font-normal text-charcoal-light not-italic">
@@ -66,7 +66,7 @@ export default function CartPage() {
             </div>
 
             {/* Cart Body */}
-            <div className="max-w-7xl mx-auto px-6 py-10 grid lg:grid-cols-3 gap-10 items-start">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid lg:grid-cols-3 gap-6 sm:gap-10 items-start">
               {/* Item List */}
               <div className="lg:col-span-2 space-y-4">
                 {items.map((item) => (
@@ -248,7 +248,7 @@ export default function CartPage() {
 
             {/* Related Tools Section */}
             {related.length > 0 && (
-              <div className="max-w-7xl mx-auto px-6 pt-10">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10">
                 <h2 className="font-display text-2xl font-bold text-charcoal mb-6">
                   You May Also Like
                 </h2>

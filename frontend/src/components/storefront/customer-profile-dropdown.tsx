@@ -53,14 +53,12 @@ export function CustomerProfileDropdown() {
             d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
           />
         </svg>
-        <span>Sign In</span>
+        <span className="hidden sm:inline">Sign In</span>
       </Link>
     );
   }
 
   const initial = customer.name?.charAt(0).toUpperCase() || customer.firstName?.charAt(0).toUpperCase() || "C";
-  const displayName = customer.firstName || customer.name?.split(" ")[0] || "Account";
-
   const isTabActive = (tab: string) => isAccountPage && currentTab === tab;
 
   return (
@@ -92,21 +90,6 @@ export function CustomerProfileDropdown() {
           <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 rounded-full ring-1 ring-white" />
         </div>
 
-        {/* Name (desktop) */}
-        <span className="hidden md:inline text-xs font-bold text-charcoal max-w-[90px] truncate">
-          {displayName}
-        </span>
-
-        {/* Chevron */}
-        <svg
-          className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-peach-dark" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2.2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
 
       {/* DROPDOWN MENU */}

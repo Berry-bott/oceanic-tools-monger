@@ -39,16 +39,16 @@ export default function TrackOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans">
+    <div className="min-h-screen bg-cream text-charcoal flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 font-sans">
       <StoreHeader />
 
-      <main className="flex-1 pb-16">
+      <main className="flex-1 sm:pb-16">
         <div className="bg-peach-xlight border-b border-peach-light">
-          <div className="max-w-3xl mx-auto px-6 py-10">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
             <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
               Order updates
             </p>
-            <h1 className="font-display text-4xl font-bold text-charcoal">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold text-charcoal">
               Track Your Order
             </h1>
             <p className="mt-2 text-sm text-charcoal-light">
@@ -57,8 +57,8 @@ export default function TrackOrderPage() {
           </div>
         </div>
 
-        <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
-          <div className="bg-white rounded-2xl border border-peach-light p-6 shadow-xs">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-6">
+          <div className="bg-white rounded-2xl border border-peach-light p-4 sm:p-6 shadow-xs">
             <form onSubmit={(event) => void handleSubmit(event)} className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-1.5 text-xs font-medium text-charcoal">
                 Order number

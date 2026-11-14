@@ -20,26 +20,46 @@ export function GoogleSignInButton({
   width = 380,
 }: GoogleSignInButtonProps) {
   const buttonRef = useRef<HTMLDivElement>(null);
-  const [scriptReady, setScriptReady] = useState(false);
-  const [isGisRendered, setIsGisRendered] = useState(false);
+  const [scriptReady, setScriptReady] = useState(() =>
+    typeof window !== "undefined" && !!window.google?.accounts?.id
+  );
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || "";
 
   useEffect(() => subscribeGoogleCredential(onSuccess), [onSuccess]);
 
   const tryRenderButton = useCallback(() => {
-    if (!buttonRef.current || !clientId) return false;
-    const rendered = renderGoogleButton(buttonRef.current, clientId, {
+    const container = buttonRef.current;
+    if (!container || !clientId) return false;
+    const preferredWidth = typeof width === "number" ? width : 380;
+    const availableWidth = container.clientWidth;
+    const buttonWidth = availableWidth > 0
+      ? Math.max(200, Math.min(preferredWidth, availableWidth))
+      : preferredWidth;
+    const rendered = renderGoogleButton(container, clientId, {
       text,
-      width,
+      width: buttonWidth,
       theme: "outline",
     });
-    setIsGisRendered(rendered);
     if (!rendered) onError?.(new Error("Google sign-in could not be initialized."));
     return rendered;
   }, [clientId, onError, text, width]);
 
   useEffect(() => {
-    if (scriptReady && clientId && window.google?.accounts?.id) tryRenderButton();
+    if (!scriptReady || !clientId || !window.google?.accounts?.id) return;
+    tryRenderButton();
+
+    const container = buttonRef.current;
+    if (!container) return;
+    let previousWidth = container.clientWidth;
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (nextWidth > 0 && nextWidth !== previousWidth) {
+        previousWidth = nextWidth;
+        tryRenderButton();
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [scriptReady, clientId, tryRenderButton]);
 
   return (
@@ -48,13 +68,16 @@ export function GoogleSignInButton({
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
+        // Next.js loads a given script only once. onReady also runs when this
+        // route mounts after the root layout has already loaded GIS.
+        onReady={() => setScriptReady(true)}
         onError={() => onError?.(new Error("Google sign-in could not be loaded."))}
       />
       {clientId ? (
-        <div className={`w-full flex justify-center ${className}`}>
+        <div className={`flex w-full min-w-0 justify-center overflow-hidden ${className}`}>
           <div
             ref={buttonRef}
-            className={isGisRendered ? "w-full flex justify-center" : "hidden"}
+            className="w-full min-w-0"
             style={{ maxWidth: typeof width === "number" ? width : 380 }}
           />
         </div>

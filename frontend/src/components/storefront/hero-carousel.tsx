@@ -65,7 +65,7 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
 
   return (
     <div
-      className="relative h-[500px] w-full overflow-hidden bg-peach-xlight select-none sm:h-[580px]"
+      className="relative h-[440px] w-full overflow-hidden bg-peach-xlight select-none sm:h-[580px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
@@ -88,11 +88,11 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
 
       {/* Hero Content */}
       <div
-        className={`relative z-10 max-w-7xl mx-auto px-12 sm:px-6 flex items-center h-full transition-opacity duration-300 ${
+        className={`relative z-10 max-w-7xl mx-auto px-10 sm:px-6 flex items-center h-full transition-opacity duration-300 ${
           isFading ? "opacity-0" : "opacity-100"
         }`}
       >
-        <div className="max-w-xl py-12 sm:py-20">
+        <div className="max-w-xl py-6 sm:py-20">
           <span className="hero-content-enter inline-block text-[10px] sm:text-[11px] font-bold tracking-[0.2em] text-peach uppercase mb-4 border border-peach/50 px-3 py-1 rounded-full">
             {slide.category}
           </span>

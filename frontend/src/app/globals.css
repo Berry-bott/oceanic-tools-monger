@@ -112,6 +112,10 @@
   display: none;
 }
 
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* 3D Cube Viewer & Store Animations */
 .viewer-stage {
   perspective: 900px;

@@ -77,8 +77,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen bg-[#f3f6f4] lg:grid-cols-[0.9fr_1.1fr]">
-      <section className="relative order-1 min-h-[260px] overflow-hidden lg:order-1 lg:min-h-screen">
+    <main className="grid min-h-screen place-items-center bg-[#f3f6f4] lg:place-items-stretch lg:grid-cols-[0.9fr_1.1fr]">
+      <section className="relative hidden overflow-hidden lg:order-1 lg:block lg:min-h-screen">
         <Image
           src="/construction-worker.jpg"
           alt="Construction worker using a hammer on a building site"
@@ -87,15 +87,15 @@ export default function LoginPage() {
           sizes="(max-width: 1023px) 100vw, 55vw"
           className="object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#10241ecc] via-[#10241e40] to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-10 lg:p-12">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-[#c2fff1] backdrop-blur-sm">
-            Oceanic Tools Monger
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1715ed] via-[#10241e75] to-[#10241e12]" />
+        <div className="absolute inset-x-0 bottom-0 max-w-3xl p-8 text-white xl:p-14">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#10241e66] px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-lg backdrop-blur-md">
+            {isStaffLogin ? "Oceanic Tools Monger · Team" : "Oceanic Tools Monger · Business"}
           </span>
-          <h1 className="mt-5 text-2xl font-extrabold tracking-tight sm:text-3xl xl:text-4xl">
+          <h1 className="mt-6 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-tight xl:text-5xl">
             {isStaffLogin ? "Staff POS & Store Operations" : "Business Management & Operations"}
           </h1>
-          <p className="mb-0 mt-3 max-w-md text-sm leading-6 text-white/85">
+          <p className="mb-0 mt-5 max-w-xl text-base leading-7 text-white/90">
             {isStaffLogin
               ? "Access point of sale, manage customer sales, verify inventory and process receipts."
               : "Keep stock, sales and business money organised from one simple workspace."}
@@ -103,8 +103,8 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <section className="order-2 grid place-items-center p-6 sm:p-10 lg:order-2">
-        <div className="w-full max-w-md rounded-2xl border border-[#dfe6e0] bg-white p-7 shadow-[0_20px_60px_rgba(18,38,30,0.06)] sm:p-9">
+      <section className="order-2 grid w-full place-items-center p-4 sm:p-10 lg:order-2">
+        <div className="w-full max-w-md rounded-2xl border border-[#dfe6e0] bg-white p-6 shadow-[0_20px_60px_rgba(18,38,30,0.06)] sm:p-9">
           <span className="inline-flex items-center gap-2 rounded-full border border-[#dcebe0] bg-[#eef7f2] px-3 py-1 text-xs font-bold text-[#1f6b53]">
             {isStaffLogin ? "Staff Portal" : "Admin Portal"}
           </span>

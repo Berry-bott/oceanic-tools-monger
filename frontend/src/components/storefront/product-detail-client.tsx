@@ -185,7 +185,7 @@ export function ProductDetailClient({
     <div className="min-h-screen bg-white text-charcoal font-sans">
       {/* Breadcrumbs */}
       <div className="bg-cream border-b border-peach-light">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-2 text-xs text-charcoal-light">
+        <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 py-3 flex items-center gap-2 text-xs text-charcoal-light overflow-hidden">
           <Link href="/" className="hover:text-peach-dark transition-colors">
             Home
           </Link>
@@ -206,8 +206,8 @@ export function ProductDetailClient({
       </div>
 
       {/* Main Showcase */}
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        <div className="grid lg:grid-cols-2 gap-12 items-start">
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-3 sm:px-6 py-5 sm:py-10">
+        <div className="grid gap-7 lg:grid-cols-2 lg:gap-12 items-start">
           {/* Left Column: 3D Viewer or Photos */}
           <div className="space-y-4">
             <div className="flex gap-2">
@@ -242,7 +242,7 @@ export function ProductDetailClient({
               <Product3DViewer images={product.images} productName={product.name} />
             ) : (
               <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-6 border border-peach-light">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-3 sm:p-6 border border-peach-light">
                   {product.images.length ? (
                     <img
                       src={product.images[activePhotoIdx] || product.images[0]}
@@ -279,8 +279,12 @@ export function ProductDetailClient({
 
           {/* Right Column: Info & Purchase Form */}
           <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              {product.brand && <span className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase">{product.brand}</span>}
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              {product.model && (
+                <span className="min-w-0 break-words text-xs font-bold tracking-[0.16em] text-peach-dark uppercase">
+                  Model: {product.model}
+                </span>
+              )}
               <div className="flex gap-1.5">
                 {product.badge && (
                   <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-peach text-charcoal">
@@ -364,6 +368,12 @@ export function ProductDetailClient({
                   Category
                 </p>
                 <p className="text-sm font-medium text-charcoal">{product.category}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
+                  Model
+                </p>
+                <p className="text-sm font-medium text-charcoal">{product.model || "—"}</p>
               </div>
               <div>
                 <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">

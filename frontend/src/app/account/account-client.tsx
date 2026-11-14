@@ -1258,9 +1258,9 @@ export function AccountClient() {
   // (Identical layout to dashboard login • clean • distraction-free)
   // -------------------------------------------------------------------------
   return (
-    <main className="grid min-h-screen bg-[#f3f6f4] lg:grid-cols-[0.9fr_1.1fr]">
+    <main className="grid min-h-screen place-items-center bg-[#f3f6f4] lg:place-items-stretch lg:grid-cols-[0.9fr_1.1fr]">
       {/* Left Column: Industrial Tools Photography & Store Branding */}
-      <section className="relative order-1 min-h-[260px] overflow-hidden lg:order-1 lg:min-h-screen">
+      <section className="relative hidden overflow-hidden lg:order-1 lg:block lg:min-h-screen">
         <Image
           src="/workshop-drill.jpg"
           alt="Industrial power tools and workshop equipment"
@@ -1269,27 +1269,27 @@ export function AccountClient() {
           sizes="(max-width: 1023px) 100vw, 50vw"
           className="object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#10241ecc] via-[#10241e40] to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-10 lg:p-12">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1715ed] via-[#10241e75] to-[#10241e12]" />
+        <div className="absolute inset-x-0 bottom-0 max-w-3xl p-8 text-white xl:p-14">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-[#c2fff1] backdrop-blur-sm hover:bg-white/20 transition-colors"
+            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#10241e66] px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-lg backdrop-blur-md transition-colors hover:bg-[#10241e99]"
           >
             <img src="/oceantoolslogo.png" alt="Oceanic Tools" className="h-5 w-auto object-contain brightness-0 invert" />
             <span>Oceanic Tools Monger</span>
           </Link>
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight sm:text-3xl xl:text-4xl text-white">
+          <h1 className="mt-6 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-tight text-white xl:text-5xl">
             Genuine Industrial Tools & Jobsite Supplies
           </h1>
-          <p className="mb-0 mt-3 max-w-md text-sm leading-6 text-white/85">
+          <p className="mb-0 mt-5 max-w-xl text-base leading-7 text-white/90">
             Sign in to track orders, access invoices, and have receipts automatically delivered to your email.
           </p>
         </div>
       </section>
 
       {/* Right Column: Simple & Fast Storefront Sign In / Register */}
-      <section className="order-2 flex items-center justify-center p-6 sm:p-10 lg:order-2 lg:p-14">
-        <div className="w-full max-w-md bg-white rounded-3xl p-8 sm:p-10 border border-slate-200/90 shadow-lg">
+      <section className="order-2 flex w-full items-center justify-center p-4 sm:p-10 lg:order-2 lg:p-14">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200/90 bg-white p-6 shadow-lg sm:p-10">
           {/* Header */}
           <div className="mb-6">
             <span className="text-[11px] font-bold uppercase tracking-widest text-[#149e8f] block mb-1">
@@ -1305,22 +1305,25 @@ export function AccountClient() {
             </p>
           </div>
 
-          {/* Google Sign In One-Click */}
-          <div className="mb-5">
-            <GoogleSignInButton
-              onSuccess={handleGoogleSuccess}
-              onError={() => console.warn("Google sign in error")}
-              text={mode === "signin" ? "signin_with" : "signup_with"}
-            />
-          </div>
+          {mode === "signin" && (
+            <>
+              {/* Google sign-in is available only for existing customer accounts. */}
+              <div className="mb-5">
+                <GoogleSignInButton
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => console.warn("Google sign in error")}
+                  text="signin_with"
+                />
+              </div>
 
-          {/* Divider */}
-          <div className="relative my-5 flex items-center justify-center">
-            <div className="w-full border-t border-[#dfe6e0]" />
-            <span className="absolute bg-white px-3 text-[11px] font-bold uppercase tracking-wider text-[#9aa49d]">
-              or with email
-            </span>
-          </div>
+              <div className="relative my-5 flex items-center justify-center">
+                <div className="w-full border-t border-[#dfe6e0]" />
+                <span className="absolute bg-white px-3 text-[11px] font-bold uppercase tracking-wider text-[#9aa49d]">
+                  or with email
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Error Message */}
           {authError && (

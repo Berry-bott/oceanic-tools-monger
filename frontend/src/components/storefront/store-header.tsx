@@ -67,35 +67,19 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
           isScrolled ? "shadow-md" : "border-b border-peach-light"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
-          {/* Mobile Menu Button */}
-          <button
-            type="button"
-            className="lg:hidden p-2 text-charcoal"
-            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-            aria-label="Menu"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              {isMobileMenuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
-              )}
-            </svg>
-          </button>
-
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-4">
           {/* Logo with public folder image */}
-          <Link href="/" className="flex-shrink-0 mr-3 sm:mr-4 flex items-center gap-1.5 sm:gap-2 group">
+          <Link href="/" className="min-w-0 shrink flex items-center gap-1.5 sm:gap-2 group sm:mr-4">
             <img
               src="/oceantoolslogo.png"
               alt="Oceanic Tools Monger"
-              className="h-10 sm:h-11 md:h-12 w-auto object-contain shrink-0 transition-transform duration-200 group-hover:scale-105"
+              className="h-9 max-w-[44px] min-[380px]:h-10 min-[380px]:max-w-none sm:h-11 md:h-12 w-auto object-contain shrink-0 transition-transform duration-200 group-hover:scale-105"
             />
-            <div className="flex flex-col justify-center">
-              <span className="font-display text-xl sm:text-2xl md:text-[26px] font-black tracking-tight text-charcoal leading-none">
+            <div className="flex min-w-0 flex-col justify-center">
+              <span className="whitespace-nowrap font-display text-lg min-[380px]:text-xl sm:text-2xl md:text-[26px] font-black tracking-tight text-charcoal leading-none">
                 Oceanic
               </span>
-              <span className="text-[9px] sm:text-[10px] md:text-[11px] font-bold uppercase tracking-[0.22em] text-peach-dark font-sans leading-none mt-1">
+              <span className="whitespace-nowrap text-[8px] min-[380px]:text-[9px] sm:text-[10px] md:text-[11px] font-bold uppercase tracking-[0.18em] min-[380px]:tracking-[0.22em] text-peach-dark font-sans leading-none mt-1">
                 Tools Monger
               </span>
             </div>
@@ -115,7 +99,7 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
           </nav>
 
           {/* Right Action Icons */}
-          <div className="flex items-center gap-1 ml-auto">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1 ml-auto">
             {/* Search */}
             <button
               type="button"
@@ -174,6 +158,23 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
 
             {/* Customer Account & Profile Dropdown (Positioned after Cart) */}
             <CustomerProfileDropdown />
+
+            {/* Keep the mobile menu at the far right of the header */}
+            <button
+              type="button"
+              className="lg:hidden shrink-0 p-2 text-charcoal"
+              onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+              aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={isMobileMenuOpen}
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                {isMobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h18M3 18h18" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
 

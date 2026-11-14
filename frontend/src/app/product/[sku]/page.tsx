@@ -19,7 +19,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
   ]);
   if (!backendProduct) {
     return (
-      <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans">
+      <div className="min-h-screen bg-cream text-charcoal flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 font-sans">
         <StoreHeader />
         <main className="flex-1 flex flex-col items-center justify-center py-24 px-6 text-center">
           <div className="w-20 h-20 rounded-full bg-peach-light/60 text-peach-dark flex items-center justify-center mb-6">
@@ -67,7 +67,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
     .map(mapStoreProductToCatalogProduct);
 
   return (
-    <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans selection:bg-peach-light selection:text-peach-deep">
+    <div className="min-h-screen bg-cream text-charcoal flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 font-sans selection:bg-peach-light selection:text-peach-deep">
       <StoreHeader />
       <main className="flex-1">
         <ProductDetailClient product={product} relatedProducts={related} storeSlug={store?.storeSlug} />

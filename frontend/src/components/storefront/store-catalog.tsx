@@ -240,11 +240,11 @@ export function StoreCatalog({
         <div className="min-h-screen bg-white">
           {/* Header Banner */}
           <div className="bg-peach-xlight border-b border-peach-light">
-            <div className="max-w-7xl mx-auto px-6 py-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
               <p className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase mb-2">
                 Oceanic Tools Monger Collection
               </p>
-              <h1 className="font-display text-4xl font-bold text-charcoal">
+              <h1 className="font-display text-3xl sm:text-4xl font-bold text-charcoal break-words">
                 {searchFilter
                   ? `Search: "${searchFilter}"`
                   : activeCategory !== "all"
@@ -258,7 +258,7 @@ export function StoreCatalog({
           </div>
 
           {/* Shop Body with Sidebar */}
-          <div className="max-w-7xl mx-auto px-6 py-8 flex gap-8">
+          <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 py-8 flex gap-8">
             {/* Desktop Sidebar */}
             <aside className="w-60 flex-shrink-0 hidden lg:block">
               <div className="sticky top-24 space-y-8">

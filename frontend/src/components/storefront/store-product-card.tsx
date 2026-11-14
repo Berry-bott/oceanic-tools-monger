@@ -162,27 +162,27 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
 
       <div className="p-2.5 sm:p-3">
         {product.brand && (
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-peach-dark">
+          <p className="mb-1 hidden text-[10px] font-bold uppercase tracking-[0.12em] text-peach-dark sm:block">
             {product.brand}
           </p>
         )}
 
         <Link
           href={detailUrl}
-          className="block text-sm font-semibold leading-snug text-charcoal transition-colors hover:text-peach-dark"
+          className="line-clamp-2 block text-sm font-semibold leading-snug text-charcoal transition-colors hover:text-peach-dark"
         >
           {product.name}
         </Link>
 
         {(product.model || (product.specifications && Object.keys(product.specifications).length > 0)) && (
-          <div className="mt-1.5 mb-2 flex items-start justify-between gap-3 text-[10px] leading-snug text-charcoal-light">
-            <div className="min-w-0 flex-1">
-              {product.model && (
+          <div className="mt-1.5 mb-2 flex min-w-0 items-start justify-between gap-3 text-[10px] leading-snug text-charcoal-light">
+            {product.model && (
+              <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-charcoal">Model: {product.model}</p>
-              )}
-            </div>
+              </div>
+            )}
             {product.specifications && Object.entries(product.specifications).length > 0 && (
-              <div className="min-w-0 flex-1 space-y-0.5 text-right">
+              <div className="hidden min-w-0 flex-1 space-y-0.5 text-right sm:block">
                 {Object.entries(product.specifications).slice(0, 2).map(([key, value]) => (
                   <p key={key} className="truncate">
                     <span className="font-medium text-charcoal">{key}:</span> {value}
@@ -194,7 +194,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
         )}
 
         {product.rating > 0 && product.reviewCount > 0 && (
-          <div className="mb-2 flex items-center gap-1.5">
+          <div className="mb-2 hidden items-center gap-1.5 sm:flex">
             <StarRating rating={product.rating} />
             <span className="text-[11px] text-charcoal-light">
               {product.rating} ({product.reviewCount.toLocaleString()})
@@ -205,11 +205,11 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
         <div className="flex items-end justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-bold text-charcoal">
+              <span className="text-sm font-bold text-charcoal sm:text-base">
                 ₦{product.price.toLocaleString("en-NG")}
               </span>
               {product.originalPrice != null && (
-                <span className="text-xs text-charcoal-light line-through">
+                <span className="hidden text-xs text-charcoal-light line-through sm:inline">
                   ₦{product.originalPrice.toLocaleString("en-NG")}
                 </span>
               )}
@@ -217,7 +217,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
           </div>
 
           {(product.size || product.unit) && (
-            <span className="shrink-0 rounded border border-peach-light bg-peach-xlight px-1.5 py-0.5 text-[10px] text-charcoal-light">
+            <span className="hidden shrink-0 rounded border border-peach-light bg-peach-xlight px-1.5 py-0.5 text-[10px] text-charcoal-light sm:inline">
               {product.size || product.unit}
             </span>
           )}
