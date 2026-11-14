@@ -134,17 +134,17 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
             </div>
           )}
 
-          <div className="hero-content-enter flex flex-nowrap gap-2 sm:gap-3">
+          <div className="hero-content-enter flex flex-nowrap gap-1.5 sm:gap-3">
             <Link
               href={`/product/${slide.productSlug}`}
-              className="shrink-0 whitespace-nowrap rounded-full bg-peach-dark px-3 py-2.5 text-[11px] font-semibold text-white shadow-lg transition-all duration-200 hover:bg-peach-deep hover:scale-105 sm:px-7 sm:py-3.5 sm:text-sm"
+              className="shrink-0 whitespace-nowrap rounded-full bg-peach-dark px-3.5 py-3 text-xs font-semibold text-white shadow-lg transition-all duration-200 hover:bg-peach-deep hover:scale-105 sm:px-7 sm:py-3.5 sm:text-sm"
             >
               <span className="sm:hidden">{slide.id === "h2" ? "Shop Saws" : slide.id === "h3" ? "Shop Boots" : "Shop Drills"}</span>
               <span className="hidden sm:inline">{slide.cta}</span>
             </Link>
             <Link
               href={`/product/${slide.productSlug}`}
-              className="shrink-0 whitespace-nowrap rounded-full border border-white/30 bg-white/15 px-3 py-2.5 text-[11px] font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/25 sm:px-7 sm:py-3.5 sm:text-sm"
+              className="shrink-0 whitespace-nowrap rounded-full border border-white/30 bg-white/15 px-3.5 py-3 text-xs font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/25 sm:px-7 sm:py-3.5 sm:text-sm"
             >
               View Product
             </Link>
