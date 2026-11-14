@@ -24,9 +24,10 @@ The dashboard visual language takes cues from the `skipdq` admin shell while usi
 - `/finance`: profit and loss, balance sheet, supplier payables/payments, expenses, journal drafts and posting. Financial requests are available only to owner, accountant, and auditor roles; write actions are limited to owner and accountant.
 - `/expenses`: owner-only manual expense and staff payment recording, with payment references, branch/date tracking, ledger posting, and searchable history. This does not calculate payroll or deductions.
 - `/reports`: includes an expenses report with date and branch filters, category and staff-payment totals, transaction details, and CSV/XLSX/PDF export. Profit and loss continues to include posted expense ledger entries in its expense total.
-- `/settings`: owner-only business details, branches, staff invitations, role changes, and account deactivation.
+- `/settings`: owner-only business details, branches, staff invitations, role changes, account deactivation, and storefront fulfillment settings for direct delivery, its fee, and optional pay-on-pickup.
 
-- `/orders`: business-scoped online-order queue with branch, status, and customer filters, payment and line-item details, and role-limited fulfillment transitions. The API returns the latest 200 orders per request.
+- `/orders`: business-scoped online-order queue with branch, status, and customer filters, payment and line-item details, pickup branch addresses, pickup-payment recording, and role-limited fulfillment transitions. The API returns the latest 200 orders per request.
+- `/track-order`: customer order lookup by order number and checkout email, showing saved items, payment, fulfillment address or pickup branch, totals, and current store-updated status.
 - `/customers`: business-scoped customer directory with search, account edits, statements, consent-aware reminders, and allocated payment recording. The API returns up to 200 customers and statements include the latest 100 sales.
 
 These pages use the API as the authority for permissions, stock checks, pricing, posting, and workflow transitions. The purchase-order composer creates one product line per order for now; receive actions collect one outstanding line at a time. The POS records a single full payment method per transaction. More advanced multi-line order entry and split tender can be added without changing backend contracts.

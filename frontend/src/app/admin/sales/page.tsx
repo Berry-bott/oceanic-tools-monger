@@ -32,7 +32,8 @@ type Product = {
   name: string;
   sku: string;
   sellingPrice: number | string;
-  costPrice: number | string;
+  bottomPrice?: number | string;
+  costPrice?: number | string;
   unit: string;
   state: string;
   balances: {
@@ -90,6 +91,9 @@ const fmtDate = (value: string) =>
   }).format(new Date(value));
 const posRoles = (role?: string) => role === "OWNER" || role === "STAFF";
 const canCreateCredit = (user?: User) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
+const productPriceFloor = (product: { costPrice?: number | string; bottomPrice?: number | string }, owner: boolean) => owner
+  ? Number(product.costPrice ?? 0)
+  : Math.max(Number(product.costPrice ?? 0), Number(product.bottomPrice ?? product.costPrice ?? 0));
 const paymentMethods = [
   { value: "CASH", label: "Cash", icon: "cash" },
   { value: "BANK_TRANSFER", label: "Transfer", icon: "transfer" },
@@ -193,8 +197,8 @@ export default function SalesPage() {
     0,
   );
   const total = subtotal;
-  const belowCostProduct = cart.find(
-    (row) => row.unitPrice < Number(row.product.costPrice),
+  const belowAllowedFloorProduct = cart.find(
+    (row) => row.unitPrice < productPriceFloor(row.product, user?.role === "OWNER"),
   );
 
   function addProduct(product: Product) {
@@ -318,8 +322,9 @@ export default function SalesPage() {
       setCreditError("Open a cashier shift before recording a cash part payment.");
       return;
     }
-    if (belowCostProduct) {
-      setCreditError(`${belowCostProduct.product.name} cannot be sold below its cost price of ${fmtMoney(Number(belowCostProduct.product.costPrice))}.`);
+    if (belowAllowedFloorProduct) {
+      const minimum = productPriceFloor(belowAllowedFloorProduct.product, user?.role === "OWNER");
+      setCreditError(`${belowAllowedFloorProduct.product.name} cannot be sold below ${user?.role === "OWNER" ? "cost price" : "bottom price"} of ${fmtMoney(minimum)}.`);
       return;
     }
     setBusy(true);
@@ -576,13 +581,13 @@ export default function SalesPage() {
                     >
                       <div>
                         <strong>{row.product.name}</strong>
-                        <small>Unit: {row.product.unit || "piece"} | Cost price: {fmtMoney(Number(row.product.costPrice))}</small>
+                        <small>Unit: {row.product.unit || "piece"} | {user?.role === "OWNER" ? `Cost price: ${fmtMoney(Number(row.product.costPrice ?? 0))}` : `Bottom price: ${fmtMoney(productPriceFloor(row.product, false))}`}</small>
                         <label className={`${checkoutExpanded ? "mt-1" : "mt-2"} grid max-w-36 gap-1 text-xs text-[#75827a]`}>
                           Selling price each
                           <input
                             aria-label={`Selling price for ${row.product.name}`}
                             type="number"
-                            min={Number(row.product.costPrice)}
+                            min={productPriceFloor(row.product, user?.role === "OWNER")}
                             step="0.01"
                             value={row.unitPrice}
                             onChange={(event) => setCartUnitPrice(row.product.id, Number(event.target.value))}
@@ -671,9 +676,9 @@ export default function SalesPage() {
                   <span className="font-semibold text-[#304138]">Amount due</span>
                   <strong className="text-lg font-extrabold tracking-tight text-[#26372d]">{fmtMoney(total)}</strong>
                 </div>
-                {belowCostProduct && (
+                {belowAllowedFloorProduct && (
                   <p className="mb-3 rounded-lg border border-[#f0d2c8] bg-[#fff7f4] p-3 text-sm text-[#9c4f40]" role="alert">
-                    {belowCostProduct.product.name} cannot be sold below its cost price of {fmtMoney(Number(belowCostProduct.product.costPrice))}. Increase the item&apos;s selling price to continue.
+                    {belowAllowedFloorProduct.product.name} cannot be sold below the {user?.role === "OWNER" ? "cost price" : "staff bottom price"} of {fmtMoney(productPriceFloor(belowAllowedFloorProduct.product, user?.role === "OWNER"))}. Increase the item&apos;s selling price to continue.
                   </p>
                 )}
                 <button
@@ -682,7 +687,7 @@ export default function SalesPage() {
                   disabled={
                     busy ||
                     !cart.length ||
-                    Boolean(belowCostProduct) ||
+                    Boolean(belowAllowedFloorProduct) ||
                     !branchId ||
                     (paymentMethod === "CASH" && !shift)
                   }

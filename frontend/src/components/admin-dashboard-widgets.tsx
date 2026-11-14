@@ -346,7 +346,7 @@ export function DashboardMetricCard({
       <div className="flex items-center justify-between text-sm text-[#6e7b73]">
         <span>{label}</span>
         <span
-          className={`grid size-7 place-items-center rounded-lg bg-[#edf5ef] text-[#478264] max-[620px]:size-6 ${tone === "amber" ? "bg-[#fff5e6] text-[#b7832b]" : tone === "blue" ? "bg-[#edf4f9] text-[#4d7c9c]" : tone === "violet" ? "bg-[#f2eff9] text-[#7767a8]" : ""}`}
+          className={`grid size-7 place-items-center rounded-lg bg-[#edf5ef] text-[#478264] max-[620px]:size-6 ${tone === "amber" ? "bg-[#fff5e6] text-[#b7832b]" : ""}`}
         >
           <DashboardIcon name={icon} size={17} />
         </span>

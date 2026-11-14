@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../lib/errors.js";
+import { isAllowedFrontendOrigin } from "../lib/frontend-origins.js";
 import {
   getCookie,
   getRefreshCookieName,
@@ -35,8 +36,7 @@ const cookieSecurity = {
 
 function requireFrontendOrigin(request: Request, _response: Response, next: NextFunction) {
   const origin = request.get("origin");
-  const expectedOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
-  if (origin !== expectedOrigin) {
+  if (!origin || !isAllowedFrontendOrigin(origin)) {
     next(new ApiError(403, "This request did not come from the signed-in application.", "INVALID_ORIGIN"));
     return;
   }

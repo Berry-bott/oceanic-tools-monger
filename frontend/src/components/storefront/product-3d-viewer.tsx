@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface Product3DViewerProps {
   images: string[];
@@ -9,29 +9,26 @@ interface Product3DViewerProps {
 
 export function Product3DViewer({ images, productName }: Product3DViewerProps) {
   const [rotY, setRotY] = useState(0);
-  const [rotX, setRotX] = useState(12);
+  const [rotX, setRotX] = useState(14);
   const [scale, setScale] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [autoRotate, setAutoRotate] = useState(true);
   const dragStart = useRef({ x: 0, y: 0 });
-  const animRef = useRef<number>(0);
   const stageRef = useRef<HTMLDivElement>(null);
   const resumeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const tick = useCallback(() => {
-    if (autoRotate) {
-      setRotY((y) => y + 0.4);
-    }
-    animRef.current = requestAnimationFrame(tick);
-  }, [autoRotate]);
-
   useEffect(() => {
-    animRef.current = requestAnimationFrame(tick);
+    let frameId: number;
+    const tick = () => {
+      if (autoRotate) setRotY((y) => (y + 0.35) % 360);
+      frameId = requestAnimationFrame(tick);
+    };
+    frameId = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(animRef.current);
+      cancelAnimationFrame(frameId);
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     };
-  }, [tick]);
+  }, [autoRotate]);
 
   const onStart = (clientX: number, clientY: number) => {
     setIsDragging(true);
@@ -45,7 +42,7 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
     const dx = clientX - dragStart.current.x;
     const dy = clientY - dragStart.current.y;
     setRotY((y) => y + dx * 0.6);
-    setRotX((x) => Math.max(-25, Math.min(25, x - dy * 0.3)));
+    setRotX((x) => Math.max(-28, Math.min(28, x - dy * 0.3)));
     dragStart.current = { x: clientX, y: clientY };
   };
 
@@ -59,28 +56,68 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
 
   const onReset = () => {
     setRotY(0);
-    setRotX(12);
+    setRotX(14);
     setScale(1);
     setAutoRotate(true);
   };
 
-  const frontImg = images[0] || "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=600&h=700&fit=crop&auto=format";
-  const backImg = images[1] || images[0] || frontImg;
-  const depth = 140 * scale;
+  if (!images || !images.length) {
+    return (
+      <div className="flex aspect-square items-center justify-center rounded-2xl bg-peach-xlight text-sm text-charcoal-light">
+        No product photo available.
+      </div>
+    );
+  }
+
+  // Smart image assignment for square cube faces:
+  // 3 images: front, back, and side (used for right & left)
+  // 2 images: front, back, and alternating sides
+  // 1 image: all 4 faces use the single image with directional shading
+  const frontImg = images[0];
+  let backImg = images[0];
+  let rightImg = images[0];
+  let leftImg = images[0];
+  let mirrorLeft = false;
+
+  if (images.length >= 3) {
+    backImg = images[1];
+    rightImg = images[2];
+    leftImg = images[2];
+    mirrorLeft = true; // mirror side view horizontally so left profile faces naturally
+  } else if (images.length === 2) {
+    backImg = images[1];
+    rightImg = images[0];
+    leftImg = images[1];
+  }
+
+  // True square cube: width = height = depth (288px x 288px x 288px)
+  // Translation from center to each face is exactly half of the face dimension (144px)
+  const cubeSize = 288;
+  const depth = (cubeSize / 2) * scale;
 
   return (
-    <div className="relative w-full aspect-square bg-gradient-to-br from-peach-xlight via-cream to-peach-light rounded-2xl overflow-hidden flex items-center justify-center select-none">
-      {/* 3D Badge */}
-      <div className="absolute top-4 left-4 flex items-center gap-1.5 bg-white/80 backdrop-blur-sm text-[10px] font-semibold text-charcoal-light px-2.5 py-1 rounded-full z-10">
+    <div className="relative w-full aspect-square bg-gradient-to-br from-peach-xlight via-cream to-peach-light/70 rounded-2xl overflow-hidden flex items-center justify-center select-none shadow-sm border border-peach-light/40">
+      {/* 3D Indicator Badge */}
+      <div className="absolute top-4 left-4 flex items-center gap-1.5 bg-white/90 backdrop-blur-md text-[10px] font-bold text-charcoal px-3 py-1 rounded-full z-10 shadow-sm border border-peach-light">
         <span className="w-1.5 h-1.5 rounded-full bg-peach-dark animate-pulse" />
-        3D VIEW
+        3D ROTATION
       </div>
+
+      {/* Fixed Floor Shadow */}
+      <div
+        className="absolute bottom-8 w-64 h-8 rounded-full pointer-events-none transition-transform"
+        style={{
+          transform: `scale(${scale})`,
+          background: "radial-gradient(ellipse at center, rgba(35, 45, 40, 0.22) 0%, rgba(35, 45, 40, 0.08) 50%, transparent 75%)",
+          filter: "blur(5px)",
+        }}
+      />
 
       {/* Stage */}
       <div
         ref={stageRef}
-        className="viewer-stage w-72 h-72 cursor-grab active:cursor-grabbing"
-        style={{ perspective: "900px" }}
+        className="viewer-stage w-72 h-72 cursor-grab active:cursor-grabbing flex items-center justify-center"
+        style={{ perspective: "1000px" }}
         onMouseDown={(e) => onStart(e.clientX, e.clientY)}
         onMouseMove={(e) => onMove(e.clientX, e.clientY)}
         onMouseUp={onEnd}
@@ -104,31 +141,57 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
             transition: isDragging ? "none" : "transform 0.05s linear",
           }}
         >
-          {/* Front */}
-          <Face transform={`translateZ(${depth}px)`} img={frontImg} alt={productName} brightness={1} />
-          {/* Back */}
-          <Face transform={`rotateY(180deg) translateZ(${depth}px)`} img={backImg} alt={productName} brightness={0.92} />
-          {/* Right */}
-          <Face transform={`rotateY(90deg) translateZ(${depth}px)`} img={frontImg} alt="" brightness={0.8} scaleX={0.4} />
-          {/* Left */}
-          <Face transform={`rotateY(-90deg) translateZ(${depth}px)`} img={backImg} alt="" brightness={0.75} scaleX={0.4} />
-          {/* Top Cap */}
+          {/* Front Face (1:1 square) */}
+          <Face
+            transform={`translateZ(${depth}px)`}
+            img={frontImg}
+            alt={`${productName} front view`}
+            brightness={1}
+          />
+
+          {/* Back Face (1:1 square) */}
+          <Face
+            transform={`rotateY(180deg) translateZ(${depth}px)`}
+            img={backImg}
+            alt={`${productName} back view`}
+            brightness={0.82}
+          />
+
+          {/* Right Side Face (1:1 square - equal width to front & back) */}
+          <Face
+            transform={`rotateY(90deg) translateZ(${depth}px)`}
+            img={rightImg}
+            alt={`${productName} right side view`}
+            brightness={0.9}
+          />
+
+          {/* Left Side Face (1:1 square - equal width to front & back) */}
+          <Face
+            transform={`rotateY(-90deg) translateZ(${depth}px)`}
+            img={leftImg}
+            alt={`${productName} left side view`}
+            brightness={0.86}
+            mirror={mirrorLeft}
+          />
+
+          {/* Top Cap (1:1 square) */}
           <div
-            className="absolute inset-0 rounded-xl"
+            className="absolute inset-0 rounded-2xl border border-peach-light/40"
             style={{
               transform: `rotateX(90deg) translateZ(${depth}px)`,
               backfaceVisibility: "hidden",
-              background: "linear-gradient(135deg, #FFE8D9 0%, #FFAB84 100%)",
-              opacity: 0.9,
+              background: "linear-gradient(135deg, #ffffff 0%, #f4f6f4 100%)",
             }}
           />
-          {/* Bottom Shadow */}
+
+          {/* Bottom Cap (1:1 square) */}
           <div
-            className="absolute inset-0 rounded-xl"
+            className="absolute inset-0 rounded-2xl"
             style={{
               transform: `rotateX(-90deg) translateZ(${depth}px)`,
               backfaceVisibility: "hidden",
-              background: "radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, transparent 70%)",
+              background: "#1e2924",
+              opacity: 0.15,
             }}
           />
         </div>
@@ -138,9 +201,9 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
       <div className="absolute bottom-4 right-4 flex gap-1.5 z-10">
         <button
           type="button"
-          onClick={() => setScale((s) => Math.min(1.5, s + 0.15))}
+          onClick={() => setScale((s) => Math.min(1.4, s + 0.15))}
           title="Zoom in"
-          className="w-8 h-8 bg-white/90 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm transition-all hover:shadow-md"
+          className="w-8 h-8 bg-white/95 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm border border-peach-light hover:border-peach transition-all"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -148,9 +211,9 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
         </button>
         <button
           type="button"
-          onClick={() => setScale((s) => Math.max(0.6, s - 0.15))}
+          onClick={() => setScale((s) => Math.max(0.7, s - 0.15))}
           title="Zoom out"
-          className="w-8 h-8 bg-white/90 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm transition-all hover:shadow-md"
+          className="w-8 h-8 bg-white/95 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm border border-peach-light hover:border-peach transition-all"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
@@ -159,8 +222,8 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
         <button
           type="button"
           onClick={onReset}
-          title="Reset"
-          className="w-8 h-8 bg-white/90 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm transition-all hover:shadow-md"
+          title="Reset perspective"
+          className="w-8 h-8 bg-white/95 hover:bg-white text-charcoal rounded-lg flex items-center justify-center shadow-sm border border-peach-light hover:border-peach transition-all"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4.929 15.071A8 8 0 1 0 6.343 6.343" />
@@ -168,8 +231,11 @@ export function Product3DViewer({ images, productName }: Product3DViewerProps) {
         </button>
       </div>
 
-      <p className="absolute bottom-4 left-4 text-[10px] text-charcoal-light/60 font-medium z-10">
-        Drag to rotate
+      <p className="absolute bottom-4 left-4 text-[11px] text-charcoal-light/70 font-medium z-10 flex items-center gap-1.5">
+        <svg className="w-3.5 h-3.5 text-peach-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Drag in any direction to spin 360°
       </p>
     </div>
   );
@@ -180,17 +246,17 @@ function Face({
   img,
   alt,
   brightness,
-  scaleX = 1,
+  mirror = false,
 }: {
   transform: string;
   img: string;
   alt: string;
   brightness: number;
-  scaleX?: number;
+  mirror?: boolean;
 }) {
   return (
     <div
-      className="absolute inset-0 rounded-xl overflow-hidden"
+      className="absolute inset-0 rounded-2xl overflow-hidden bg-white border border-peach-light/40 shadow-sm"
       style={{
         transform,
         backfaceVisibility: "hidden",
@@ -200,12 +266,9 @@ function Face({
       <img
         src={img}
         alt={alt}
-        className="w-full h-full object-cover"
-        style={scaleX === 1 ? undefined : { transform: `scaleX(${scaleX})`, transformOrigin: "center" }}
+        className="w-full h-full object-cover select-none"
+        style={mirror ? { transform: "scaleX(-1)" } : undefined}
         draggable={false}
-        onError={(e) => {
-          e.currentTarget.src = "/workshop-drill.jpg";
-        }}
       />
     </div>
   );

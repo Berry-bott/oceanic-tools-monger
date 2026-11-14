@@ -14,7 +14,12 @@ export function MobileBottomNav() {
     return null;
   }
 
-  const navItems = [
+  const navItems: Array<{
+    to: string;
+    label: string;
+    icon: React.ReactNode;
+    isCart?: boolean;
+  }> = [
     {
       to: "/",
       label: "Home",
@@ -36,25 +41,21 @@ export function MobileBottomNav() {
       ),
     },
     {
-      to: "/wishlist",
-      label: "Saved",
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-          />
-        </svg>
-      ),
-    },
-    {
       to: "/cart",
       label: "Cart",
       isCart: true,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" />
+        </svg>
+      ),
+    },
+    {
+      to: "/account",
+      label: "Account",
+      icon: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
         </svg>
       ),
     },

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Playfair_Display, Jost } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
+import { GoogleOneTap } from "@/components/auth/google-one-tap";
 import "./globals.css";
 
 const playfair = Playfair_Display({
@@ -52,6 +53,7 @@ export default function RootLayout({
       <body className={`${jost.className} min-h-full flex flex-col bg-white font-sans text-charcoal antialiased`}>
         <QueryProvider>
           <Suspense fallback={null}>
+            <GoogleOneTap />
             {children}
           </Suspense>
         </QueryProvider>

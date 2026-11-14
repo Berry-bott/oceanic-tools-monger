@@ -20,6 +20,8 @@ type User = { id: string; name: string; email: string; role: string };
 type Branch = {
   id: string;
   name: string;
+  address: string | null;
+  isPickupLocation: boolean;
   isDefault: boolean;
   isActive?: boolean;
 };
@@ -28,6 +30,9 @@ type Business = {
   name: string;
   currency: string;
   timezone: string;
+  onlineDeliveryEnabled: boolean;
+  onlineDeliveryFee: string | number;
+  payOnPickupEnabled: boolean;
   storeSlug?: string | null;
   branches: Branch[];
 };
@@ -60,6 +65,9 @@ export default function SettingsPage() {
           currency: form.get("currency"),
           timezone: form.get("timezone"),
           storeSlug: form.get("storeSlug") || undefined,
+          onlineDeliveryEnabled: form.get("onlineDeliveryEnabled") === "on",
+          onlineDeliveryFee: Number(form.get("onlineDeliveryFee") || 0),
+          payOnPickupEnabled: form.get("payOnPickupEnabled") === "on",
       });
       await queryClient.invalidateQueries({ queryKey: settingsKeys.all });
       await queryClient.invalidateQueries({ queryKey: businessKeys.current });
@@ -84,6 +92,7 @@ export default function SettingsPage() {
     try {
       await createBranchRequest({
           name: form.get("name"),
+          address: String(form.get("address") ?? "").trim() || null,
           isDefault: form.get("isDefault") === "on",
       });
       setNotice("Branch created.");
@@ -98,8 +107,16 @@ export default function SettingsPage() {
   }
   async function updateBranch(
     branch: Branch,
-    changes: Partial<Pick<Branch, "name" | "isDefault">>,
+    changes: Partial<Pick<Branch, "name" | "address" | "isPickupLocation" | "isDefault">>,
   ) {
+    if (
+      changes.address !== undefined &&
+      !changes.address?.trim() &&
+      (changes.isPickupLocation ?? branch.isPickupLocation)
+    ) {
+      setError("A pickup-enabled branch must have an address.");
+      return;
+    }
     setBusy(branch.id);
     setError("");
     setNotice("");
@@ -225,6 +242,40 @@ export default function SettingsPage() {
                     placeholder="my-store"
                   />
                 </label>
+                <div className="grid gap-3 rounded-lg border border-[#e5ebe6] p-3">
+                  <p className="m-0 text-sm font-semibold text-[#3d4e43]">Store fulfillment options</p>
+                  <label className="flex items-center gap-2 text-sm text-[#536159] [&_input]:[accent-color:#286b51]">
+                    <input
+                      type="checkbox"
+                      name="onlineDeliveryEnabled"
+                      defaultChecked={business?.onlineDeliveryEnabled ?? true}
+                      key={`delivery-enabled-${business?.onlineDeliveryEnabled}`}
+                    />
+                    Enable Direct Delivery
+                  </label>
+                  <label className="grid gap-1.5 text-[#536159] text-sm [&_input]:h-[39px] [&_input]:border [&_input]:border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:bg-white">
+                    Standard delivery fee (NGN)
+                    <input
+                      type="number"
+                      name="onlineDeliveryFee"
+                      min="0"
+                      max="1000000"
+                      step="1"
+                      defaultValue={business?.onlineDeliveryFee ?? 4500}
+                      key={`delivery-fee-${business?.onlineDeliveryFee}`}
+                    />
+                    <span className="text-xs text-[#8d9991]">Orders above ₦100,000 continue to receive free delivery.</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-[#536159] [&_input]:[accent-color:#286b51]">
+                    <input
+                      type="checkbox"
+                      name="payOnPickupEnabled"
+                      defaultChecked={business?.payOnPickupEnabled ?? false}
+                      key={`pickup-payment-enabled-${business?.payOnPickupEnabled}`}
+                    />
+                    Allow Pay on Pickup (warehouse collection only)
+                  </label>
+                </div>
                 <button
                   className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
                   disabled={busy === "business"}
@@ -250,6 +301,10 @@ export default function SettingsPage() {
                     placeholder="e.g. Ikeja Store"
                   />
                 </label>
+                <label className="grid gap-1.5 text-[#536159] font-normal text-sm [&_input]:h-[39px] [&_input]:border border-[#dfe6e0] [&_input]:rounded-md [&_input]:px-2.5 [&_input]:text-[#34413a] [&_input]:[outline:0] [&_input]:bg-white [&_input]:text-sm [&_input:focus]:[border-color:#6e9e7d] [&_input:focus]:shadow-[0_0_0_3px_#eaf3ec] [&_input::placeholder]:text-[#aab3ac]">
+                  Branch address
+                  <input name="address" maxLength={500} placeholder="Enter this branch's address" />
+                </label>
                 <label className="flex items-center gap-2 text-sm text-[#637268] [&_input]:[accent-color:#286b51]">
                   <input type="checkbox" name="isDefault" /> Set as default
                   branch
@@ -273,12 +328,14 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="overflow-auto">
-              <table className="w-full [border-collapse:collapse] [min-width:850px] text-left [&_th]:h-[39px] [&_th]:px-[13px] [&_th]:bg-[#fafbfa] [&_th]:text-[#8c9990] [&_th]:text-sm [&_th]:font-normal [&_th]:tracking-[.55px] [&_th]:whitespace-nowrap [&_th:first-child]:[padding-left:18px] [&_td:first-child]:[padding-left:18px] [&_td]:h-[61px] [&_td]:[border-top:1px_solid_#f0f3f0] [&_td]:py-2 px-[13px] [&_td]:text-[#5c6b61] [&_td]:text-sm [&_td]:whitespace-nowrap [&_td>strong]:text-sm [&_td>strong]:text-[#3d4e43] [&_td>strong]:font-normal">
+              <table className="w-full [border-collapse:collapse] [min-width:950px] text-left [&_th]:h-[39px] [&_th]:px-[13px] [&_th]:bg-[#fafbfa] [&_th]:text-[#8c9990] [&_th]:text-sm [&_th]:font-normal [&_th]:tracking-[.55px] [&_th]:whitespace-nowrap [&_th:first-child]:[padding-left:18px] [&_td:first-child]:[padding-left:18px] [&_td]:h-[61px] [&_td]:[border-top:1px_solid_#f0f3f0] [&_td]:py-2 px-[13px] [&_td]:text-[#5c6b61] [&_td]:text-sm [&_td>strong]:text-sm [&_td>strong]:text-[#3d4e43] [&_td>strong]:font-normal">
                 <thead>
                   <tr>
                     <th>BRANCH</th>
+                    <th>PICKUP ADDRESS</th>
                     <th>DEFAULT</th>
                     <th>ACTIONS</th>
+                    <th className="text-right">PICKUP</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -286,6 +343,21 @@ export default function SettingsPage() {
                     <tr key={branch.id}>
                       <td>
                         <strong>{branch.name}</strong>
+                      </td>
+                      <td>
+                        <input
+                          key={`${branch.id}-${branch.address ?? ""}`}
+                          aria-label={`Address for ${branch.name}`}
+                          defaultValue={branch.address ?? ""}
+                          maxLength={500}
+                          placeholder="Enter branch address"
+                          disabled={busy === branch.id}
+                          onBlur={(event) => {
+                            const address = event.currentTarget.value.trim() || null;
+                            if (address !== branch.address) void updateBranch(branch, { address });
+                          }}
+                          className="w-full min-w-[260px] rounded-md border border-[#dfe6e0] bg-white px-2 py-2 text-xs text-[#34413a]"
+                        />
                       </td>
                       <td>
                         {branch.isDefault ? (
@@ -326,6 +398,27 @@ export default function SettingsPage() {
                             </button>
                           )}
                         </div>
+                      </td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={branch.isPickupLocation}
+                          aria-label={`${branch.isPickupLocation ? "Disable" : "Enable"} pickup for ${branch.name}`}
+                          disabled={busy === branch.id}
+                          onClick={() =>
+                            void updateBranch(branch, { isPickupLocation: !branch.isPickupLocation })
+                          }
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                            branch.isPickupLocation ? "bg-[#286b51]" : "bg-[#cbd5ce]"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                              branch.isPickupLocation ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
                       </td>
                     </tr>
                   ))}

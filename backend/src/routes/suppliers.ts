@@ -133,9 +133,10 @@ purchasesRouter.post("/:purchaseOrderId/receive", requireRoles("OWNER", "STAFF")
         await transaction.stockBalance.upsert({ where: { productId_branchId: { productId: poLine.productId, branchId: po.branchId } }, create: { productId: poLine.productId, branchId: po.branchId, onHand: line.acceptedQuantity }, update: { onHand: { increment: line.acceptedQuantity } } });
         if (line.acceptedQuantity > 0) await transaction.stockMovement.create({ data: { productId: poLine.productId, branchId: po.branchId, userId: auth.userId, type: "PURCHASE_RECEIPT", quantity: line.acceptedQuantity, unitCost: line.unitCost, reference: created.reference } });
         if (line.acceptedQuantity > 0 && !input.preserveProductCostPrice) {
-          const priorValue = Number(oldQuantity) * Number((await transaction.product.findUniqueOrThrow({ where: { id: poLine.productId }, select: { costPrice: true } })).costPrice);
+          const currentProductCost = await transaction.product.findUniqueOrThrow({ where: { id: poLine.productId }, select: { costPrice: true, bottomPrice: true } });
+          const priorValue = Number(oldQuantity) * Number(currentProductCost.costPrice);
           const nextCost = (priorValue + line.acceptedQuantity * line.unitCost) / (Number(oldQuantity) + line.acceptedQuantity);
-          await transaction.product.update({ where: { id: poLine.productId }, data: { costPrice: nextCost } });
+          await transaction.product.update({ where: { id: poLine.productId }, data: { costPrice: nextCost, bottomPrice: Prisma.Decimal.max(currentProductCost.bottomPrice, new Prisma.Decimal(nextCost)) } });
         }
       }
       const supplierInvoice = input.invoice ? await transaction.supplierInvoice.create({ data: { businessId: auth.businessId, supplierId: po.supplierId, purchaseOrderId: po.id, goodsReceiptId: created.id, invoiceNumber: input.invoice.invoiceNumber, totalAmount: input.invoice.totalAmount, dueAt: input.invoice.dueAt } }) : null;

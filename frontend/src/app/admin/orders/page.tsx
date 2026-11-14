@@ -7,13 +7,13 @@ import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBranches } from "@/hooks/queries/use-branches";
 import { useBusiness } from "@/hooks/queries/use-business";
 import { useOnlineOrders } from "@/hooks/queries/use-online-orders";
-import { useTransitionOnlineOrder } from "@/hooks/mutations/use-order-mutations";
+import { useReceivePickupPayment, useTransitionOnlineOrder } from "@/hooks/mutations/use-order-mutations";
 import { useBranchStore } from "@/stores/branch.store";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 
 type User = { id: string; name: string; email: string; role: string };
 type Business = { currency: string };
-type Branch = { id: string; name: string; isDefault: boolean };
+type Branch = { id: string; name: string; address?: string | null; isDefault: boolean };
 type OrderLine = {
   id: string;
   productName: string;
@@ -27,12 +27,15 @@ type Payment = {
   status: string;
   amount: number | string;
   reference: string;
+  provider?: string | null;
+  paidAt?: string | null;
 };
 type OnlineOrder = {
   id: string;
   number: string;
   status: string;
   branchId: string;
+  branch?: { id: string; name: string; address: string | null };
   customerName: string;
   customerEmail: string;
   customerPhone?: string | null;
@@ -44,6 +47,8 @@ type OnlineOrder = {
   deliveryFee: number | string;
   total: number | string;
   createdAt: string;
+  updatedAt: string;
+  expiresAt?: string | null;
   lines: OrderLine[];
   payments: Payment[];
 };
@@ -112,6 +117,7 @@ export default function OnlineOrdersPage() {
   const setBranchId = useBranchStore((state) => state.setSelectedBranchId);
   const ordersQuery = useOnlineOrders<OnlineOrder>(branchId, Boolean(user));
   const transitionMutation = useTransitionOnlineOrder();
+  const receivePickupPaymentMutation = useReceivePickupPayment();
   const orders = ordersQuery.data?.data ?? [];
   const counts = ordersQuery.data?.counts ?? {};
   const [status, setStatus] = useState("ALL");
@@ -120,6 +126,9 @@ export default function OnlineOrdersPage() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [pickupPaymentOrder, setPickupPaymentOrder] = useState<OnlineOrder | null>(null);
+  const [pickupPaymentMethod, setPickupPaymentMethod] = useState<"CASH" | "BANK_TRANSFER" | "CARD">("CASH");
+  const [pickupPaymentReference, setPickupPaymentReference] = useState("");
   const pageError = error || (ordersQuery.error instanceof Error
     ? ordersQuery.error.message
     : "");
@@ -168,6 +177,32 @@ export default function OnlineOrdersPage() {
         requestError instanceof Error
           ? requestError.message
           : "The order could not be updated.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function recordPickupPayment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pickupPaymentOrder) return;
+    setBusy(pickupPaymentOrder.id);
+    setError("");
+    setNotice("");
+    try {
+      await receivePickupPaymentMutation.mutateAsync({
+        id: pickupPaymentOrder.id,
+        method: pickupPaymentMethod,
+        reference: pickupPaymentReference.trim() || undefined,
+      });
+      setNotice(`Pickup payment for ${pickupPaymentOrder.number} was recorded.`);
+      setPickupPaymentOrder(null);
+      setPickupPaymentReference("");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The pickup payment could not be recorded.",
       );
     } finally {
       setBusy("");
@@ -328,9 +363,9 @@ export default function OnlineOrdersPage() {
             <div className="divide-y divide-line">
               {filteredOrders.map((order) => {
                 const next = nextTransition(order);
-                const branchName =
-                  branches.find((branch) => branch.id === order.branchId)
-                    ?.name ?? "Branch";
+                const branchName = order.branch?.name
+                  ?? branches.find((branch) => branch.id === order.branchId)?.name
+                  ?? "Branch";
                 return (
                   <article
                     key={order.id}
@@ -352,8 +387,14 @@ export default function OnlineOrdersPage() {
                           | {order.customerEmail}
                         </span>
                       </p>
+                      {order.fulfillmentMethod === "COLLECTION" && (
+                        <p className="mt-1 text-xs font-medium text-brand">
+                          Customer pickup location: {branchName} ·{" "}
+                          {order.branch?.address ?? branches.find((branch) => branch.id === order.branchId)?.address ?? "No branch address saved"}
+                        </p>
+                      )}
                       <p className="mt-1 text-xs text-muted">
-                        {branchName} | {formatDate(order.createdAt)} |{" "}
+                        Fulfillment branch: {branchName} | Placed {formatDate(order.createdAt)} |{" "}
                         {order.lines.length} item
                         {order.lines.length === 1 ? "" : "s"}
                       </p>
@@ -361,44 +402,84 @@ export default function OnlineOrdersPage() {
                         <summary className="w-fit cursor-pointer font-normal text-brand">
                           Order details
                         </summary>
-                        <div className="mt-3 grid gap-3 rounded-md bg-canvas p-3 sm:grid-cols-2">
-                          <div className="space-y-2">
-                            {order.lines.map((line) => (
-                              <div
-                                key={line.id}
-                                className="flex justify-between gap-4"
-                              >
-                                <span>
-                                  {line.productName}{" "}
-                                  <span className="text-muted">
-                                    x {Number(line.quantity).toLocaleString()}
-                                  </span>
-                                </span>
-                                <span className="font-normal">
-                                  {formatMoney(line.lineTotal, currency)}
-                                </span>
-                              </div>
-                            ))}
-                            <div className="flex justify-between border-t border-line pt-2 font-normal">
-                              <span>Total</span>
-                              <span>{formatMoney(order.total, currency)}</span>
+                        <div className="mt-3 grid gap-4 rounded-md bg-canvas p-3 sm:grid-cols-2">
+                          <section className="min-w-0">
+                            <h4 className="mb-2 font-normal text-foreground">Items</h4>
+                            <div className="overflow-x-auto">
+                              <table className="w-full min-w-[32rem] text-left">
+                                <thead>
+                                  <tr className="border-b border-line text-muted">
+                                    <th className="py-2 pr-3 font-medium">Product</th>
+                                    <th className="py-2 pr-3 font-medium">SKU</th>
+                                    <th className="py-2 pr-3 text-right font-medium">Qty</th>
+                                    <th className="py-2 pr-3 text-right font-medium">Unit price</th>
+                                    <th className="py-2 text-right font-medium">Line total</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {order.lines.map((line) => (
+                                    <tr key={line.id} className="border-b border-line/70">
+                                      <td className="py-2 pr-3 text-foreground">{line.productName}</td>
+                                      <td className="py-2 pr-3 font-mono text-muted">{line.sku}</td>
+                                      <td className="py-2 pr-3 text-right text-foreground">{Number(line.quantity).toLocaleString()}</td>
+                                      <td className="py-2 pr-3 text-right text-foreground">{formatMoney(line.unitPrice, currency)}</td>
+                                      <td className="py-2 text-right font-medium text-foreground">{formatMoney(line.lineTotal, currency)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
-                          </div>
-                          <div className="space-y-1 text-muted">
-                            <p>{order.customerPhone || "No phone provided"}</p>
-                            {order.deliveryAddress && (
-                              <p>{order.deliveryAddress}</p>
-                            )}
-                            <p>
-                              Payment:{" "}
-                              {order.payments
-                                .map(
-                                  (payment) =>
-                                    `${label(payment.status)} | ${formatMoney(payment.amount, currency)} (${label(payment.method)})`,
-                                )
-                                .join(", ") || "No payment recorded"}
-                            </p>
-                          </div>
+                          </section>
+
+                          <section className="space-y-4">
+                            <div>
+                              <h4 className="mb-2 font-normal text-foreground">Customer & fulfillment</h4>
+                              <dl className="grid gap-1 text-muted">
+                                <div><dt className="inline font-medium text-foreground">Name: </dt><dd className="inline">{order.customerName}</dd></div>
+                                <div><dt className="inline font-medium text-foreground">Email: </dt><dd className="inline break-all">{order.customerEmail}</dd></div>
+                                <div><dt className="inline font-medium text-foreground">Phone: </dt><dd className="inline">{order.customerPhone || "Not provided"}</dd></div>
+                                <div><dt className="inline font-medium text-foreground">Method: </dt><dd className="inline">{label(order.fulfillmentMethod)}</dd></div>
+                                <div><dt className="inline font-medium text-foreground">{order.fulfillmentMethod === "COLLECTION" ? "Pickup branch: " : "Stock branch: "}</dt><dd className="inline">{branchName}</dd></div>
+                                {order.branch?.address && <div><dt className="inline font-medium text-foreground">Branch address: </dt><dd className="inline">{order.branch.address}</dd></div>}
+                                {order.deliveryAddress && <div><dt className="inline font-medium text-foreground">Delivery address: </dt><dd className="inline">{order.deliveryAddress}</dd></div>}
+                                <div><dt className="inline font-medium text-foreground">Order placed: </dt><dd className="inline">{formatDate(order.createdAt)}</dd></div>
+                                <div><dt className="inline font-medium text-foreground">Last updated: </dt><dd className="inline">{formatDate(order.updatedAt)}</dd></div>
+                                {order.expiresAt && <div><dt className="inline font-medium text-foreground">Payment/reservation deadline: </dt><dd className="inline">{formatDate(order.expiresAt)}</dd></div>}
+                              </dl>
+                            </div>
+                            <div>
+                              <h4 className="mb-2 font-normal text-foreground">Payment</h4>
+                              {order.payments.length ? (
+                                <ul className="space-y-2">
+                                  {order.payments.map((payment) => (
+                                    <li key={payment.reference} className="rounded border border-line bg-white p-2">
+                                      <p className="font-medium text-foreground">
+                                        {label(payment.status)} · {formatMoney(payment.amount, currency)}
+                                      </p>
+                                      <p className="mt-1">
+                                        {label(payment.method)}
+                                        {payment.provider ? ` via ${payment.provider}` : ""}
+                                      </p>
+                                      <p className="mt-1 break-all">Reference: {payment.reference}</p>
+                                      {payment.paidAt && <p className="mt-1">Paid: {formatDate(payment.paidAt)}</p>}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-muted">No payment recorded.</p>
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="mb-2 font-normal text-foreground">Order total</h4>
+                              <dl className="space-y-1">
+                                <div className="flex justify-between gap-3"><dt>Subtotal</dt><dd>{formatMoney(order.subtotal, currency)}</dd></div>
+                                {Number(order.discount) > 0 && <div className="flex justify-between gap-3"><dt>Discount</dt><dd>-{formatMoney(order.discount, currency)}</dd></div>}
+                                {Number(order.tax) > 0 && <div className="flex justify-between gap-3"><dt>Tax</dt><dd>{formatMoney(order.tax, currency)}</dd></div>}
+                                <div className="flex justify-between gap-3"><dt>Delivery fee</dt><dd>{formatMoney(order.deliveryFee, currency)}</dd></div>
+                                <div className="flex justify-between gap-3 border-t border-line pt-2 font-medium text-foreground"><dt>Total</dt><dd>{formatMoney(order.total, currency)}</dd></div>
+                              </dl>
+                            </div>
+                          </section>
                         </div>
                       </details>
                     </div>
@@ -424,6 +505,19 @@ export default function OnlineOrdersPage() {
                           Cancel unpaid order
                         </button>
                       )}
+                      {canTransition && order.fulfillmentMethod === "COLLECTION" && order.status === "PENDING_PAYMENT" && (
+                        <button
+                          disabled={busy === order.id}
+                          onClick={() => {
+                            setPickupPaymentOrder(order);
+                            setPickupPaymentMethod("CASH");
+                            setPickupPaymentReference("");
+                          }}
+                          className="rounded-md border border-brand px-3 py-2 text-xs font-normal text-brand hover:bg-canvas disabled:opacity-60"
+                        >
+                          Record pickup payment
+                        </button>
+                      )}
                     </div>
                   </article>
                 );
@@ -436,6 +530,72 @@ export default function OnlineOrdersPage() {
           and holds stock for you.
         </p>
       </div>
+      {pickupPaymentOrder && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && busy !== pickupPaymentOrder.id) {
+              setPickupPaymentOrder(null);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pickup-payment-title"
+            className="w-full max-w-md rounded-lg border border-line bg-white p-5 shadow-xl"
+          >
+            <h2 id="pickup-payment-title" className="text-lg font-normal">
+              Record pickup payment
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {pickupPaymentOrder.number} · {formatMoney(pickupPaymentOrder.total, currency)}
+            </p>
+            <form onSubmit={(event) => void recordPickupPayment(event)} className="mt-5 space-y-4">
+              <label className="grid gap-1 text-sm">
+                Payment received by
+                <select
+                  value={pickupPaymentMethod}
+                  onChange={(event) => setPickupPaymentMethod(event.target.value as "CASH" | "BANK_TRANSFER" | "CARD")}
+                  className="h-10 rounded-md border border-line bg-white px-3"
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="BANK_TRANSFER">Bank transfer</option>
+                  <option value="CARD">Card / POS</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                Reference (optional)
+                <input
+                  value={pickupPaymentReference}
+                  onChange={(event) => setPickupPaymentReference(event.target.value)}
+                  maxLength={80}
+                  className="h-10 rounded-md border border-line px-3"
+                />
+              </label>
+              {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={busy === pickupPaymentOrder.id}
+                  onClick={() => setPickupPaymentOrder(null)}
+                  className="rounded-md border border-line px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy === pickupPaymentOrder.id}
+                  className="rounded-md bg-brand px-3 py-2 text-sm text-white disabled:opacity-60"
+                >
+                  {busy === pickupPaymentOrder.id ? "Recording..." : "Confirm payment received"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,25 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Product3DViewer } from "./product-3d-viewer";
 import { StoreProductCard } from "./store-product-card";
 import { useStoreCart } from "@/stores/store-cart.store";
-import {
-  TOOLS_PRODUCTS,
-  CUSTOMER_REVIEWS,
-  type StoreProduct,
-} from "@/data/tools-catalog";
+import type { StoreProduct } from "@/data/tools-catalog";
+import { fetchStoreStock, getCustomerAccount, loginStoreCustomer, registerStoreCustomer, submitProductReview, type CustomerAccount } from "@/services/store/store.service";
 
 interface ProductDetailClientProps {
   product: StoreProduct;
   relatedProducts?: StoreProduct[];
   storeSlug?: string;
-  branches?: any[];
 }
 
-const TABS = ["Description", "Benefits", "Specifications", "How to Use", "Reviews"] as const;
+const TABS = ["Description", "Specifications", "Reviews"] as const;
 type TabType = (typeof TABS)[number];
 
 function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "lg" }) {
@@ -43,19 +39,68 @@ function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "lg
 export function ProductDetailClient({
   product,
   relatedProducts = [],
+  storeSlug,
 }: ProductDetailClientProps) {
   const router = useRouter();
   const { addItem, setDrawerOpen } = useStoreCart();
+  const [stockAvailable, setStockAvailable] = useState(product.stockCount ?? 0);
+  const inStock = stockAvailable > 0;
   const [viewMode, setViewMode] = useState<"3d" | "photo">("3d");
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<TabType>("Description");
   const [isWishlisted, setIsWishlisted] = useState(false);
+  const [customer, setCustomer] = useState<CustomerAccount | null | undefined>(undefined);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const refreshStock = async () => {
+      try {
+        const stock = await fetchStoreStock(storeSlug);
+        const currentProduct = stock.find((item) => item.productId === product.id);
+        if (active) setStockAvailable(currentProduct?.available ?? 0);
+      } catch {
+        // Preserve the last known stock count if the refresh fails.
+      }
+    };
+    void refreshStock();
+    const interval = window.setInterval(() => void refreshStock(), 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshStock();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [product.id, storeSlug]);
+
+  useEffect(() => {
+    if (activeTab !== "Reviews" || customer !== undefined) return;
+    getCustomerAccount().then(setCustomer).catch((error: unknown) => {
+      setReviewError(error instanceof Error ? error.message : "Could not check customer sign-in status.");
+      setCustomer(null);
+    });
+  }, [activeTab, customer]);
 
   const discountPercent =
     product.originalPrice && product.originalPrice > product.price
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
       : null;
+  const specifications = product.specifications ?? {};
 
   const handleAddToCart = () => {
     addItem(
@@ -64,10 +109,11 @@ export function ProductDetailClient({
         name: product.name,
         sku: product.sku,
         sellingPrice: product.price,
-        unit: product.unit || product.size || "Unit",
+        unit: product.unit ?? "",
         imageUrl: product.images[0],
         category: product.category,
         brand: product.brand,
+        available: stockAvailable,
       },
       quantity
     );
@@ -81,22 +127,59 @@ export function ProductDetailClient({
         name: product.name,
         sku: product.sku,
         sellingPrice: product.price,
-        unit: product.unit || product.size || "Unit",
+        unit: product.unit ?? "",
         imageUrl: product.images[0],
         category: product.category,
         brand: product.brand,
+        available: stockAvailable,
       },
       quantity
     );
     router.push("/checkout");
   };
 
-  const fallBackRelated =
-    relatedProducts.length > 0
-      ? relatedProducts
-      : TOOLS_PRODUCTS.filter(
-          (p) => p.categorySlug === product.categorySlug && p.id !== product.id
-        ).slice(0, 4);
+  async function submitCustomerAccess(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!storeSlug) {
+      setReviewError("This store is not available for customer sign-in right now.");
+      return;
+    }
+    setReviewError("");
+    setReviewMessage("");
+    setReviewBusy(true);
+    try {
+      if (authMode === "register") {
+        await registerStoreCustomer({ name: authName, email: authEmail, phone: authPhone || undefined, password: authPassword }, storeSlug);
+        setReviewMessage("Account created. Verify your email using the link we sent before signing in to review.");
+        setAuthMode("login");
+      } else {
+        const result = await loginStoreCustomer({ email: authEmail, password: authPassword }, storeSlug) as { customer: { id: string }; email: string };
+        setCustomer({ customerId: result.customer.id, email: result.email });
+        setAuthPassword("");
+        setReviewMessage("Signed in. You can now submit a verified-purchase review.");
+      }
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Customer sign-in failed.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function submitReview(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewError("");
+    setReviewMessage("");
+    setReviewBusy(true);
+    try {
+      await submitProductReview(product.id, { rating: Number(reviewRating), comment: reviewComment });
+      setReviewMessage("Thank you. Your verified-purchase review has been saved.");
+      router.refresh();
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : "Could not save your review.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white text-charcoal font-sans">
@@ -160,14 +243,13 @@ export function ProductDetailClient({
             ) : (
               <div className="space-y-3">
                 <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-6 border border-peach-light">
-                  <img
-                    src={product.images[activePhotoIdx] || product.images[0] || "/workshop-drill.jpg"}
-                    alt={product.name}
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      e.currentTarget.src = "/workshop-drill.jpg";
-                    }}
-                  />
+                  {product.images.length ? (
+                    <img
+                      src={product.images[activePhotoIdx] || product.images[0]}
+                      alt={product.name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : <p className="text-sm text-charcoal-light">No product photo available.</p>}
                 </div>
                 {product.images.length > 1 && (
                   <div className="flex gap-2">
@@ -186,9 +268,6 @@ export function ProductDetailClient({
                           src={img}
                           alt=""
                           className="w-full h-full object-contain"
-                          onError={(e) => {
-                            e.currentTarget.src = "/workshop-drill.jpg";
-                          }}
                         />
                       </button>
                     ))}
@@ -201,9 +280,7 @@ export function ProductDetailClient({
           {/* Right Column: Info & Purchase Form */}
           <div className="space-y-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase">
-                {product.brand}
-              </span>
+              {product.brand && <span className="text-xs font-bold tracking-[0.2em] text-peach-dark uppercase">{product.brand}</span>}
               <div className="flex gap-1.5">
                 {product.badge && (
                   <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-peach text-charcoal">
@@ -222,13 +299,15 @@ export function ProductDetailClient({
               {product.name}
             </h1>
 
-            <div className="flex items-center gap-3">
-              <StarRating rating={product.rating} size="lg" />
-              <span className="text-sm font-bold text-charcoal">{product.rating}</span>
-              <span className="text-sm text-charcoal-light">
-                ({product.reviewCount.toLocaleString()} contractor reviews)
-              </span>
-            </div>
+            {product.reviewCount > 0 && product.rating > 0 && (
+              <div className="flex items-center gap-3">
+                <StarRating rating={product.rating} size="lg" />
+                <span className="text-sm font-bold text-charcoal">{product.rating.toFixed(1)}</span>
+                <span className="text-sm text-charcoal-light">
+                  ({product.reviewCount.toLocaleString()} contractor reviews)
+                </span>
+              </div>
+            )}
 
             <div className="flex items-baseline gap-3">
               <span className="text-3xl font-bold text-charcoal">
@@ -244,19 +323,19 @@ export function ProductDetailClient({
             <div className="flex items-center gap-2">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  product.inStock ? "bg-green-500 animate-pulse" : "bg-red-400"
+                  inStock ? "bg-green-500 animate-pulse" : "bg-red-400"
                 }`}
               />
               <span
                 className={`text-sm font-medium ${
-                  product.inStock ? "text-green-700" : "text-red-500"
+                  inStock ? "text-green-700" : "text-red-500"
                 }`}
               >
-                {product.inStock
-                  ? (product.stockCount || 20) < 15
-                    ? `Only ${product.stockCount} left in stock!`
-                    : "In Stock — Ready for site dispatch"
-                  : "Out of Stock"}
+                {inStock
+                  ? stockAvailable < 15
+                    ? `Only ${stockAvailable} left in stock across the store`
+                    : "In stock across the store — ready for site dispatch"
+                  : "Out of stock across all branches"}
               </span>
             </div>
 
@@ -271,17 +350,15 @@ export function ProductDetailClient({
                   Size / Package
                 </p>
                 <p className="text-sm font-medium text-charcoal">
-                  {product.unit || product.size || "1 Unit"}
+                  {specifications["Size / Package"] || product.unit}
                 </p>
               </div>
-              <div>
-                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
-                  Duty Rating
-                </p>
-                <p className="text-sm font-medium text-charcoal">
-                  Heavy Industrial Duty
-                </p>
-              </div>
+              {specifications["Duty Rating"] && (
+                <div>
+                  <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">Duty Rating</p>
+                  <p className="text-sm font-medium text-charcoal">{specifications["Duty Rating"]}</p>
+                </div>
+              )}
               <div>
                 <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
                   Category
@@ -293,7 +370,7 @@ export function ProductDetailClient({
                   Brand / SKU
                 </p>
                 <p className="text-sm font-medium text-charcoal font-mono">
-                  {product.sku}
+                  {product.brand ? `${product.brand} / ` : ""}{product.sku}
                 </p>
               </div>
             </div>
@@ -314,14 +391,15 @@ export function ProductDetailClient({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.min(product.stockCount || 50, q + 1))}
+                    onClick={() => setQuantity((q) => Math.min(stockAvailable, q + 1))}
+                    disabled={quantity >= stockAvailable}
                     className="w-10 h-11 flex items-center justify-center text-charcoal hover:bg-peach-xlight transition-colors text-lg font-bold"
                   >
                     +
                   </button>
                 </div>
                 <span className="text-sm text-charcoal-light">
-                  Max {product.stockCount || 50} per order
+                  Max {stockAvailable} across the store
                 </span>
               </div>
 
@@ -329,7 +407,7 @@ export function ProductDetailClient({
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  disabled={!product.inStock}
+                  disabled={!inStock || quantity > stockAvailable}
                   className="flex-1 py-3.5 bg-charcoal text-white rounded-xl font-semibold text-sm hover:bg-peach-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                 >
                   Add to Cart
@@ -337,7 +415,7 @@ export function ProductDetailClient({
                 <button
                   type="button"
                   onClick={handleBuyNow}
-                  disabled={!product.inStock}
+                  disabled={!inStock || quantity > stockAvailable}
                   className="flex-1 py-3.5 bg-peach-dark text-white rounded-xl font-semibold text-sm text-center hover:bg-peach-deep transition-colors shadow-sm disabled:opacity-50"
                 >
                   Buy Now
@@ -402,7 +480,7 @@ export function ProductDetailClient({
                 }`}
               >
                 {tab}
-                {tab === "Reviews" && ` (${CUSTOMER_REVIEWS.length})`}
+                {tab === "Reviews" && product.reviewCount > 0 && ` (${product.reviewCount})`}
               </button>
             ))}
           </div>
@@ -414,29 +492,12 @@ export function ProductDetailClient({
               </p>
             )}
 
-            {activeTab === "Benefits" && (
-              <ul className="space-y-3">
-                {(product.benefits || [
-                  "High continuous duty cycle for heavy commercial operations",
-                  "Overload protection and surge arrestor",
-                  "Vibration dampening ergonomic grip",
-                ]).map((b, idx) => (
-                  <li key={idx} className="flex items-start gap-3 text-sm text-charcoal-light">
-                    <span className="w-5 h-5 rounded-full bg-peach-light text-peach-dark flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-bold">
-                      ✓
-                    </span>
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-
             {activeTab === "Specifications" && (
               <div className="border border-peach-light rounded-2xl overflow-hidden">
                 <table className="w-full text-xs text-left">
                   <tbody className="divide-y divide-peach-light/60">
-                    {product.specifications ? (
-                      Object.entries(product.specifications).map(([key, val]) => (
+                    {Object.keys(specifications).length ? (
+                      Object.entries(specifications).map(([key, val]) => (
                         <tr key={key} className="hover:bg-peach-xlight/30">
                           <td className="px-5 py-3 font-semibold text-charcoal w-1/3 bg-peach-xlight/40">
                             {key}
@@ -444,110 +505,77 @@ export function ProductDetailClient({
                           <td className="px-5 py-3 text-charcoal font-mono">{val}</td>
                         </tr>
                       ))
-                    ) : (
-                      <tr>
-                        <td className="px-5 py-3 font-semibold text-charcoal">Brand / SKU</td>
-                        <td className="px-5 py-3 text-charcoal">{product.brand} ({product.sku})</td>
-                      </tr>
-                    )}
+                    ) : <tr><td className="px-5 py-3 text-charcoal-light">No specifications have been added.</td></tr>}
                   </tbody>
                 </table>
               </div>
             )}
 
-            {activeTab === "How to Use" && (
-              <ol className="space-y-3">
-                {[
-                  "Verify that power source or battery matches rated voltage specifications.",
-                  "Inspect accessories, blades, chuck, or fasteners before operation.",
-                  "Wear approved eye protection, ear defenders, and safety footwear.",
-                  "Perform initial dry run at low speed before engaging full workload.",
-                  "Store in clean, dry environment; service carbon brushes periodically.",
-                ].map((step, idx) => (
-                  <li key={idx} className="flex items-start gap-3 text-sm text-charcoal-light">
-                    <span className="w-6 h-6 rounded-full bg-peach-light text-peach-dark flex items-center justify-center flex-shrink-0 font-bold text-xs">
-                      {idx + 1}
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-
             {activeTab === "Reviews" && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-6 p-6 bg-peach-xlight rounded-2xl">
-                  <div className="text-center">
-                    <p className="text-5xl font-bold text-charcoal font-display">
-                      {product.rating}
-                    </p>
-                    <StarRating rating={product.rating} size="lg" />
-                    <p className="text-xs text-charcoal-light mt-1">
-                      {product.reviewCount} contractor reviews
-                    </p>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {[
-                      { star: 5, pct: 76 },
-                      { star: 4, pct: 16 },
-                      { star: 3, pct: 6 },
-                      { star: 2, pct: 2 },
-                      { star: 1, pct: 0 },
-                    ].map((row) => (
-                      <div key={row.star} className="flex items-center gap-2 text-xs">
-                        <span className="w-3 text-charcoal-light">{row.star}</span>
-                        <svg className="w-3 h-3 text-peach-dark" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292z" />
-                        </svg>
-                        <div className="flex-1 h-1.5 bg-peach-light rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-peach-dark rounded-full"
-                            style={{ width: `${row.pct}%` }}
-                          />
-                        </div>
-                        <span className="text-charcoal-light w-7 text-right">{row.pct}%</span>
-                      </div>
-                    ))}
+              <div className="space-y-7">
+                <div className="flex items-center gap-5 rounded-2xl bg-peach-xlight p-5">
+                  <div>
+                    <p className="m-0 text-4xl font-bold text-charcoal">{product.reviewCount > 0 ? product.rating.toFixed(1) : "—"}</p>
+                    {product.reviewCount > 0 && <StarRating rating={product.rating} size="lg" />}
+                    <p className="mb-0 mt-1 text-xs text-charcoal-light">{product.reviewCount} verified reviews</p>
                   </div>
                 </div>
 
-                {CUSTOMER_REVIEWS.map((rev, idx) => (
-                  <div key={idx} className="border-b border-peach-light pb-6 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-peach text-charcoal font-bold text-xs flex items-center justify-center">
-                          {rev.name[0]}
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-charcoal">{rev.name}</p>
-                          {rev.verified && (
-                            <p className="text-[10px] text-green-600 font-medium">
-                              ✓ Verified Site Contractor
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StarRating rating={rev.rating} />
-                        <span className="text-xs text-charcoal-light">{rev.date}</span>
-                      </div>
+                {customer === undefined && <p className="text-sm text-charcoal-light">Checking customer sign-in…</p>}
+                {customer && (
+                  <form onSubmit={submitReview} className="grid gap-3 rounded-xl border border-peach-light p-4">
+                    <p className="m-0 text-sm text-charcoal-light">Signed in as {customer.email}. Reviews are accepted only after a paid purchase through the store or a linked in-store customer account.</p>
+                    <label className="grid gap-1 text-sm font-medium text-charcoal">Your rating
+                      <select value={reviewRating} onChange={(event) => setReviewRating(event.target.value)} className="h-10 rounded-lg border border-peach-light bg-white px-3">
+                        {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? "star" : "stars"}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-charcoal">Your review <span className="font-normal text-charcoal-light">(optional)</span>
+                      <textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} maxLength={2000} rows={4} className="rounded-lg border border-peach-light p-3 font-normal" placeholder="Share your experience with this product." />
+                    </label>
+                    <button type="submit" disabled={reviewBusy} className="w-fit rounded-lg bg-charcoal px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{reviewBusy ? "Saving…" : "Submit review"}</button>
+                  </form>
+                )}
+                {customer === null && (
+                  <form onSubmit={submitCustomerAccess} className="grid gap-3 rounded-xl border border-peach-light p-4">
+                    <p className="m-0 text-sm text-charcoal-light">Sign in or create a verified customer account to leave a review. Reviews require a completed paid purchase.</p>
+                    {authMode === "register" && <>
+                      <label className="grid gap-1 text-sm font-medium text-charcoal">Name<input required value={authName} onChange={(event) => setAuthName(event.target.value)} className="h-10 rounded-lg border border-peach-light px-3 font-normal" /></label>
+                      <label className="grid gap-1 text-sm font-medium text-charcoal">Phone <span className="font-normal text-charcoal-light">(optional)</span><input value={authPhone} onChange={(event) => setAuthPhone(event.target.value)} className="h-10 rounded-lg border border-peach-light px-3 font-normal" /></label>
+                    </>}
+                    <label className="grid gap-1 text-sm font-medium text-charcoal">Email<input required type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} className="h-10 rounded-lg border border-peach-light px-3 font-normal" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-charcoal">Password<input required type="password" minLength={12} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} className="h-10 rounded-lg border border-peach-light px-3 font-normal" /></label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button type="submit" disabled={reviewBusy || !storeSlug} className="rounded-lg bg-charcoal px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{reviewBusy ? "Please wait…" : authMode === "register" ? "Create account" : "Sign in"}</button>
+                      <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setReviewError(""); setReviewMessage(""); }} className="text-sm font-medium text-peach-dark underline">{authMode === "login" ? "Create an account" : "I already have an account"}</button>
                     </div>
-                    <p className="text-sm text-charcoal-light leading-relaxed">{rev.text}</p>
-                  </div>
-                ))}
+                  </form>
+                )}
+                {reviewMessage && <p role="status" className="m-0 text-sm text-green-700">{reviewMessage}</p>}
+                {reviewError && <p role="alert" className="m-0 text-sm text-red-700">{reviewError}</p>}
+
+                <div className="space-y-4">
+                  {(product.reviews ?? []).map((review, index) => (
+                    <article key={`${review.createdAt}-${index}`} className="border-b border-peach-light pb-4">
+                      <div className="flex items-center gap-2"><StarRating rating={review.rating} /><span className="text-sm font-semibold text-charcoal">{review.author}</span><time className="text-xs text-charcoal-light">{new Date(review.createdAt).toLocaleDateString()}</time></div>
+                      {review.comment && <p className="mb-0 mt-2 text-sm leading-relaxed text-charcoal-light">{review.comment}</p>}
+                    </article>
+                  ))}
+                  {!product.reviews?.length && <p className="m-0 text-sm text-charcoal-light">No customer reviews yet.</p>}
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* You May Also Like */}
-        {fallBackRelated.length > 0 && (
+        {relatedProducts.length > 0 && (
           <div className="mt-16">
             <h2 className="font-display text-2xl font-bold text-charcoal mb-6">
               You May Also Like
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-              {fallBackRelated.map((p) => (
+              {relatedProducts.map((p) => (
                 <StoreProductCard key={p.id} product={p} />
               ))}
             </div>

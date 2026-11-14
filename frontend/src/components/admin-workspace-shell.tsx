@@ -121,14 +121,14 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-[#1a1d1f] [&_h1]:[font-weight:700] [&_h2]:[font-weight:700] [&_h3]:[font-weight:700] [&_strong]:[font-weight:400] [&_b]:[font-weight:400]">
+    <div className="admin-theme min-h-screen bg-[#f8faf8] text-[#26372d] [&_h1]:[font-weight:700] [&_h2]:[font-weight:700] [&_h3]:[font-weight:700] [&_strong]:[font-weight:400] [&_b]:[font-weight:400]">
       {mobileOpen && <button className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col border-r border-[#203131] bg-[#0c1919] px-4 py-6 text-white transition-transform lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col border-r border-[#203a2d] bg-[#101a16] px-4 py-6 text-white transition-transform lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <Link className="mb-9 flex items-center gap-3 px-1" href={homeHref} onClick={() => setMobileOpen(false)} aria-label="Oceanic Tools Monger home">
           <Image src="/oceantoolslogo.png" alt="Oceanic Tools Monger Logo" width={245} height={236} priority className="size-9 shrink-0 object-contain" />
           <div className="flex flex-col justify-center">
             <span className="text-base font-extrabold tracking-tight text-white leading-none">Oceanic</span>
-            <span className="text-[9px] font-bold tracking-[0.2em] text-[#8de2d6] uppercase leading-none mt-1">Tools Monger</span>
+            <span className="text-[9px] font-bold tracking-[0.2em] text-[#8aab91] uppercase leading-none mt-1">Tools Monger</span>
           </div>
         </Link>
         <nav className="flex-1 space-y-5 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Admin pages">
@@ -150,7 +150,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                         href={href}
                         onClick={() => setMobileOpen(false)}
                         aria-current={active ? "page" : undefined}
-                        className={`group flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-[background-color,color,box-shadow,transform] duration-150 ${active ? "bg-brand text-white shadow-[0_2px_8px_rgba(20,158,143,.24)]" : "text-[#aebfbc] hover:translate-x-0.5 hover:bg-white/10 hover:text-white"}`}
+                        className={`group flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-[background-color,color,box-shadow,transform] duration-150 ${active ? "bg-brand text-white shadow-[0_2px_8px_rgba(57,120,83,.24)]" : "text-[#aebfbc] hover:translate-x-0.5 hover:bg-white/10 hover:text-white"}`}
                       >
                         <span className={`transition-transform duration-150 ${active ? "scale-105" : "group-hover:scale-105"}`}>
                           <AdminNavIcon name={item.icon} />
@@ -164,13 +164,13 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="mt-4 border-t border-[#263737] px-3 pt-4">
+        <div className="mt-4 border-t border-[#263c31] px-3 pt-4">
           <p className="mb-3 text-xs text-[#aebfbc]">Stock, sales and money</p>
           <button
             type="button"
             onClick={() => void handleSignOut()}
             disabled={signingOut}
-            className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-[#aebfbc] transition-colors hover:bg-[#142727] hover:text-white disabled:opacity-60"
+            className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-[#aebfbc] transition-colors hover:bg-[#142b20] hover:text-white disabled:opacity-60"
           >
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 17l5-5-5-5" />
@@ -211,7 +211,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
               </AdminPageEntrance>}
             </div>}
             <span className="h-6 w-px bg-line" />
-            <span className="grid size-8 place-items-center rounded-full bg-[#153c3a] text-xs text-[#7fddd2]">{(currentUserQuery.data?.user.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+            <span className="grid size-8 place-items-center rounded-full bg-[#153c2a] text-xs text-[#dcebe0]">{(currentUserQuery.data?.user.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
           </div>
         </header>
         <AdminPageEntrance key={pathname}>{children}</AdminPageEntrance>

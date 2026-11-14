@@ -15,6 +15,8 @@ export type Product = {
   unit: string;
   state: "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED";
   sellingPrice: number | string;
+  bottomPrice?: number | string;
+  originalPrice?: number | string | null;
   costPrice?: number | string;
   reorderLevel: number | string;
   imageUrl?: string | null;
@@ -30,6 +32,13 @@ export type ProductImage = {
   position: number;
   isPrimary: boolean;
   mediaAsset: { id: string; secureUrl: string | null; publicId: string; originalFilename: string | null; mimeType: string | null; status: string };
+};
+
+export type StagedProductImage = {
+  assetId: string;
+  secureUrl: string;
+  originalFilename: string | null;
+  view: "FRONT" | "BACK" | "SIDE";
 };
 
 export type ProductResponse = { data: Product[]; meta: { count: number; limit: number } };
@@ -128,6 +137,17 @@ export function uploadProductImage(id: string, file: File, view: ProductImage["v
   if (imageId) form.set("imageId", imageId);
   if (isPrimary) form.set("isPrimary", "true");
   return apiRequest(`/products/${id}/images`, { method: "POST", body: form });
+}
+
+export function uploadStagedProductImage(file: File, view: StagedProductImage["view"]) {
+  const form = new FormData();
+  form.set("image", file);
+  form.set("view", view);
+  return apiRequest<{ data: { id: string; secureUrl: string; originalFilename: string | null; view: StagedProductImage["view"] } }>("/products/images/staged", { method: "POST", body: form });
+}
+
+export function removeStagedProductImage(assetId: string) {
+  return apiRequest<{ data: { id: string; deleted: boolean; status: string } }>(`/products/images/staged/${encodeURIComponent(assetId)}`, { method: "DELETE" });
 }
 
 export function removeProductImage(id: string) {

@@ -4,11 +4,8 @@ import { ProductDetailClient } from "@/components/storefront/product-detail-clie
 import { StoreCartDrawer } from "@/components/storefront/store-cart-drawer";
 import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 import { StoreFooter } from "@/components/storefront/store-footer";
-import { fetchStoreProductBySku } from "@/services/store/store.service";
-import {
-  TOOLS_PRODUCTS,
-  type StoreProduct,
-} from "@/data/tools-catalog";
+import { mapStoreProductToCatalogProduct } from "@/components/storefront/store-product-mapper";
+import { fetchStoreInfo, fetchStoreProductBySku, fetchStoreProducts } from "@/services/store/store.service";
 
 interface ProductPageProps {
   params: Promise<{ sku: string }>;
@@ -16,79 +13,11 @@ interface ProductPageProps {
 
 export default async function ProductDetailPage({ params }: ProductPageProps) {
   const { sku } = await params;
-  const decodedSku = decodeURIComponent(sku).toLowerCase();
-
-  let product: StoreProduct | undefined;
-
-  // 1. Check backend database first (primary source of truth for products & live images)
-  try {
-    const backendProduct = await fetchStoreProductBySku(sku);
-    if (backendProduct) {
-      const extractedImages =
-        backendProduct.images && backendProduct.images.length > 0
-          ? backendProduct.images
-              .map((img) => (typeof img === "string" ? img : img.imageUrl))
-              .filter((url): url is string => Boolean(url))
-          : [];
-
-      // Find any rich catalog specs or benefits if present
-      const catalogMatch = TOOLS_PRODUCTS.find(
-        (c) =>
-          c.sku.toLowerCase() === backendProduct.sku.toLowerCase() ||
-          c.name.toLowerCase() === backendProduct.name.toLowerCase() ||
-          c.slug.toLowerCase() === decodedSku
-      );
-
-      product = {
-        id: backendProduct.id,
-        sku: backendProduct.sku,
-        slug: backendProduct.sku,
-        name: backendProduct.name,
-        brand: backendProduct.brand || catalogMatch?.brand || "Oceanic Tools Monger Professional",
-        category: backendProduct.category || catalogMatch?.category || "Power Tools",
-        categorySlug: (backendProduct.category || catalogMatch?.category || "power-tools")
-          .toLowerCase()
-          .replace(/\s+/g, "-"),
-        price: Number(backendProduct.sellingPrice || 25000),
-        originalPrice: catalogMatch?.originalPrice || Math.round(Number(backendProduct.sellingPrice || 25000) * 1.15),
-        images:
-          extractedImages.length > 0
-            ? extractedImages
-            : catalogMatch?.images || ["/workshop-drill.jpg"],
-        badge: catalogMatch?.badge || (backendProduct.available > 0 && backendProduct.available < 15 ? "LIMITED" : "POPULAR"),
-        rating: catalogMatch?.rating || 4.8,
-        reviewCount: catalogMatch?.reviewCount || 120,
-        inStock: backendProduct.available > 0,
-        stockCount: backendProduct.available,
-        description:
-          backendProduct.description ||
-          catalogMatch?.description ||
-          "Heavy-duty industrial equipment built for high performance and durability on Nigerian jobsites.",
-        benefits: catalogMatch?.benefits || [
-          "Continuous duty motor built for heavy site operations",
-          "Thermal overload and surge protection",
-          "Comprehensive 1-year manufacturer warranty",
-        ],
-        specifications: catalogMatch?.specifications,
-        unit: backendProduct.unit || catalogMatch?.unit || "Unit",
-        warranty: catalogMatch?.warranty || "1 Year Oceanic Tools Monger Warranty",
-      };
-    }
-  } catch {
-    // If backend request fails, fall through to static catalog fallback
-  }
-
-  // 2. Fallback to tools-catalog if product is not in backend database
-  if (!product) {
-    product = TOOLS_PRODUCTS.find(
-      (p) =>
-        p.slug.toLowerCase() === decodedSku ||
-        p.sku.toLowerCase() === decodedSku ||
-        p.id.toLowerCase() === decodedSku
-    );
-  }
-
-  if (!product) {
+  const [backendProduct, store] = await Promise.all([
+    fetchStoreProductBySku(sku).catch(() => null),
+    fetchStoreInfo().catch(() => null),
+  ]);
+  if (!backendProduct) {
     return (
       <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans">
         <StoreHeader />
@@ -111,24 +40,39 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
             Explore Equipment Catalog
           </Link>
         </main>
-        <StoreCartDrawer />
+        <StoreCartDrawer storeSlug={store?.storeSlug} />
         <MobileBottomNav />
         <StoreFooter />
       </div>
     );
   }
 
-  const related = TOOLS_PRODUCTS.filter(
-    (p) => p.categorySlug === product?.categorySlug && p.id !== product?.id
-  ).slice(0, 4);
+  const product = mapStoreProductToCatalogProduct(backendProduct);
+  const allStoreProducts = await fetchStoreProducts().catch(() => []);
+  const currentCategory = (backendProduct.category || "").trim().toLowerCase();
+
+  const sameCategory = allStoreProducts.filter(
+    (item) =>
+      item.id !== backendProduct.id &&
+      (item.category || "").trim().toLowerCase() === currentCategory
+  );
+  const otherProducts = allStoreProducts.filter(
+    (item) =>
+      item.id !== backendProduct.id &&
+      (item.category || "").trim().toLowerCase() !== currentCategory
+  );
+
+  const related = [...sameCategory, ...otherProducts]
+    .slice(0, 4)
+    .map(mapStoreProductToCatalogProduct);
 
   return (
     <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans selection:bg-peach-light selection:text-peach-deep">
       <StoreHeader />
       <main className="flex-1">
-        <ProductDetailClient product={product} relatedProducts={related} />
+        <ProductDetailClient product={product} relatedProducts={related} storeSlug={store?.storeSlug} />
       </main>
-      <StoreCartDrawer />
+      <StoreCartDrawer storeSlug={store?.storeSlug} />
       <MobileBottomNav />
       <StoreFooter />
     </div>

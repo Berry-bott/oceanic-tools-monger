@@ -1,0 +1,20 @@
+.admin-theme {
+  --color-background: #f8faf8;
+  --color-foreground: #26372d;
+  --color-brand: #149e8f;
+  --color-brand-dark: #108578;
+  --color-teal: #149e8f;
+  --color-peach: #62a47e;
+  --color-peach-light: #dcebe0;
+  --color-peach-xlight: #f1f8f3;
+  --color-peach-dark: #149e8f;
+  --color-peach-deep: #108578;
+  --color-cream: #f8faf8;
+  --color-charcoal: #26372d;
+  --color-charcoal-light: #536159;
+  --color-warm-gray: #f1f6f2;
+  --color-line: #e0e7e1;
+  --color-canvas: #f8faf8;
+  --color-ink: #26372d;
+  --color-muted: #6e7b73;
+}

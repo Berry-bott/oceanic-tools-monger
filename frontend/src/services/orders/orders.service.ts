@@ -16,3 +16,13 @@ export function transitionOnlineOrder(id: string, status: string) {
     body: JSON.stringify({ status }),
   });
 }
+
+export function receivePickupPayment(
+  id: string,
+  input: { method: "CASH" | "BANK_TRANSFER" | "CARD"; reference?: string },
+) {
+  return apiRequest(`/online-orders/${encodeURIComponent(id)}/receive-pickup-payment`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

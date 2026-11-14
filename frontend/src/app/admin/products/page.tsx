@@ -287,10 +287,10 @@ export default function ProductsPage() {
                 <div className="w-full overflow-hidden">
                   <table className="w-full table-fixed border-collapse text-left">
                     <colgroup>
-                      <col className="w-1/4 max-[760px]:w-[40%] max-[520px]:w-[44%]" />
+                      <col className="w-[22%] max-[760px]:w-[40%] max-[520px]:w-[44%]" />
                       <col className="w-[12.5%] max-[760px]:hidden" />
                       <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:hidden" />
-                      <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:w-[28%]" />
+                      <col className="w-[15.5%] max-[760px]:w-1/5 max-[520px]:w-[28%]" />
                       <col className="w-[12.5%] max-[760px]:hidden" />
                       <col className="w-[12.5%] max-[760px]:hidden" />
                       <col className="w-[12.5%] max-[760px]:w-1/5 max-[520px]:w-[28%]" />
@@ -300,7 +300,7 @@ export default function ProductsPage() {
                         <th className="px-2">Product</th>
                         <th className="px-2 max-[760px]:hidden">Category</th>
                         <th className="px-2 text-right max-[520px]:hidden">Available</th>
-                        <th className="px-2 text-right">Selling price</th>
+                        <th className="whitespace-nowrap px-2 text-right">Selling price</th>
                         <th className="px-2 max-[760px]:hidden">Stock</th>
                         <th className="px-2 max-[760px]:hidden">Product state</th>
                         <th className="px-2 text-right">Actions</th>
@@ -342,7 +342,7 @@ export default function ProductsPage() {
                               </strong>
                             </td>
                             <td className="whitespace-nowrap px-2 py-2 text-right">
-                              <strong title={`Selling price ${currency(product.sellingPrice)}`} className="font-medium tabular-nums text-[#26372d]">
+                              <strong title={`Selling price ${currency(product.sellingPrice)}`} className="inline-block whitespace-nowrap font-medium tabular-nums text-[#26372d]">
                                 {currency(product.sellingPrice)}
                               </strong>
                             </td>
@@ -366,7 +366,7 @@ export default function ProductsPage() {
                             </td>
                             <td className="px-2 py-2">
                               <div className="flex items-center justify-end gap-1">
-                                <button type="button" aria-label={`View ${product.name} details`} title="View details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dce8f2] bg-[#f3f8fc] text-[#507597] transition-colors hover:bg-[#e4eff8] hover:text-[#315f84]" onClick={() => setViewingProduct(product)}><AdminUiIcon name="eye" size={15} /></button>
+                                <button type="button" aria-label={`View ${product.name} details`} title="View details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dce8f2] bg-[#f3f8fc] text-[#478264] transition-colors hover:bg-[#e4eff8] hover:text-[#32674f]" onClick={() => setViewingProduct(product)}><AdminUiIcon name="eye" size={15} /></button>
                                 {canManage(user) && <>
                                   <Link
                                     aria-label={`Edit ${product.name}`}

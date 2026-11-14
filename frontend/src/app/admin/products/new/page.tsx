@@ -5,17 +5,14 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import {
-  useCreateProduct,
-  useUploadProductImage,
-} from "@/hooks/mutations/use-product-mutations";
+import { useCreateProduct } from "@/hooks/mutations/use-product-mutations";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBranches } from "@/hooks/queries/use-branches";
 import { ProductSpecificationsEditor, type ProductSpecificationInput } from "@/components/product-specifications-editor";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
-import { checkProductDuplicates, type ProductDuplicate } from "@/services/products/product.service";
+import { checkProductDuplicates, removeStagedProductImage, uploadStagedProductImage, type ProductDuplicate, type StagedProductImage } from "@/services/products/product.service";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 
 type Role = "OWNER" | "STAFF";
@@ -38,71 +35,134 @@ export default function NewProductPage() {
   const loading = userQuery.isPending;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [images, setImages] = useState<Record<"FRONT" | "BACK" | "SIDE", File | null>>({ FRONT: null, BACK: null, SIDE: null });
+  const [images, setImages] = useState<Record<"FRONT" | "BACK" | "SIDE", StagedProductImage | null>>({ FRONT: null, BACK: null, SIDE: null });
+  const [previewFiles, setPreviewFiles] = useState<Record<"FRONT" | "BACK" | "SIDE", File | null>>({ FRONT: null, BACK: null, SIDE: null });
+  const [uploadingViews, setUploadingViews] = useState<Record<"FRONT" | "BACK" | "SIDE", boolean>>({ FRONT: false, BACK: false, SIDE: false });
   const [specifications, setSpecifications] = useState<ProductSpecificationInput[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [selectedCategoryIdOverride, setSelectedCategoryIdOverride] = useState<string | null>(null);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
   const [quantity, setQuantity] = useState("0");
   const [publishOnSave, setPublishOnSave] = useState(true);
-  const [savedProductVisibility, setSavedProductVisibility] = useState<boolean | null>(null);
   const [primaryImageKey, setPrimaryImageKey] = useState("FRONT");
-  const [savedProductId, setSavedProductId] = useState("");
   const [possibleDuplicates, setPossibleDuplicates] = useState<ProductDuplicate[]>([]);
   const [confirmedDuplicateKey, setConfirmedDuplicateKey] = useState("");
   const [pendingDuplicateKey, setPendingDuplicateKey] = useState("");
   const createProductMutation = useCreateProduct();
-  const uploadImageMutation = useUploadProductImage();
   const returnToReceiving = searchParams.get("returnTo") === "receive-stock";
   const selectedCategoryId = selectedCategoryIdOverride ?? searchParams.get("categoryId") ?? "";
   const selectedCategory = categoriesQuery.data?.data.find((category) => category.id === selectedCategoryId);
   const assignedBranch = branchQuery.data?.data.find((branch) => branch.id === user?.branchId);
 
+  async function selectProductImage(view: "FRONT" | "BACK" | "SIDE", file: File | undefined) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setError("Choose a JPEG, PNG or WebP image up to 5 MB.");
+      return;
+    }
+    setError("");
+    setPreviewFiles((current) => ({ ...current, [view]: file }));
+    setUploadingViews((current) => ({ ...current, [view]: true }));
+    try {
+      const result = await uploadStagedProductImage(file, view);
+      const replacedImage = images[view];
+      setImages((current) => ({
+        ...current,
+        [view]: {
+          assetId: result.data.id,
+          secureUrl: result.data.secureUrl,
+          originalFilename: result.data.originalFilename,
+          view: result.data.view,
+        },
+      }));
+      setPreviewFiles((current) => ({ ...current, [view]: null }));
+      if (!Object.values(images).some(Boolean)) setPrimaryImageKey(view);
+      if (replacedImage) {
+        try {
+          await removeStagedProductImage(replacedImage.assetId);
+        } catch {
+          setError("The new photo uploaded, but the previous staged photo could not be removed. It will be cleaned up automatically.");
+        }
+      }
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed. Choose the photo again to retry.");
+    } finally {
+      setUploadingViews((current) => ({ ...current, [view]: false }));
+    }
+  }
+
+  async function removeProductImage(view: "FRONT" | "BACK" | "SIDE") {
+    const image = images[view];
+    if (!image) return;
+    setError("");
+    setUploadingViews((current) => ({ ...current, [view]: true }));
+    try {
+      await removeStagedProductImage(image.assetId);
+      setImages((current) => ({ ...current, [view]: null }));
+      setPreviewFiles((current) => ({ ...current, [view]: null }));
+      if (primaryImageKey === view) {
+        const nextPrimary = (["FRONT", "BACK", "SIDE"] as const).find((candidate) => candidate !== view && images[candidate]);
+        setPrimaryImageKey(nextPrimary ?? "FRONT");
+      }
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : "Image removal failed. Try again.");
+    } finally {
+      setUploadingViews((current) => ({ ...current, [view]: false }));
+    }
+  }
+
   async function createProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user || !canManage(user)) return;
     setError("");
+    if (Object.values(uploadingViews).some(Boolean)) {
+      setError("Wait for the selected photos to finish uploading before saving.");
+      return;
+    }
+    if (Object.values(previewFiles).some(Boolean)) {
+      setError("Upload or clear each selected photo before saving the product.");
+      return;
+    }
     setSaving(true);
     const form = new FormData(event.currentTarget);
     try {
-      let productId = savedProductId;
-      if (!productId) {
-        if (user.role === "OWNER" && !selectedBranchId) {
-          throw new Error("Choose a branch for this product.");
-        }
-        if (user.role === "STAFF" && !user.branchId) {
-          throw new Error("Ask the owner to assign your account to a branch before creating products.");
-        }
-        const duplicateKey = [form.get("sku"), form.get("barcode"), form.get("name")].map((value) => String(value ?? "").trim().toLocaleLowerCase()).join("|");
-        const duplicateCheck = await checkProductDuplicates({
-          sku: String(form.get("sku") ?? ""),
-          barcode: String(form.get("barcode") ?? ""),
-          name: String(form.get("name") ?? ""),
-        });
-        const codeMatches = duplicateCheck.data.filter((item) =>
-          item.sku.toLocaleLowerCase() === String(form.get("sku") ?? "").trim().toLocaleLowerCase()
-          || Boolean(form.get("barcode") && item.barcode?.toLocaleLowerCase() === String(form.get("barcode")).trim().toLocaleLowerCase()),
-        );
-        if (codeMatches.length) {
-          throw new Error(`SKU or barcode already belongs to ${codeMatches.map((item) => `${item.name} (${item.sku})`).join(", ")}.`);
-        }
-        if (duplicateCheck.data.length && confirmedDuplicateKey !== duplicateKey) {
-          setPossibleDuplicates(duplicateCheck.data);
-          setPendingDuplicateKey(duplicateKey);
-          setConfirmedDuplicateKey("");
-          setSaving(false);
-          return;
-        }
-        setPossibleDuplicates([]);
-        setPendingDuplicateKey("");
+      if (user.role === "OWNER" && !selectedBranchId) {
+        throw new Error("Choose a branch for this product.");
+      }
+      if (user.role === "STAFF" && !user.branchId) {
+        throw new Error("Ask the owner to assign your account to a branch before creating products.");
+      }
+      const duplicateKey = [form.get("sku"), form.get("barcode"), form.get("name")].map((value) => String(value ?? "").trim().toLocaleLowerCase()).join("|");
+      const duplicateCheck = await checkProductDuplicates({
+        sku: String(form.get("sku") ?? ""),
+        barcode: String(form.get("barcode") ?? ""),
+        name: String(form.get("name") ?? ""),
+      });
+      const codeMatches = duplicateCheck.data.filter((item) =>
+        item.sku.toLocaleLowerCase() === String(form.get("sku") ?? "").trim().toLocaleLowerCase()
+        || Boolean(form.get("barcode") && item.barcode?.toLocaleLowerCase() === String(form.get("barcode")).trim().toLocaleLowerCase()),
+      );
+      if (codeMatches.length) {
+        throw new Error(`SKU or barcode already belongs to ${codeMatches.map((item) => `${item.name} (${item.sku})`).join(", ")}.`);
+      }
+      if (duplicateCheck.data.length && confirmedDuplicateKey !== duplicateKey) {
+        setPossibleDuplicates(duplicateCheck.data);
+        setPendingDuplicateKey(duplicateKey);
         setConfirmedDuplicateKey("");
-        const result = await createProductMutation.mutateAsync({
+        setSaving(false);
+        return;
+      }
+      setPossibleDuplicates([]);
+      setPendingDuplicateKey("");
+      setConfirmedDuplicateKey("");
+      await createProductMutation.mutateAsync({
           name: form.get("name"),
           sku: form.get("sku"),
           barcode: form.get("barcode"),
           description: form.get("description"),
           brand: form.get("brand"),
           model: form.get("model"),
+          originalPrice: String(form.get("originalPrice") ?? "").trim() ? Number(form.get("originalPrice")) : null,
           specifications: specifications.filter((item) => item.name.trim() && item.value.trim()),
           branchAssignments: user.role === "OWNER" ? [{ branchId: selectedBranchId, openingStock: Number(quantity) }] : undefined,
           quantity: Number(quantity),
@@ -111,34 +171,18 @@ export default function NewProductPage() {
           categoryId: selectedCategoryId,
           subcategoryId: selectedSubcategoryId || undefined,
           sellingPrice: form.get("sellingPrice"),
+          bottomPrice: user?.role === "OWNER" ? form.get("bottomPrice") : undefined,
           costPrice: form.get("costPrice"),
           unit: form.get("unit"),
           reorderLevel: form.get("reorderLevel"),
+          stagedImages: (["FRONT", "BACK", "SIDE"] as const).flatMap((view) => {
+            const image = images[view];
+            return image ? [{ assetId: image.assetId, view, isPrimary: primaryImageKey === view }] : [];
+          }),
         });
-        productId = result.data.id;
-        setSavedProductId(productId);
-        setSavedProductVisibility(publishOnSave);
-      }
-      if (productId) {
-        try {
-          for (const view of ["FRONT", "BACK", "SIDE"] as const) {
-            const file = images[view];
-            if (file) {
-              await uploadImageMutation.mutateAsync({ id: productId, file, view, isPrimary: primaryImageKey === view });
-              setImages((current) => ({ ...current, [view]: null }));
-            }
-          }
-        } catch (uploadError) {
-          setError(
-            `Product saved, but its image was not uploaded. ${uploadError instanceof Error ? uploadError.message : "Choose the image again and retry."}`,
-          );
-          setSaving(false);
-          return;
-        }
-      }
       window.sessionStorage.setItem(
         "oceanic-product-created",
-        (savedProductVisibility ?? publishOnSave) ? "published" : "draft",
+        publishOnSave ? "published" : "draft",
       );
       router.push(returnToReceiving ? "/admin/purchasing" : "/admin/products");
     } catch (requestError) {
@@ -171,18 +215,6 @@ export default function NewProductPage() {
 
   return (
     <main className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-      <nav
-        className="mb-5 text-sm text-[#829087]"
-        aria-label="Breadcrumb"
-      >
-        <Link
-          className="text-[#397853] [&:hover]:[text-decoration:underline]"
-          href={returnToReceiving ? "/admin/purchasing" : "/admin/products"}
-        >
-          {returnToReceiving ? "Receive stock" : "Products"}
-        </Link>
-        <span> / Add product</span>
-      </nav>
       <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mt-0 mx-0 mb-2 text-sm font-normal tracking-wide text-[#718b79]">
@@ -196,6 +228,12 @@ export default function NewProductPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/products"
+            className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas"
+          >
+            Back to product list
+          </Link>
           {returnToReceiving && <Link href="/admin/purchasing" className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas">
             Return to receiving
           </Link>}
@@ -240,7 +278,8 @@ export default function NewProductPage() {
                   <p className="m-0 text-sm text-[#75827c]">Create a category using Manage categories before adding products.</p>
                 )}
               </div>
-              <label className={fieldClass}>Subcategory
+              <label className={fieldClass}>
+                <span className="flex items-center gap-1">Subcategory <span className="text-muted">(optional)</span></span>
                 <select className={inputClass} value={selectedSubcategoryId} onChange={(event) => setSelectedSubcategoryId(event.target.value)} disabled={!selectedCategory?.subcategories.length}>
                   <option value="">{selectedCategory?.subcategories.length ? "No subcategory (optional)" : "No subcategory"}</option>
                   {selectedCategory?.subcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
@@ -258,20 +297,28 @@ export default function NewProductPage() {
           </section>
           <ProductSpecificationsEditor specifications={specifications} onChange={setSpecifications} />
           <section className="grid gap-4 rounded-xl border border-line bg-white p-5 shadow-sm sm:p-6" aria-labelledby="product-images-heading">
-            <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="image" size={19} /></span><div><h2 id="product-images-heading" className="m-0 text-base font-semibold text-ink">Product photos</h2><p className="mb-0 mt-1 text-sm text-muted">Photos are optional. Add any views you have now or upload them later.</p></div></div>
+            <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="image" size={19} /></span><div><h2 id="product-images-heading" className="m-0 text-base font-semibold text-ink">Product photos</h2><p className="mb-0 mt-1 text-sm text-muted">Photos are optional and upload as soon as you select them.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-3">
               {(["FRONT", "BACK", "SIDE"] as const).map((view) => {
                 const label = `${view[0]}${view.slice(1).toLowerCase()} view`;
+                const image = images[view];
+                const previewFile = previewFiles[view];
+                const busy = uploadingViews[view];
                 return (
                   <div key={view} className="grid content-start gap-3 rounded-lg border border-line p-3">
                     <h3 className="m-0 text-sm font-medium text-ink">{label}<span className="ml-1 text-xs font-normal text-muted">Optional</span></h3>
-                    {images[view] ? <LocalImagePreview file={images[view]} alt={`${label} preview`} className="mx-auto aspect-square w-full max-w-40 rounded-lg border border-line bg-canvas object-contain" /> : <div className="mx-auto grid aspect-square w-full max-w-40 place-items-center rounded-lg bg-canvas text-xs text-muted">No photo added</div>}
-                    <label className="relative inline-flex h-9 w-fit cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg border border-line bg-white px-3 text-xs font-medium text-brand hover:bg-canvas">
+                    {previewFile ? <LocalImagePreview file={previewFile} alt={`${label} preview`} className="mx-auto aspect-[4/3] min-h-48 w-full rounded-lg border border-line bg-canvas object-contain p-2" /> : image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={image.secureUrl} alt={`${label} preview`} className="mx-auto aspect-[4/3] min-h-48 w-full rounded-lg border border-line bg-canvas object-contain p-2" />
+                    ) : <div className="mx-auto grid aspect-[4/3] min-h-48 w-full place-items-center rounded-lg bg-canvas text-xs text-muted">No photo added</div>}
+                    {busy && <p className="m-0 text-xs text-brand" role="status"><span className="inline-flex items-center gap-2"><FourDotLoader />{image ? "Uploading replacement..." : "Uploading photo..."}</span></p>}
+                    <label className={`relative inline-flex h-9 w-fit items-center justify-center gap-2 overflow-hidden rounded-lg border border-line bg-white px-3 text-xs font-medium text-brand hover:bg-canvas ${busy ? "cursor-wait opacity-60" : "cursor-pointer"}`}>
                       <AdminUiIcon name="image" size={15} />
-                      {images[view] ? "Replace photo" : "Choose photo"}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`${images[view] ? "Replace" : "Choose"} ${label}`} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024)) { setError("Choose a JPEG, PNG or WebP image up to 5 MB."); } else { setError(""); setImages((current) => ({ ...current, [view]: file })); } event.currentTarget.value = ""; }} />
+                      {previewFile ? "Retry upload" : image ? "Replace photo" : "Choose photo"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || saving} aria-label={`${image ? "Replace" : "Choose"} ${label}`} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait" onChange={(event) => { void selectProductImage(view, event.target.files?.[0]); event.currentTarget.value = ""; }} />
                     </label>
-              {images[view] && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><button type="button" className="cursor-pointer text-brand" onClick={() => setPrimaryImageKey(view)}>{primaryImageKey === view ? "Main photo" : "Set as main photo"}</button><button type="button" aria-label={`Remove ${label.toLowerCase()}`} title="Remove photo" className="grid size-8 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => { setImages((current) => ({ ...current, [view]: null })); if (primaryImageKey === view) setPrimaryImageKey("FRONT"); }}><AdminUiIcon name="trash" /></button></div>}
+                    {previewFile && !busy && <button type="button" className="w-fit cursor-pointer text-xs text-muted hover:text-ink" onClick={() => { setPreviewFiles((current) => ({ ...current, [view]: null })); setError(""); }}>Clear selected photo</button>}
+                    {image && <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"><button type="button" disabled={busy || saving} className="cursor-pointer text-brand disabled:opacity-60" onClick={() => setPrimaryImageKey(view)}>{primaryImageKey === view ? "Main photo" : "Set as main photo"}</button><button type="button" aria-label={`Remove ${label.toLowerCase()}`} title="Remove photo" disabled={busy || saving} className="grid size-8 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60" onClick={() => void removeProductImage(view)}><AdminUiIcon name="trash" /></button></div>}
                   </div>
                 );
               })}
@@ -280,32 +327,24 @@ export default function NewProductPage() {
           </section>
           <section className="grid gap-4 rounded-xl border border-line bg-white p-5 shadow-sm sm:p-6" aria-labelledby="pricing-heading">
             <div className="flex items-center gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf5ef] text-brand"><AdminUiIcon name="tag" size={19} /></span><div><h2 id="pricing-heading" className="m-0 text-lg font-semibold text-ink">Price and stock warning</h2><p className="mb-0 mt-1 text-sm text-muted">Set your selling price and the level that should trigger a low stock warning.</p></div></div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className={fieldClass}>
-              Selling price (NGN)
-              <input
-                className={inputClass}
-                name="sellingPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                placeholder="0.00"
-              />
-            </label>
-            <label className={fieldClass}>
-              Cost price (NGN)
-              <input
-                className={inputClass}
-                name="costPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                placeholder="Enter the cost for one unit"
-              />
-            </label>
-          </div>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className={fieldClass}>
+                Original price (NGN)
+                <input className={inputClass} name="originalPrice" type="number" min="0" step="0.01" placeholder="Optional" />
+              </label>
+              <label className={fieldClass}>
+                Selling price (NGN)
+                <input className={inputClass} name="sellingPrice" type="number" min="0" step="0.01" required placeholder="0.00" />
+              </label>
+              {user?.role === "OWNER" && <label className={fieldClass}>
+                Bottom price (NGN)
+                <input className={inputClass} name="bottomPrice" type="number" min="0" step="0.01" required placeholder="Minimum staff selling price" />
+              </label>}
+              <label className={fieldClass}>
+                Cost price (NGN)
+                <input className={inputClass} name="costPrice" type="number" min="0" step="0.01" required placeholder="Enter the cost for one unit" />
+              </label>
+            </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className={fieldClass}>
               Unit
@@ -377,9 +416,7 @@ export default function NewProductPage() {
               <div>
                 <h2 id="website-visibility-heading" className="m-0 text-base font-semibold text-ink">Website visibility</h2>
                 <p className="mb-0 mt-1 text-sm text-muted">
-                  {savedProductVisibility === null
-                    ? publishOnSave ? "Published after saving. Switch off to keep this product as a draft." : "Saved as a draft and hidden from customers. Switch on to publish after saving."
-                    : savedProductVisibility ? "This product is set to publish after saving." : "This product is set to save as a draft."}
+                  {publishOnSave ? "Published after saving. Switch off to keep this product as a draft." : "Saved as a draft and hidden from customers. Switch on to publish after saving."}
                   {" "}Photos are optional and can be added later.
                 </p>
               </div>
@@ -387,16 +424,16 @@ export default function NewProductPage() {
             <button
               type="button"
               role="switch"
-              aria-checked={savedProductVisibility ?? publishOnSave}
+              aria-checked={publishOnSave}
               aria-label="Publish product after saving"
-              disabled={Boolean(savedProductId) || saving}
+              disabled={saving}
               onClick={() => setPublishOnSave((current) => !current)}
               className={`inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-60 ${publishOnSave ? "bg-brand" : "bg-[#cbd5ce]"}`}
             >
               <span className={`size-5 rounded-full bg-white shadow-sm transition-transform ${publishOnSave ? "translate-x-5" : "translate-x-0"}`} />
             </button>
           </section>
-          {possibleDuplicates.length > 0 && !savedProductId && (
+          {possibleDuplicates.length > 0 && (
             <section className="grid gap-3 rounded-lg border border-[#ead9ad] bg-[#fffaf0] p-4 text-sm text-[#725b2a]" aria-labelledby="similar-products-title">
               <div>
                 <h2 id="similar-products-title" className="m-0 text-base font-semibold">A product with this name already exists</h2>
@@ -421,9 +458,9 @@ export default function NewProductPage() {
             <button
               className="h-10 cursor-pointer rounded-lg border border-brand bg-brand px-4 text-sm text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-65"
               type="submit"
-              disabled={saving || branchQuery.isLoading || Boolean(branchQuery.isError) || (user.role === "OWNER" && !selectedBranchId) || (user.role === "STAFF" && !user.branchId) || (possibleDuplicates.length > 0 && confirmedDuplicateKey !== pendingDuplicateKey)}
+              disabled={saving || Object.values(uploadingViews).some(Boolean) || Object.values(previewFiles).some(Boolean) || branchQuery.isLoading || Boolean(branchQuery.isError) || (user.role === "OWNER" && !selectedBranchId) || (user.role === "STAFF" && !user.branchId) || (possibleDuplicates.length > 0 && confirmedDuplicateKey !== pendingDuplicateKey)}
             >
-              {saving ? <span className="inline-flex items-center gap-2"><FourDotLoader />{savedProductId ? "Uploading photos..." : "Saving product..."}</span> : savedProductId ? "Retry photo upload" : possibleDuplicates.length > 0 ? confirmedDuplicateKey === pendingDuplicateKey ? "Create this product" : "Review the product name" : "Save product"}
+              {saving ? <span className="inline-flex items-center gap-2"><FourDotLoader />Saving product...</span> : possibleDuplicates.length > 0 ? confirmedDuplicateKey === pendingDuplicateKey ? "Create this product" : "Review the product name" : "Save product"}
             </button>
           </div>
         </form>

@@ -1,0 +1,4 @@
+ALTER TABLE "Business"
+  ADD COLUMN "onlineDeliveryEnabled" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN "onlineDeliveryFee" DECIMAL(14,2) NOT NULL DEFAULT 4500,
+  ADD COLUMN "payOnPickupEnabled" BOOLEAN NOT NULL DEFAULT false;

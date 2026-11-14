@@ -58,9 +58,11 @@ export default function EditProductPage({ productId }: { productId: string }) {
     mutation.mutate({
       name: form.get("name"), sku: form.get("sku"), barcode: form.get("barcode"),
       description: form.get("description"), brand: form.get("brand"), model: form.get("model"),
+      originalPrice: String(form.get("originalPrice") ?? "").trim() ? Number(form.get("originalPrice")) : null,
       category: category?.name, categoryId: selectedCategoryId, subcategoryId: subcategoryId || null,
       unit: form.get("unit"), costPrice: Number(form.get("costPrice")),
       sellingPrice: Number(form.get("sellingPrice")), reorderLevel: Number(form.get("reorderLevel")),
+      ...(userQuery.data?.user.role === "OWNER" ? { bottomPrice: Number(form.get("bottomPrice")) } : {}),
       isPublished: form.get("isPublished") === "on",
       specifications: specifications.filter((item) => item.name.trim() && item.value.trim()),
     });
@@ -102,14 +104,16 @@ export default function EditProductPage({ productId }: { productId: string }) {
               </select>
               {categoriesQuery.isError && <span className="text-xs text-red-700">Could not load categories. Refresh and try again.</span>}
             </label>
-            <label className={fieldClass}>Subcategory <span className="text-xs text-muted">(optional)</span>
+            <label className={fieldClass}>
+              <span className="flex items-center gap-1">Subcategory <span className="text-xs text-muted">(optional)</span></span>
               <select value={subcategoryId} onChange={(event) => setSubcategoryId(event.target.value)} disabled={!selectedCategoryId || categoriesQuery.isLoading} className={inputClass}>
                 <option value="">{selectedCategory?.subcategories.length ? "No subcategory" : "No subcategory"}</option>
                 {selectedCategory?.subcategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
           </div>
-          <label className={fieldClass}>Description <span className="text-xs text-muted">(optional)</span>
+          <label className={fieldClass}>
+            <span className="flex items-center gap-1">Description <span className="text-xs text-muted">(optional)</span></span>
             <textarea name="description" rows={3} defaultValue={product.description ?? ""} className="w-full rounded-lg border border-line bg-white p-3 text-sm text-ink outline-none focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]" />
           </label>
         </section>
@@ -117,12 +121,16 @@ export default function EditProductPage({ productId }: { productId: string }) {
         <section className={sectionClass} aria-labelledby="edit-product-pricing">
           <div className="flex items-center gap-3">
             <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-brand"><AdminUiIcon name="tag" size={18} /></span>
-            <div><h2 id="edit-product-pricing" className="m-0 text-base font-semibold text-ink">Price and stock warning</h2><p className="mb-0 mt-0.5 text-sm text-muted">Set the current selling and cost prices.</p></div>
+            <div><h2 id="edit-product-pricing" className="m-0 text-base font-semibold text-ink">Price and stock warning</h2><p className="mb-0 mt-0.5 text-sm text-muted">Set the selling price, staff bottom price, and cost.</p></div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className={fieldClass}>Original price (NGN)<input name="originalPrice" type="number" min="0" step="0.01" defaultValue={product.originalPrice == null ? "" : String(product.originalPrice)} placeholder="Optional" className={inputClass} /></label>
+            <label className={fieldClass}>Selling price (NGN)<input name="sellingPrice" type="number" min="0" step="0.01" required defaultValue={String(product.sellingPrice)} className={inputClass} /></label>
+            {userQuery.data.user.role === "OWNER" && <label className={fieldClass}>Bottom price (NGN)<input name="bottomPrice" type="number" min="0" step="0.01" required defaultValue={String(product.bottomPrice ?? product.costPrice ?? 0)} className={inputClass} /></label>}
+            <label className={fieldClass}>Cost price (NGN)<input name="costPrice" type="number" min="0" step="0.01" required defaultValue={String(product.costPrice ?? 0)} className={inputClass} /></label>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            {[["sellingPrice", "Selling price (NGN)", product.sellingPrice], ["costPrice", "Cost price (NGN)", product.costPrice ?? 0], ["reorderLevel", "Low stock warning at", product.reorderLevel]].map(([name, label, value]) => (
-              <label key={String(name)} className={fieldClass}>{String(label)}<input name={String(name)} type="number" min="0" step="0.01" required defaultValue={String(value)} className={inputClass} /></label>
-            ))}
+            <label className={fieldClass}>Low stock warning at<input name="reorderLevel" type="number" min="0" step="0.01" required defaultValue={String(product.reorderLevel)} className={inputClass} /></label>
           </div>
         </section>
 

@@ -28,6 +28,7 @@ export default async function StoreIndexPage({ searchParams }: StorePageProps) {
       selectedCategory={resolvedParams.category}
       selectedBadge={resolvedParams.badge}
       searchFilter={resolvedParams.search}
+      catalogView
     />
   );
 }

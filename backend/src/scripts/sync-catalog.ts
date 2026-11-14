@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
 const CATALOG_ITEMS = [
@@ -82,6 +83,11 @@ const CATALOG_ITEMS = [
     stockCount: 45,
     description: "High-tensile hot-dip galvanized framing nails designed for pneumatic nail guns and heavy structural timber framing, roofing rafters, subflooring, and formwork construction.",
     unit: "Box (5,000 pcs)",
+    originalPrice: 29000,
+    specifications: [
+      { name: "Size / Package", value: "Box (5,000 pcs)" },
+      { name: "Duty Rating", value: "Heavy Industrial Duty" },
+    ],
   },
   {
     sku: "MILW-M18-IW",
@@ -163,6 +169,45 @@ const CATALOG_ITEMS = [
   },
 ];
 
+async function ensureStockLotsCoverBalance(productId: string, branchId: string, unitCost: Prisma.Decimal) {
+  const balance = await prisma.stockBalance.findUnique({
+    where: { productId_branchId: { productId, branchId } },
+  });
+  if (!balance || balance.onHand.lessThanOrEqualTo(0)) return;
+
+  const lots = await prisma.stockLot.findMany({
+    where: { productId, branchId },
+    select: { quantity: true, reserved: true, condition: true, expiresAt: true },
+  });
+  const unusableLotExists = lots.some(
+    (lot) =>
+      lot.condition !== "GOOD" ||
+      (lot.expiresAt !== null && lot.expiresAt <= new Date()),
+  );
+  if (unusableLotExists) return;
+
+  const lotQuantity = lots.reduce(
+    (total, lot) => total.add(lot.quantity),
+    new Prisma.Decimal(0),
+  );
+  const lotReserved = lots.reduce(
+    (total, lot) => total.add(lot.reserved),
+    new Prisma.Decimal(0),
+  );
+  const untrackedQuantity = balance.onHand.minus(lotQuantity);
+  if (untrackedQuantity.lessThanOrEqualTo(0) || !lotReserved.equals(balance.reserved)) return;
+
+  await prisma.stockLot.create({
+    data: {
+      productId,
+      branchId,
+      unitCost,
+      quantity: untrackedQuantity,
+      origin: "RECONCILIATION",
+    },
+  });
+}
+
 async function main() {
   const business = await prisma.business.findFirst({
     include: { branches: true },
@@ -199,11 +244,18 @@ async function main() {
           state: "ACTIVE",
           isPublished: true,
           sellingPrice: item.price,
+          ...(item.originalPrice !== undefined ? { originalPrice: item.originalPrice } : {}),
           unit: unitSafe,
           imageUrl: existing.imageUrl || item.images[0],
         },
       });
       productId = updated.id;
+      if ("specifications" in item && item.specifications) {
+        await prisma.productSpecification.deleteMany({ where: { productId } });
+        await prisma.productSpecification.createMany({
+          data: item.specifications.map((specification, position) => ({ productId, ...specification, position })),
+        });
+      }
 
       // Ensure positive onHand stock balance exists on default branch
       const branchBalance = existing.balances.find((b) => b.branchId === defaultBranch.id);
@@ -241,10 +293,17 @@ async function main() {
           category: item.category.slice(0, 100),
           unit: unitSafe,
           costPrice: Math.round(item.price * 0.75),
+          bottomPrice: Math.round(item.price * 0.75),
           sellingPrice: item.price,
+          ...("originalPrice" in item ? { originalPrice: item.originalPrice } : {}),
           imageUrl: item.images[0],
           state: "ACTIVE",
           isPublished: true,
+          ...("specifications" in item && item.specifications ? {
+            specifications: {
+              create: item.specifications.map((specification, position) => ({ ...specification, position })),
+            },
+          } : {}),
           balances: {
             create: {
               branchId: defaultBranch.id,
@@ -256,6 +315,12 @@ async function main() {
       });
       productId = created.id;
     }
+
+    const stockProduct = await prisma.product.findUniqueOrThrow({
+      where: { id: productId },
+      select: { costPrice: true },
+    });
+    await ensureStockLotsCoverBalance(productId, defaultBranch.id, stockProduct.costPrice);
 
     // Attach primary media asset if not already linked
     const existingImageCount = await prisma.productImage.count({ where: { productId } });

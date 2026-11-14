@@ -22,6 +22,7 @@ import { inventoryWorkflowRouter } from "./routes/inventory-workflows.js";
 import { branchesRouter, businessRouter, usersRouter } from "./routes/admin.js";
 import { customerAccountRouter } from "./routes/customer-account.js";
 import { mediaRouter } from "./routes/media.js";
+import { isAllowedFrontendOrigin } from "./lib/frontend-origins.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -33,7 +34,7 @@ app.use((request, response, next) => {
   next();
 });
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+  origin: (origin, callback) => callback(null, isAllowedFrontendOrigin(origin)),
   credentials: true,
   allowedHeaders: ["Content-Type", "X-Oceanic-Workspace", "Idempotency-Key"],
   exposedHeaders: ["X-Request-Id"],
@@ -43,8 +44,7 @@ app.use("/api/v1/products/import/xlsx/parse", express.raw({ type: "application/v
 app.use(express.json({ limit: "1mb" }));
 app.use((request, _response, next) => {
   const origin = request.get("origin");
-  const expectedOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && origin && origin !== expectedOrigin) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && origin && !isAllowedFrontendOrigin(origin)) {
     next(new ApiError(403, "Requests from this origin are not allowed.", "INVALID_ORIGIN"));
     return;
   }
@@ -58,6 +58,7 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHe
 const sessionRefreshLimiter = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, handler: rateLimitHandler("Too many session refresh attempts. Try again shortly.") });
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, handler: rateLimitHandler("Too many checkout attempts. Try again shortly.") });
 const customerAccountLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, handler: rateLimitHandler("Too many account requests. Try again later.") });
+const orderTrackingLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, handler: rateLimitHandler("Too many order lookup attempts. Try again later.") });
 
 app.get("/health", (_request, response) => response.json({ status: "ok", service: "oceanic-tools-api" }));
 app.use("/api/v1/auth/login", loginLimiter);
@@ -83,6 +84,7 @@ app.use("/api/v1/business", businessRouter);
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1/branches", branchesRouter);
 app.use("/api/v1/store/orders", checkoutLimiter);
+app.use("/api/v1/store/orders/track", orderTrackingLimiter);
 app.use("/api/v1/store", storeRouter);
 app.use("/api/v1/online-orders", onlineOrdersRouter);
 app.use("/api/v1/payments", paymentsRouter);

@@ -38,7 +38,7 @@ function validateDatabaseUrl(value: string | undefined): string {
   // setting from the deployment environment, but use a safer default when
   // the pooled runtime URL omits it.
   if (!url.searchParams.has("connect_timeout")) {
-    url.searchParams.set("connect_timeout", "15");
+    url.searchParams.set("connect_timeout", "30");
   }
 
   return url.toString();

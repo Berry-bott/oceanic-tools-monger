@@ -21,6 +21,7 @@ export default async function StoreSlugPage({
       storeSlug={storeSlug}
       categories={categories}
       collections={collections}
+      catalogView
     />
   );
 }

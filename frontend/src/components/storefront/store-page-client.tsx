@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StoreHeader } from "@/components/storefront/store-header";
 import { StoreCatalog } from "@/components/storefront/store-catalog";
 import { StoreCartDrawer } from "@/components/storefront/store-cart-drawer";
 import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 import { StoreFooter } from "@/components/storefront/store-footer";
 import type { StoreProduct as ToolStoreProduct } from "@/data/tools-catalog";
-import type { StoreProduct as BackendProduct, StoreInfo, StoreCategorySummary, StoreCollections } from "@/services/store/store.service";
+import { fetchStoreCollections, fetchStoreProducts, type StoreProduct as BackendProduct, type StoreInfo, type StoreCategorySummary, type StoreCollections } from "@/services/store/store.service";
 
 type StorePageClientProps = {
   initialProducts: BackendProduct[];
@@ -18,6 +18,7 @@ type StorePageClientProps = {
   selectedCategory?: string;
   selectedBadge?: string;
   searchFilter?: string;
+  catalogView?: boolean;
 };
 
 export function StorePageClient({
@@ -29,7 +30,45 @@ export function StorePageClient({
   selectedCategory,
   selectedBadge,
   searchFilter,
+  catalogView = false,
 }: StorePageClientProps) {
+  const [currentProducts, setCurrentProducts] = useState(initialProducts);
+  const [currentCollections, setCurrentCollections] = useState(collections);
+
+  useEffect(() => setCurrentProducts(initialProducts), [initialProducts]);
+  useEffect(() => setCurrentCollections(collections), [collections]);
+
+  useEffect(() => {
+    let active = true;
+    const refreshProducts = async () => {
+      try {
+        const [latestProducts, latestCollections] = await Promise.all([
+          fetchStoreProducts(storeSlug),
+          fetchStoreCollections(storeSlug),
+        ]);
+        if (active) {
+          setCurrentProducts(latestProducts);
+          setCurrentCollections(latestCollections);
+        }
+      } catch {
+        // Keep the last known catalogue if the network is temporarily unavailable.
+      }
+    };
+    void refreshProducts();
+    const interval = window.setInterval(() => void refreshProducts(), 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshProducts();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [storeSlug]);
+
   const mappedCollections = useMemo(() => {
     const mapProducts = (backendProducts: BackendProduct[]): ToolStoreProduct[] =>
       backendProducts.map((p) => {
@@ -47,26 +86,31 @@ export function StorePageClient({
           name: p.name,
           brand: p.brand || "",
           category: p.category || "",
+          subcategory: p.subcategory,
+          model: p.model,
           categorySlug: (p.category || "")
             .toLowerCase()
             .replace(/\s+/g, "-"),
           createdAt: p.createdAt,
           price: Number(p.sellingPrice),
+          originalPrice: p.originalPrice == null ? undefined : Number(p.originalPrice),
           images: extractedImages,
-          rating: 0,
-          reviewCount: 0,
+          badge: p.badge ?? undefined,
+          rating: p.averageRating == null ? 0 : Number(p.averageRating),
+          reviewCount: p.reviewCount,
           inStock: p.available > 0,
           stockCount: p.available,
           description: p.description || "",
+          specifications: Object.fromEntries((p.specifications ?? []).map(({ name, value }) => [name, value])),
           unit: p.unit,
         };
       });
     return {
-      products: mapProducts(initialProducts),
-      trendingProducts: mapProducts(collections.trending),
-      newArrivals: mapProducts(collections.newArrivals),
+      products: mapProducts(currentProducts),
+      trendingProducts: mapProducts(currentCollections.trending),
+      newArrivals: mapProducts(currentCollections.newArrivals),
     };
-  }, [initialProducts, collections]);
+  }, [currentProducts, currentCollections]);
 
   return (
     <div className="min-h-screen bg-cream text-charcoal flex flex-col font-sans selection:bg-peach-light selection:text-peach-deep">
@@ -85,11 +129,12 @@ export function StorePageClient({
           selectedCategory={selectedCategory}
           selectedBadge={selectedBadge}
           searchFilter={searchFilter}
+          catalogView={catalogView}
         />
       </main>
 
       {/* Slide-out Cart Drawer with Free Delivery Meter */}
-      <StoreCartDrawer />
+      <StoreCartDrawer storeSlug={storeSlug || storeInfo?.storeSlug} />
 
       {/* Mobile Bottom Tab Navigation */}
       <MobileBottomNav />

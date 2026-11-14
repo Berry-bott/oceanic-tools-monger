@@ -5,7 +5,8 @@ type CartProduct = {
   name: string;
   sku: string;
   sellingPrice: number | string;
-  costPrice: number | string;
+  costPrice?: number | string;
+  bottomPrice?: number | string;
   unit: string;
 };
 type CartItem = { product: CartProduct; quantity: number; unitPrice: number };

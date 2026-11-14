@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import "../../admin/admin-theme.css";
 import { AdminWorkspaceShell } from "@/components/admin-workspace-shell";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 

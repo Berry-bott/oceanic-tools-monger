@@ -693,7 +693,7 @@ export default function HomePage() {
               )}
               {canUsePos(user.role) && (
                 <Link className="flex min-h-[58px] min-w-0 items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-2 text-left text-ink transition hover:-translate-y-px hover:border-[#bfd4c4] max-[620px]:min-h-[57px] max-[620px]:p-2" href="/admin/sales">
-                  <span className="grid size-[29px] shrink-0 place-items-center rounded-lg bg-[#f2eff9] text-[#7767a8]">
+                  <span className="grid size-[29px] shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-[#478264]">
                     <DashboardIcon name="scan" />
                   </span>
                   <span className="grid min-w-0 flex-1 gap-1">
@@ -717,7 +717,7 @@ export default function HomePage() {
               )}
               {canSeeOrders(user.role) && (
                 <Link className="flex min-h-[58px] min-w-0 items-center gap-2 rounded-lg border border-line bg-white px-2.5 py-2 text-left text-ink transition hover:-translate-y-px hover:border-[#bfd4c4] max-[620px]:min-h-[57px] max-[620px]:p-2" href="/admin/orders">
-                  <span className="grid size-[29px] shrink-0 place-items-center rounded-lg bg-[#edf4f9] text-[#4d7c9c]">
+                  <span className="grid size-[29px] shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-[#478264]">
                     <DashboardIcon name="receipt" />
                   </span>
                   <span className="grid min-w-0 flex-1 gap-1">
@@ -756,7 +756,6 @@ export default function HomePage() {
                   : `${dateLabel} | report based`
               }
               icon="arrow"
-              tone="blue"
               error={
                 !canSeeFinance(user.role)
                   ? "This role cannot access business financial reports."
@@ -792,7 +791,6 @@ export default function HomePage() {
               )}
               detail={`At current valuation cost | ${branchId ? "selected branch" : "all branches"}`}
               icon="package"
-              tone="violet"
               error={
                 dashboard.inventory?.error ||
                 (dashboard.inventory?.data &&
@@ -809,7 +807,7 @@ export default function HomePage() {
             aria-label="Additional operational metrics"
           >
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px]">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px]">
                 <DashboardIcon name="wallet" size={16} />
               </span>
               <div>
@@ -835,7 +833,7 @@ export default function HomePage() {
               />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] amber">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] amber">
                 <DashboardIcon name="layers" size={16} />
               </span>
               <div>
@@ -853,7 +851,7 @@ export default function HomePage() {
               <DashboardDataError message={dashboard.inventory?.error} />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] blue">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] blue">
                 <DashboardIcon name="cart" size={16} />
               </span>
               <div>
@@ -882,7 +880,7 @@ export default function HomePage() {
               />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] rose">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] rose">
                 <DashboardIcon name="receipt" size={16} />
               </span>
               <div>
@@ -900,7 +898,7 @@ export default function HomePage() {
               <DashboardDataError message={dashboard.orders?.error} />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] blue">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] blue">
                 <DashboardIcon name="chart" size={16} />
               </span>
               <div>
@@ -926,7 +924,7 @@ export default function HomePage() {
               />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] amber">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] amber">
                 <DashboardIcon name="wallet" size={16} />
               </span>
               <div>
@@ -952,7 +950,7 @@ export default function HomePage() {
               />
             </article>
             <article className="min-w-0 relative flex gap-2 items-stretch border border-line bg-white rounded-lg p-3 [&>div]:grid [&>div]:grid-rows-[auto_auto_1fr] [&>div]:gap-[3px] [&>div]:min-w-0 [&_small]:text-sm [&_small]:text-[#79867e] [&_strong]:text-sm [&_strong]:font-normal [&_strong]:tracking-[-.3px] [&>div>span]:text-[12px] [&>div>span]:self-end [&>div>span]:text-[#9aa49e] [&>div>span]:leading-[1.35] [&>a]:[margin-left:auto] [&>a]:text-[#98a49c] [&>a]:[padding-top:2px] [&_.data-error]:[grid-column:1/-1] [&:has(.data-error:not(:empty))]:flex-wrap max-[620px]:p-2 max-[620px]:gap-1.5 max-[620px]:[&_strong]:text-sm max-[620px]:[&_small]:text-sm">
-              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] green">
+              <span className="h-[27px] w-[27px] rounded-lg bg-[#edf5ef] text-[#478264] grid [place-items:center] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] max-[620px]:h-[24px] max-[620px]:w-[24px] green">
                 <DashboardIcon name="chart" size={16} />
               </span>
               <div>
@@ -1213,7 +1211,7 @@ export default function HomePage() {
               />
               <div className="grid">
                 <div className="flex items-center gap-2 py-[9px] px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:min-w-0 [&>span:nth-child(2)]:[flex:1] [&_strong]:text-sm [&_strong]:font-normal [&_small]:text-sm [&_small]:text-[#929e96] [&>b]:text-sm [&>b]:font-normal [&>b]:whitespace-nowrap">
-                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] amber">
+                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] amber">
                     <DashboardIcon name="users" size={16} />
                   </span>
                   <span>
@@ -1229,7 +1227,7 @@ export default function HomePage() {
                   </b>
                 </div>
                 <div className="flex items-center gap-2 py-[9px] px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:min-w-0 [&>span:nth-child(2)]:[flex:1] [&_strong]:text-sm [&_strong]:font-normal [&_small]:text-sm [&_small]:text-[#929e96] [&>b]:text-sm [&>b]:font-normal [&>b]:whitespace-nowrap">
-                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] blue">
+                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] blue">
                     <DashboardIcon name="cart" size={16} />
                   </span>
                   <span>
@@ -1248,7 +1246,7 @@ export default function HomePage() {
                   </b>
                 </div>
                 <div className="flex items-center gap-2 py-[9px] px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:min-w-0 [&>span:nth-child(2)]:[flex:1] [&_strong]:text-sm [&_strong]:font-normal [&_small]:text-sm [&_small]:text-[#929e96] [&>b]:text-sm [&>b]:font-normal [&>b]:whitespace-nowrap">
-                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] rose">
+                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] rose">
                     <DashboardIcon name="alert" size={16} />
                   </span>
                   <span>
@@ -1270,7 +1268,7 @@ export default function HomePage() {
                   </b>
                 </div>
                 <div className="flex items-center gap-2 py-[9px] px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:min-w-0 [&>span:nth-child(2)]:[flex:1] [&_strong]:text-sm [&_strong]:font-normal [&_small]:text-sm [&_small]:text-[#929e96] [&>b]:text-sm [&>b]:font-normal [&>b]:whitespace-nowrap">
-                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] green">
+                  <span className="h-[27px] w-[27px] rounded-lg grid [place-items:center] bg-[#edf5ef] text-[#488466] [flex:none] [&.amber]:bg-[#fff5e6] [&.amber]:text-[#b7832b] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] [&.rose]:bg-[#fff0ec] [&.rose]:text-[#bb705d] green">
                     <DashboardIcon name="scan" size={16} />
                   </span>
                   <span>
@@ -1571,7 +1569,7 @@ export default function HomePage() {
                           key={`${receipt.receipt}-${receipt.sku}`}
                           className="flex items-center gap-2 py-2 px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:[flex:1] [&>span:nth-child(2)]:min-w-0 [&_strong]:text-sm [&_strong]:font-normal [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_small]:text-sm [&_small]:text-[#939e97] [&_small]:overflow-hidden [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&>b]:text-sm [&>b]:whitespace-nowrap"
                         >
-                          <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c]">
+                          <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264]">
                             <DashboardIcon name="receipt" size={15} />
                           </span>
                           <span>
@@ -1592,7 +1590,7 @@ export default function HomePage() {
                           key={purchase.id}
                           className="flex items-center gap-2 py-2 px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:[flex:1] [&>span:nth-child(2)]:min-w-0 [&_strong]:text-sm [&_strong]:font-normal [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_small]:text-sm [&_small]:text-[#939e97] [&_small]:overflow-hidden [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&>b]:text-sm [&>b]:whitespace-nowrap"
                         >
-                          <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c]">
+                          <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264]">
                             <DashboardIcon name="receipt" size={15} />
                           </span>
                           <span>
@@ -1643,7 +1641,7 @@ export default function HomePage() {
                     key={order.id}
                     className="flex items-center gap-2 py-2 px-0 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>span:nth-child(2)]:grid [&>span:nth-child(2)]:gap-[3px] [&>span:nth-child(2)]:[flex:1] [&>span:nth-child(2)]:min-w-0 [&_strong]:text-sm [&_strong]:font-normal [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_small]:text-sm [&_small]:text-[#939e97] [&_small]:overflow-hidden [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&>b]:text-sm [&>b]:whitespace-nowrap"
                   >
-                    <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf4f9] [&.blue]:text-[#4d7c9c] blue">
+                    <span className="h-[26px] w-[26px] rounded-md bg-[#edf5ef] text-[#488466] grid [place-items:center] [flex:none] [&.blue]:bg-[#edf5ef] [&.blue]:text-[#478264] blue">
                       <DashboardIcon name="cart" size={15} />
                     </span>
                     <span>

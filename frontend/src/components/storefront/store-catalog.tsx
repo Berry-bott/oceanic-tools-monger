@@ -17,6 +17,7 @@ interface StoreCatalogProps {
   selectedCategory?: string;
   selectedBadge?: string;
   searchFilter?: string;
+  catalogView?: boolean;
   branches?: StoreBranch[];
   searchQuery?: string;
   onCategorySelect?: (c: string) => void;
@@ -69,6 +70,52 @@ const TRUST_BADGES = [
   },
 ];
 
+// 13 Daily Curated Matching Photos for Cordless Power Sets (changes every day)
+const DAILY_POWER_TOOL_BANNERS = [
+  { local: "/images/promotions/power-tools/day-1.jpg", fallback: "/images/hero/hero-bosch-drill.jpg" },
+  { local: "/images/promotions/power-tools/day-2.jpg", fallback: "/images/hero/hero-bosch-drill-3d.jpg" },
+  { local: "/images/promotions/power-tools/day-3.jpg", fallback: "/workshop-drill.jpg" },
+  { local: "/images/promotions/power-tools/day-4.jpg", fallback: "/makita-mixer.jpg" },
+  { local: "/images/promotions/power-tools/day-5.jpg", fallback: "/mixer.jpg" },
+  { local: "/images/promotions/power-tools/day-6.jpg", fallback: "/images/hero/hero-bosch-drill.jpg" },
+  { local: "/images/promotions/power-tools/day-7.jpg", fallback: "/images/hero/hero-bosch-drill-3d.jpg" },
+  { local: "/images/promotions/power-tools/day-8.jpg", fallback: "/workshop-drill.jpg" },
+  { local: "/images/promotions/power-tools/day-9.jpg", fallback: "/images/hero/hero-bosch-drill.jpg" },
+  // The day-10 promotion asset depicts a concrete mixer, so use the named Bosch drill image instead.
+  { local: "/images/hero/hero-bosch-drill.jpg", fallback: "/images/hero/hero-bosch-drill-3d.jpg" },
+  { local: "/images/promotions/power-tools/day-11.jpg", fallback: "/images/hero/hero-bosch-drill.jpg" },
+  { local: "/images/promotions/power-tools/day-12.jpg", fallback: "/images/hero/hero-bosch-drill-3d.jpg" },
+  { local: "/images/promotions/power-tools/day-13.jpg", fallback: "/workshop-drill.jpg" },
+];
+
+// 13 Daily Curated Matching Photos for Certified Safety & Footwear (changes every day)
+const DAILY_SAFETY_BOOT_BANNERS = [
+  { local: "/images/promotions/safety-boots/day-1.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-2.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-3.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-4.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-5.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-6.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-7.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-8.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-9.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-10.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-11.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+  { local: "/images/promotions/safety-boots/day-12.jpg", fallback: "/images/hero/hero-cat-boots-3d.jpg" },
+  { local: "/images/promotions/safety-boots/day-13.jpg", fallback: "/images/hero/hero-cat-boots.jpg" },
+];
+
+function normalizeCategory(value: string) {
+  const category = value.trim().toLowerCase();
+  if (["power tool", "power tools"].includes(category)) return "power-tools";
+  if (["nail", "nails", "fasteners & nails"].includes(category)) return "fasteners-nails";
+  if (["safety", "boots", "safety & boots"].includes(category)) return "safety-boots";
+  if (["saw tools", "sawing", "saw & cutting tools"].includes(category)) return "saw-cutting-tools";
+  if (["hand tool", "hand tools"].includes(category)) return "hand-tools";
+  if (["welding", "welding & equipment"].includes(category)) return "welding-equipment";
+  return category.replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
 export function StoreCatalog({
   initialProducts = [],
   categories,
@@ -77,12 +124,22 @@ export function StoreCatalog({
   selectedCategory,
   selectedBadge,
   searchFilter,
+  catalogView = false,
 }: StoreCatalogProps) {
   const [activeCategory, setActiveCategory] = useState<string>(selectedCategory || "all");
   const [sortOption, setSortOption] = useState<string>("recommended");
   const [maxPrice, setMaxPrice] = useState<number>(350000);
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
+
+  // Daily rotating index (13 days rotation cycle based on UTC calendar day)
+  const dayIndex = useMemo(() => {
+    const utcDays = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+    return ((utcDays % 13) + 13) % 13;
+  }, []);
+
+  const powerToolBanner = DAILY_POWER_TOOL_BANNERS[dayIndex];
+  const safetyBootBanner = DAILY_SAFETY_BOOT_BANNERS[dayIndex];
 
   const products = initialProducts;
 
@@ -118,7 +175,7 @@ export function StoreCatalog({
   // Filtered & sorted catalog
   const filteredProducts = useMemo(() => {
     const result = [...products].filter((p) => {
-      if (activeCategory !== "all" && p.category.toLowerCase() !== activeCategory.toLowerCase()) {
+      if (activeCategory !== "all" && normalizeCategory(p.category) !== normalizeCategory(activeCategory)) {
         return false;
       }
       if (selectedBadge && p.badge !== selectedBadge) {
@@ -154,7 +211,7 @@ export function StoreCatalog({
     return result;
   }, [products, activeCategory, selectedBadge, searchFilter, inStockOnly, maxPrice, sortOption]);
 
-  const isFiltering = activeCategory !== "all" || Boolean(selectedBadge) || Boolean(searchFilter);
+  const isFiltering = catalogView || activeCategory !== "all" || Boolean(selectedBadge) || Boolean(searchFilter);
 
   return (
     <div className="min-h-screen bg-white font-sans">
@@ -192,7 +249,7 @@ export function StoreCatalog({
                   ? `Search: "${searchFilter}"`
                   : activeCategory !== "all"
                   ? `${activeCategory}`
-                  : "All Equipment"}
+                  : catalogView ? "All Products" : "All Equipment"}
               </h1>
               <p className="text-sm text-charcoal-light mt-2">
                 {filteredProducts.length} {filteredProducts.length === 1 ? "product" : "products"}
@@ -457,62 +514,76 @@ export function StoreCatalog({
           {/* Split Banners */}
           <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
             <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
-              {/* Banner 1 */}
-              <div
-                className="relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-64 flex items-end p-5 sm:p-8 bg-charcoal shadow-xl"
-                style={{
-                  backgroundImage:
-                    "url(https://images.unsplash.com/photo-1504148455328-c376907d081c?w=700&h=450&fit=crop&auto=format)",
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-black/10 rounded-3xl" />
-                <div className="relative text-white">
+              {/* Banner 1: Complete Kit / Cordless Power Sets */}
+              <div className="group relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-72 sm:min-h-80 flex items-end p-6 sm:p-8 bg-charcoal shadow-xl">
+                <img
+                  src={powerToolBanner.local}
+                  alt="Cordless Power Sets"
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.src !== powerToolBanner.fallback) {
+                      img.src = powerToolBanner.fallback;
+                    }
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/15 rounded-2xl sm:rounded-3xl" />
+                <div className="relative text-white z-10">
                   <p className="text-xs font-bold tracking-[0.2em] text-peach uppercase mb-2">
                     Complete Kit
                   </p>
                   <h3 className="font-display text-2xl sm:text-3xl font-bold mb-3">
                     Cordless Power Sets
                   </h3>
-                  <p className="text-white/70 text-sm mb-5">
+                  <p className="text-white/80 text-sm mb-5 max-w-md">
                     Everything you need for industrial jobsites, in one box.
                   </p>
                   <Link
                     href="/product/BOS-GSR180LI"
-                    className="inline-block px-5 py-2.5 bg-peach-dark text-white rounded-full text-sm font-semibold hover:bg-peach-deep transition-colors"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-peach-dark text-white rounded-full text-sm font-semibold hover:bg-peach-deep transition-all shadow-md hover:shadow-lg"
                   >
-                    Shop Power Tools
+                    <span>Shop Power Tools</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
                   </Link>
                 </div>
               </div>
 
-              {/* Banner 2 */}
-              <div
-                className="relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-64 flex items-end p-5 sm:p-8 shadow-xl"
-                style={{
-                  backgroundImage:
-                    "url(https://images.unsplash.com/photo-1544816155-12df9643f363?w=700&h=450&fit=crop&auto=format)",
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-black/10 rounded-3xl" />
-                <div className="relative text-white">
+              {/* Banner 2: Certified Protection / Safety & Footwear */}
+              <div className="group relative overflow-hidden rounded-2xl sm:rounded-3xl min-h-72 sm:min-h-80 flex items-end p-6 sm:p-8 bg-charcoal shadow-xl">
+                <img
+                  src={safetyBootBanner.local}
+                  alt="Safety & Footwear"
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.src !== safetyBootBanner.fallback) {
+                      img.src = safetyBootBanner.fallback;
+                    }
+                  }}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/15 rounded-2xl sm:rounded-3xl" />
+                <div className="relative text-white z-10">
                   <p className="text-xs font-bold tracking-[0.2em] text-peach uppercase mb-2">
                     Certified Protection
                   </p>
                   <h3 className="font-display text-2xl sm:text-3xl font-bold mb-3">
                     Safety & Footwear
                   </h3>
-                  <p className="text-white/70 text-sm mb-5">
+                  <p className="text-white/80 text-sm mb-5 max-w-md">
                     Find your certified safety gear from our curated equipment inventory.
                   </p>
                   <Link
                     href="/product/CAT-BOOT-ST"
-                    className="inline-block px-5 py-2.5 bg-white/20 backdrop-blur-sm text-white rounded-full text-sm font-semibold border border-white/30 hover:bg-white/35 transition-colors"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/20 backdrop-blur-md text-white rounded-full text-sm font-semibold border border-white/30 hover:bg-white/35 transition-all shadow-md hover:shadow-lg"
                   >
-                    Shop Safety Boots
+                    <span>Shop Safety Boots</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
                   </Link>
                 </div>
               </div>

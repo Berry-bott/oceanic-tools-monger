@@ -56,6 +56,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
       imageUrl: product.images[0],
       category: product.category,
       brand: product.brand,
+      available: product.stockCount,
     });
   };
 
@@ -69,7 +70,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
 
   return (
     <div className="product-card group relative bg-white rounded-2xl overflow-hidden border border-peach-light/60 hover:border-peach/40 shadow-sm">
-      <div className="relative overflow-hidden bg-peach-xlight aspect-[3/3.5]">
+      <div className="relative overflow-hidden bg-peach-xlight aspect-[4/4.1]">
         <Link href={detailUrl}>
           {product.images[0] ? (
             <img
@@ -96,7 +97,12 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
         </Link>
 
         {/* Badges */}
-        <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
+        <div className="absolute top-2.5 left-2.5 flex flex-wrap items-center gap-1">
+          {!product.inStock && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white text-red-700 border border-red-200">
+              OUT OF STOCK
+            </span>
+          )}
           {product.badge && (
             <span
               className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
@@ -154,35 +160,64 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
         )}
       </div>
 
-      <div className="p-2.5 sm:p-3.5">
-        {product.brand && <p className="text-[11px] text-peach-dark font-semibold tracking-wide uppercase mb-1">
-          {product.brand}
-        </p>}
+      <div className="p-2.5 sm:p-3">
+        {product.brand && (
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-peach-dark">
+            {product.brand}
+          </p>
+        )}
+
         <Link
           href={detailUrl}
-          className="block text-sm font-semibold text-charcoal hover:text-peach-dark transition-colors leading-snug mb-2 line-clamp-2"
+          className="block text-sm font-semibold leading-snug text-charcoal transition-colors hover:text-peach-dark"
         >
           {product.name}
         </Link>
-        {product.rating > 0 && product.reviewCount > 0 && <div className="flex items-center gap-1.5 mb-2.5">
-          <StarRating rating={product.rating} />
-          <span className="text-[11px] text-charcoal-light">
-            {product.rating} ({product.reviewCount.toLocaleString()})
-          </span>
-        </div>}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-1.5 gap-y-1">
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="text-base font-bold text-charcoal">
-              ₦{product.price.toLocaleString("en-NG")}
-            </span>
-            {product.originalPrice && (
-              <span className="text-xs text-charcoal-light line-through">
-                ₦{product.originalPrice.toLocaleString("en-NG")}
-              </span>
+
+        {(product.model || (product.specifications && Object.keys(product.specifications).length > 0)) && (
+          <div className="mt-1.5 mb-2 flex items-start justify-between gap-3 text-[10px] leading-snug text-charcoal-light">
+            <div className="min-w-0 flex-1">
+              {product.model && (
+                <p className="truncate font-medium text-charcoal">Model: {product.model}</p>
+              )}
+            </div>
+            {product.specifications && Object.entries(product.specifications).length > 0 && (
+              <div className="min-w-0 flex-1 space-y-0.5 text-right">
+                {Object.entries(product.specifications).slice(0, 2).map(([key, value]) => (
+                  <p key={key} className="truncate">
+                    <span className="font-medium text-charcoal">{key}:</span> {value}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
+        )}
+
+        {product.rating > 0 && product.reviewCount > 0 && (
+          <div className="mb-2 flex items-center gap-1.5">
+            <StarRating rating={product.rating} />
+            <span className="text-[11px] text-charcoal-light">
+              {product.rating} ({product.reviewCount.toLocaleString()})
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-base font-bold text-charcoal">
+                ₦{product.price.toLocaleString("en-NG")}
+              </span>
+              {product.originalPrice != null && (
+                <span className="text-xs text-charcoal-light line-through">
+                  ₦{product.originalPrice.toLocaleString("en-NG")}
+                </span>
+              )}
+            </div>
+          </div>
+
           {(product.size || product.unit) && (
-            <span className="text-[10px] text-charcoal-light border border-peach-light rounded px-1.5 py-0.5">
+            <span className="shrink-0 rounded border border-peach-light bg-peach-xlight px-1.5 py-0.5 text-[10px] text-charcoal-light">
               {product.size || product.unit}
             </span>
           )}

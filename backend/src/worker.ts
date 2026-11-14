@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./lib/prisma.js";
 import { writeAudit } from "./lib/audit.js";
 import { safeErrorMetadata } from "./lib/safe-error.js";
+import { cleanupTrackedMedia } from "./lib/media-storage.js";
 
 const dailyOutOfStockReminders = new Map<string, string>();
 
@@ -267,6 +268,30 @@ async function cleanExpiredAdminSessions() {
   });
 }
 
+async function cleanStagedProductImages() {
+  const now = new Date();
+  const expiredBefore = new Date(now.getTime() - 24 * 60 * 60_000);
+  const assets = await prisma.mediaAsset.findMany({
+    where: {
+      productId: null,
+      purpose: "PRODUCT_IMAGE",
+      OR: [{ status: "DELETE_PENDING" }, { status: "UPLOADED", createdAt: { lte: expiredBefore } }],
+    },
+    orderBy: { createdAt: "asc" },
+    take: 25,
+  });
+  for (const asset of assets) {
+    if (asset.status === "UPLOADED") {
+      const claimed = await prisma.mediaAsset.updateMany({
+        where: { id: asset.id, productId: null, status: "UPLOADED", createdAt: { lte: expiredBefore } },
+        data: { status: "DELETE_PENDING" },
+      });
+      if (!claimed.count) continue;
+    }
+    await cleanupTrackedMedia(asset, "Could not clean up an expired staged product image.");
+  }
+}
+
 let sweepInProgress = false;
 
 async function sweep() {
@@ -279,6 +304,8 @@ async function sweep() {
   let currentTask = "cleanExpiredAdminSessions";
   try {
     await cleanExpiredAdminSessions();
+    currentTask = "cleanStagedProductImages";
+    await cleanStagedProductImages();
     currentTask = "releaseExpiredReservations";
     await releaseExpiredReservations();
     currentTask = "refreshLowStockAlerts";

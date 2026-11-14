@@ -5,14 +5,17 @@ export interface StoreProduct {
   name: string;
   brand: string;
   category: string;
+  subcategory?: string | null;
+  model?: string | null;
   categorySlug: string;
   createdAt?: string;
   price: number;
   originalPrice?: number;
   images: string[];
-  badge?: "NEW" | "BEST SELLER" | "LIMITED" | "TRENDING" | "POPULAR";
+  badge?: string;
   rating: number;
   reviewCount: number;
+  reviews?: { rating: number; comment: string | null; createdAt: string; author: string }[];
   inStock: boolean;
   stockCount?: number;
   description: string;

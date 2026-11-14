@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { productKeys, removeProductGalleryImage, setPrimaryProductImage, uploadProductImage, type ProductImage } from "@/services/products/product.service";
@@ -14,6 +14,8 @@ const productViews = [
 export function ProductImageManager({ productId, images = [] }: { productId: string; images: ProductImage[] }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
+  const [previewFiles, setPreviewFiles] = useState<Record<string, File | undefined>>({});
+  const [uploadingView, setUploadingView] = useState<string | null>(null);
   const upload = useMutation({
     mutationFn: ({ file, view, imageId }: { file: File; view: ProductImage["view"]; imageId?: string }) => uploadProductImage(productId, file, view, imageId),
     onSuccess: async () => Promise.all([
@@ -37,16 +39,24 @@ export function ProductImageManager({ productId, images = [] }: { productId: str
   });
 
   async function uploadFile(file: File | undefined, view: ProductImage["view"], imageId?: string) {
-    if (!file) return;
+    if (!file) {
+      setPreviewFiles((current) => ({ ...current, [view]: undefined }));
+      return;
+    }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
       setError("Choose a JPEG, PNG or WebP image up to 5 MB.");
       return;
     }
     setError("");
+    setPreviewFiles((current) => ({ ...current, [view]: file }));
+    setUploadingView(view);
     try {
       await upload.mutateAsync({ file, view, imageId });
+      setPreviewFiles((current) => ({ ...current, [view]: undefined }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Image upload failed. Try again.");
+    } finally {
+      setUploadingView(null);
     }
   }
 
@@ -74,6 +84,8 @@ export function ProductImageManager({ productId, images = [] }: { productId: str
               key={view}
               label={label}
               image={image}
+              previewFile={previewFiles[view]}
+              uploading={uploadingView === view}
               disabled={busy}
               onFile={(file) => void uploadFile(file, view)}
               onRemove={image ? () => void removeImage(image.id) : undefined}
@@ -88,26 +100,42 @@ export function ProductImageManager({ productId, images = [] }: { productId: str
   );
 }
 
-function ImageSlot({ label, image, disabled, onFile, onRemove, onSetPrimary }: { label: string; image?: ProductImage; disabled: boolean; onFile: (file?: File) => void; onRemove?: () => void; onSetPrimary?: () => void }) {
+function ImageSlot({ label, image, previewFile, uploading, disabled, onFile, onRemove, onSetPrimary }: { label: string; image?: ProductImage; previewFile?: File; uploading: boolean; disabled: boolean; onFile: (file?: File) => void; onRemove?: () => void; onSetPrimary?: () => void }) {
   const url = image?.mediaAsset.secureUrl;
   return (
     <div className="grid content-start gap-2 rounded-lg border border-line p-3">
       <strong className="text-sm font-medium text-ink">{label}</strong>
-      {url ? (
+      {previewFile ? <LocalImagePreview file={previewFile} alt={`${label} preview`} className="mx-auto aspect-[4/3] min-h-48 w-full rounded-md border border-line bg-canvas object-contain p-2" /> : url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={label} className="mx-auto aspect-square w-full max-w-40 rounded-md border border-line bg-canvas object-contain" />
+        <img src={url} alt={label} className="mx-auto aspect-[4/3] min-h-48 w-full rounded-md border border-line bg-canvas object-contain p-2" />
       ) : (
-        <div className="mx-auto grid aspect-square w-full max-w-40 place-items-center rounded-md bg-canvas text-xs text-muted">No photo yet</div>
+        <div className="mx-auto grid aspect-[4/3] min-h-48 w-full place-items-center rounded-md bg-canvas text-xs text-muted">No photo yet</div>
       )}
+      {uploading && <p className="m-0 text-xs text-brand" role="status">Uploading photo...</p>}
       <label className="relative inline-flex h-8 w-fit cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border border-line bg-white px-2.5 text-xs font-medium text-brand hover:bg-canvas has-[:disabled]:cursor-wait has-[:disabled]:opacity-60">
         <AdminUiIcon name="image" size={14} />
-        {image ? "Replace photo" : "Choose photo"}
+        {previewFile ? "Retry upload" : image ? "Replace photo" : "Choose photo"}
         <input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled} aria-label={`${image ? "Replace" : "Choose"} ${label}`} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => { onFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
       </label>
+      {previewFile && !uploading && <button type="button" className="w-fit cursor-pointer text-xs text-muted hover:text-ink" onClick={() => onFile(undefined)}>Clear selected photo</button>}
       {image && onSetPrimary && (image.isPrimary
         ? <span className="text-xs font-medium text-[#4b7557]">Main product photo</span>
         : <button type="button" disabled={disabled} onClick={onSetPrimary} className="w-fit cursor-pointer text-xs text-brand disabled:opacity-60">Set as main photo</button>)}
       {image && onRemove && <button type="button" aria-label={`Remove ${label.toLowerCase()}`} title="Remove photo" disabled={disabled} onClick={onRemove} className="grid size-7 cursor-pointer place-items-center rounded-md border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"><AdminUiIcon name="trash" size={14} /></button>}
     </div>
   );
+}
+
+function LocalImagePreview({ file, alt, className }: { file: File; alt: string; className: string }) {
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const imageUrl = URL.createObjectURL(file);
+    if (imageRef.current) imageRef.current.src = imageUrl;
+    return () => URL.revokeObjectURL(imageUrl);
+  }, [file]);
+
+  // This is a short-lived local blob preview, so Next's image optimizer cannot process it.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img ref={imageRef} alt={alt} className={className} />;
 }

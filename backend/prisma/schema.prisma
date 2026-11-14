@@ -3,6 +3,24 @@ generator client {
   engineType = "client"
 }
 
+model ProductReview {
+  id         String   @id @default(cuid())
+  businessId String
+  productId  String
+  customerId String
+  rating     Int
+  comment    String?  @db.VarChar(2000)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, customerId])
+  @@index([businessId, productId, createdAt])
+  @@index([customerId, createdAt])
+}
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -174,11 +192,15 @@ model Business {
   storeSlug             String                 @unique @db.VarChar(80)
   currency              String                 @default("NGN") @db.VarChar(3)
   timezone              String                 @default("Africa/Lagos")
+  onlineDeliveryEnabled Boolean                @default(true)
+  onlineDeliveryFee     Decimal                @default(4500) @db.Decimal(14, 2)
+  payOnPickupEnabled    Boolean                @default(false)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   users                 User[]
   branches              Branch[]
   products              Product[]
+  productReviews        ProductReview[]
   categories            Category[]
   mediaAssets           MediaAsset[]
   suppliers             Supplier[]
@@ -210,7 +232,9 @@ model Branch {
   id                    String                 @id @default(cuid())
   businessId            String
   name                  String
+  address               String?
   isDefault             Boolean                @default(false)
+  isPickupLocation      Boolean                @default(false)
   createdAt             DateTime               @default(now())
   business              Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
   balances              StockBalance[]
@@ -325,7 +349,9 @@ model Product {
   subcategoryId       String?
   unit                String                     @default("piece") @db.VarChar(40)
   costPrice           Decimal                    @default(0) @db.Decimal(14, 2)
+  bottomPrice         Decimal                    @default(0) @db.Decimal(14, 2)
   sellingPrice        Decimal                    @db.Decimal(14, 2)
+  originalPrice       Decimal?                   @db.Decimal(14, 2)
   reorderLevel        Decimal                    @default(0) @db.Decimal(14, 3)
   state               ProductState               @default(DRAFT)
   isPublished         Boolean                    @default(false)
@@ -349,6 +375,7 @@ model Product {
   saleLines           SaleLine[]
   saleReturnLines     SaleReturnLine[]
   onlineOrderLines    OnlineOrderLine[]
+  reviews             ProductReview[]
   transferLines       StockTransferLine[]
   countLines          StockCountLine[]
   reservations        StockReservation[]
@@ -650,6 +677,7 @@ model Customer {
   phone                 String?                @db.VarChar(40)
   email                 String?                @db.VarChar(254)
   address               String?
+  avatarUrl             String?
   creditLimit           Decimal?               @db.Decimal(14, 2)
   creditDays            Int                    @default(30)
   emailRemindersAllowed Boolean                @default(false)
@@ -661,6 +689,7 @@ model Customer {
   sales                 Sale[]
   onlineOrders          OnlineOrder[]
   account               CustomerAccount?
+  productReviews        ProductReview[]
   installmentAgreements InstallmentAgreement[]
 
   @@index([businessId, name])

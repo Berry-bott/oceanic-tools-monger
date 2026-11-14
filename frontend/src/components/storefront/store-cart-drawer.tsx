@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStoreCart } from "@/stores/store-cart.store";
+import { useStoreCartStock } from "@/hooks/use-store-cart-stock";
 
 const FREE_SHIPPING_THRESHOLD = 100000;
 
@@ -12,7 +13,8 @@ export interface StoreCartDrawerProps {
   storeSlug?: string;
 }
 
-export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
+export function StoreCartDrawer({ storeSlug }: StoreCartDrawerProps = {}) {
+  useStoreCartStock(storeSlug);
   const router = useRouter();
   const {
     items,
@@ -20,10 +22,7 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
     setDrawerOpen,
     removeItem,
     updateQuantity,
-    reservationExpiresAt,
   } = useStoreCart();
-
-  const [timeLeft, setTimeLeft] = useState<string>("15:00");
 
   useEffect(() => {
     if (isDrawerOpen) {
@@ -35,22 +34,6 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
       document.body.style.overflow = "";
     };
   }, [isDrawerOpen]);
-
-  // Reservation countdown timer
-  useEffect(() => {
-    if (!reservationExpiresAt || items.length === 0) return;
-    const interval = setInterval(() => {
-      const remainingMs = reservationExpiresAt - Date.now();
-      if (remainingMs <= 0) {
-        setTimeLeft("00:00");
-      } else {
-        const mins = Math.floor(remainingMs / 60000);
-        const secs = Math.floor((remainingMs % 60000) / 1000);
-        setTimeLeft(`${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [reservationExpiresAt, items.length]);
 
   if (!isDrawerOpen) return null;
 
@@ -85,11 +68,7 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
                 </span>
               )}
             </h2>
-            {items.length > 0 && reservationExpiresAt && (
-              <p className="text-[11px] text-peach-dark font-medium mt-0.5">
-                Stock Reserved: <span className="font-mono font-bold">{timeLeft}</span>
-              </p>
-            )}
+            {items.length > 0 && <p className="mt-0.5 text-[11px] font-medium text-charcoal-light">Availability checked live; stock is reserved when you place the order.</p>}
           </div>
           <button
             type="button"
@@ -188,6 +167,12 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
                     ₦{item.sellingPrice.toLocaleString("en-NG")}
                   </p>
 
+                  {typeof item.available === "number" && (
+                    <p className={`mt-1 text-[11px] font-semibold ${item.available <= 0 ? "text-red-600" : item.quantity > item.available ? "text-amber-700" : "text-emerald-700"}`}>
+                      {item.available <= 0 ? "Out of stock across all branches" : item.quantity > item.available ? `Only ${item.available} available across the store` : `${item.available} available across the store`}
+                    </p>
+                  )}
+
                   {/* Quantity Stepper */}
                   <div className="flex items-center gap-2 mt-2">
                     <div className="flex items-center border border-peach-light rounded-full bg-peach-xlight/50">
@@ -205,6 +190,7 @@ export function StoreCartDrawer({}: StoreCartDrawerProps = {}) {
                       <button
                         type="button"
                         onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                        disabled={typeof item.available === "number" && item.quantity >= item.available}
                         className="w-7 h-7 flex items-center justify-center text-charcoal hover:bg-peach-light rounded-r-full transition-colors font-bold text-xs"
                         aria-label="Increase quantity"
                       >

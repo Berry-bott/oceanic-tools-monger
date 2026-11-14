@@ -29,10 +29,17 @@ const createProductSchema = z.object({
   subcategory: z.string().trim().min(1).max(100).optional(),
   unit: z.string().trim().min(1).max(40).default("piece"),
   costPrice: z.coerce.number().min(0),
+  bottomPrice: z.coerce.number().min(0).optional(),
   sellingPrice: z.coerce.number().min(0),
+  originalPrice: z.preprocess((value) => value === "" ? null : value, z.union([z.coerce.number().min(0), z.null()]).optional()),
   reorderLevel: z.coerce.number().min(0).default(0),
+  stagedImages: z.array(z.object({
+    assetId: z.string().min(1),
+    view: z.enum(["FRONT", "BACK", "SIDE"]),
+    isPrimary: z.boolean().default(false),
+  })).max(3).default([]),
 });
-const updateProductSchema = createProductSchema.omit({ specifications: true, branchAssignments: true, quantity: true, publishOnSave: true }).partial().extend({
+const updateProductSchema = createProductSchema.omit({ specifications: true, branchAssignments: true, quantity: true, publishOnSave: true, stagedImages: true }).partial().extend({
   categoryId: z.string().min(1).nullable().optional(),
   subcategoryId: z.string().min(1).nullable().optional(),
   specifications: z.array(z.object({ name: z.string().trim().min(1).max(100), value: z.string().trim().min(1).max(500) })).max(50).optional(),
@@ -47,7 +54,7 @@ const adjustStockSchema = z.object({
 
 const productImageUpload = createMediaUploadMiddleware("PRODUCT_IMAGE", "image");
 const normalizeName = (value: string) => value.toLocaleLowerCase("en-NG").normalize("NFKC").trim().replace(/\s+/g, " ").replace(/\s*(\d)\s*(kg|g|ml|l|cl)\b/gi, "$1$2");
-const importRowSchema = createProductSchema.omit({ quantity: true, publishOnSave: true }).extend({ openingStock: z.coerce.number().min(0).max(1_000_000), duplicateOverrideReason: z.string().trim().min(5).max(500).optional() });
+const importRowSchema = createProductSchema.omit({ quantity: true, publishOnSave: true, stagedImages: true }).extend({ openingStock: z.coerce.number().min(0).max(1_000_000), duplicateOverrideReason: z.string().trim().min(5).max(500).optional() });
 
 function parseCsv(text: string) {
   const rows: string[][] = [];
@@ -77,13 +84,13 @@ function parseCsv(text: string) {
   row.push(field);
   if (row.some((cell) => cell.trim())) rows.push(row);
   if (rows.length < 2 || rows.length > 5001) throw new ApiError(400, "CSV must contain a header and between 1 and 5,000 product rows.", "INVALID_CSV_ROW_COUNT");
-  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
+  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "bottomprice", "sellingprice", "originalprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
   const headers = rows[0].map((header, index) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[ _-]/g, ""));
   if (headers.some((header) => !header || !allowed.has(header)) || new Set(headers).size !== headers.length) throw new ApiError(400, "CSV headers must be unique and use supported product fields.", "INVALID_CSV_HEADERS");
   for (const required of ["sku", "name", "category", "sellingprice"]) if (!headers.includes(required)) throw new ApiError(400, `CSV is missing the required ${required} column.`, "INVALID_CSV_HEADERS");
   if (!headers.includes("quantity") && !headers.includes("openingstock")) throw new ApiError(400, "CSV is missing the required quantity column.", "INVALID_CSV_HEADERS");
   if (rows.slice(1).some((item) => item.length !== headers.length)) throw new ApiError(400, "Every CSV row must have the same number of columns as the header.", "INVALID_CSV_COLUMNS");
-  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
+  const keyName = (header: string) => ({ costprice: "costPrice", bottomprice: "bottomPrice", sellingprice: "sellingPrice", originalprice: "originalPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
   return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [keyName(header), cells[index].trim()]).filter(([, value]) => value !== "")));
 }
 
@@ -121,13 +128,13 @@ async function parseXlsx(buffer: Buffer) {
     if (cells.some((value) => value.trim())) rows.push(cells);
   }
   if (rows.length < 2 || rows.length > 5001) throw new ApiError(400, "The worksheet must contain a header and 1 to 5,000 product rows.", "INVALID_XLSX_ROW_COUNT");
-  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "sellingprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
+  const allowed = new Set(["sku", "barcode", "name", "description", "category", "subcategory", "unit", "costprice", "bottomprice", "sellingprice", "originalprice", "reorderlevel", "quantity", "openingstock", "duplicateoverridereason"]);
   const headers = rows[0].map((header) => header.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[ _-]/g, ""));
   if (headers.some((header) => !header || !allowed.has(header)) || new Set(headers).size !== headers.length) throw new ApiError(400, "XLSX headers must be unique and use supported product fields.", "INVALID_XLSX_HEADERS");
   for (const required of ["sku", "name", "category", "sellingprice"]) if (!headers.includes(required)) throw new ApiError(400, `XLSX is missing the required ${required} column.`, "INVALID_XLSX_HEADERS");
   if (!headers.includes("quantity") && !headers.includes("openingstock")) throw new ApiError(400, "XLSX is missing the required quantity column.", "INVALID_XLSX_HEADERS");
   if (rows.slice(1).some((row) => row.length !== headers.length)) throw new ApiError(400, "Every XLSX row must have the same number of columns as the header.", "INVALID_XLSX_COLUMNS");
-  const keyName = (header: string) => ({ costprice: "costPrice", sellingprice: "sellingPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
+  const keyName = (header: string) => ({ costprice: "costPrice", bottomprice: "bottomPrice", sellingprice: "sellingPrice", originalprice: "originalPrice", reorderlevel: "reorderLevel", quantity: "openingStock", openingstock: "openingStock", duplicateoverridereason: "duplicateOverrideReason" }[header] ?? header);
   return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [keyName(header), cells[index].trim()]).filter(([, value]) => value !== "")));
 }
 
@@ -370,6 +377,31 @@ productsRouter.post("/:productId/images", requireStaffAccess("SENIOR_STAFF"), pr
   response.status(existing ? 200 : 201).json({ data: image });
 });
 
+productsRouter.post("/images/staged", requireStaffAccess("SENIOR_STAFF"), productImageUpload, async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const parsed = z.object({ view: z.enum(["FRONT", "BACK", "SIDE"]) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Choose Front, Back, or Side for this image.", "INVALID_PRODUCT_IMAGE_VIEW", parsed.error.issues);
+  if (!request.file) throw new ApiError(400, "Upload one JPEG, PNG, or WebP image using the image field.", "INVALID_PRODUCT_IMAGE");
+  const uploaded = await createTrackedMedia({ businessId: auth.businessId, ownerId: auth.userId, purpose: "PRODUCT_IMAGE", file: request.file });
+  response.status(201).json({ data: { id: uploaded.asset.id, secureUrl: uploaded.secureUrl, originalFilename: uploaded.asset.originalFilename, view: parsed.data.view } });
+});
+
+productsRouter.delete("/images/staged/:assetId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const assetId = request.params.assetId as string;
+  const asset = await prisma.mediaAsset.findFirst({
+    where: { id: assetId, businessId: auth.businessId, ownerId: auth.userId, productId: null, purpose: "PRODUCT_IMAGE", status: "UPLOADED" },
+  });
+  if (!asset) throw new ApiError(404, "Staged product image not found.", "STAGED_PRODUCT_IMAGE_NOT_FOUND");
+  const marked = await prisma.mediaAsset.updateMany({
+    where: { id: asset.id, businessId: auth.businessId, ownerId: auth.userId, productId: null, status: "UPLOADED" },
+    data: { status: "DELETE_PENDING" },
+  });
+  if (marked.count !== 1) throw new ApiError(409, "This staged image has already been attached or removed.", "STAGED_PRODUCT_IMAGE_CONFLICT");
+  const deleted = await cleanupTrackedMedia(asset, "Could not delete a removed staged product image from Cloudinary.");
+  response.json({ data: { id: asset.id, deleted, status: deleted ? "DELETED" : "DELETE_PENDING" } });
+});
+
 productsRouter.patch("/:productId/images/:imageId/primary", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const image = await prisma.productImage.findFirst({ where: { id: request.params.imageId as string, productId: request.params.productId as string, product: { businessId: auth.businessId }, mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, include: { mediaAsset: true } });
@@ -419,6 +451,7 @@ productsRouter.post("/import/validate", requireStaffAccess("SENIOR_STAFF"), asyn
     const duplicate = await prisma.product.findFirst({ where: { businessId: auth.businessId, OR: [{ sku: { equals: row.data.sku, mode: "insensitive" as const } }, ...(row.data.barcode ? [{ barcode: { equals: row.data.barcode, mode: "insensitive" as const } }] : [])] }, select: { id: true, name: true, sku: true } });
     const possibleName = await prisma.product.findFirst({ where: { businessId: auth.businessId, normalizedName: normalizeName(row.data.name), state: { not: "ARCHIVED" } }, select: { id: true, name: true, sku: true } });
     const errors = [];
+    if (auth.role !== "OWNER" && row.data.bottomPrice !== undefined) errors.push("Only an owner can set a product bottom price.");
     const category = await prisma.category.findFirst({ where: { businessId: auth.businessId, normalizedName: row.data.category.toLocaleLowerCase("en-NG").normalize("NFKC").replace(/\s+/g, " ") }, select: { id: true } });
     if (!category) errors.push(`Category "${row.data.category}" does not exist. Create it before importing products.`);
     const subcategory = category && row.data.subcategory
@@ -426,7 +459,9 @@ productsRouter.post("/import/validate", requireStaffAccess("SENIOR_STAFF"), asyn
       : null;
     if (category && row.data.subcategory && !subcategory) errors.push(`Subcategory "${row.data.subcategory}" does not exist under ${row.data.category}. Create it before importing products.`);
     if (duplicate) errors.push(`SKU or barcode already belongs to ${duplicate.name} (${duplicate.sku}).`);
-    if (row.data.sellingPrice < row.data.costPrice) errors.push("Selling price cannot be below cost price.");
+    const bottomPrice = row.data.bottomPrice ?? row.data.costPrice;
+    if (bottomPrice < row.data.costPrice) errors.push("Bottom price cannot be below cost price.");
+    if (row.data.sellingPrice < bottomPrice) errors.push("Selling price cannot be below bottom price.");
     if (skuSeen.has(skuKey)) errors.push("SKU is repeated in this file.");
     if (barcodeKey && barcodeSeen.has(barcodeKey)) errors.push("Barcode is repeated in this file.");
     if (possibleName && !row.data.duplicateOverrideReason) errors.push(`Possible duplicate: ${possibleName.name} (${possibleName.sku}). Add a duplicate override reason if these are distinct products.`);
@@ -447,7 +482,9 @@ productsRouter.post("/import/commit", requireStaffAccess("SENIOR_STAFF"), async 
   const barcodeSet = new Set<string>();
   const categorySelections: { category: { id: string; name: string }; subcategory: { id: string; name: string } | null }[] = [];
   for (const row of parsed.data.rows) {
-    if (row.sellingPrice < row.costPrice) throw new ApiError(400, "An imported product has a selling price below cost price.", "SELLING_PRICE_BELOW_COST", { sku: row.sku });
+    if (auth.role !== "OWNER" && row.bottomPrice !== undefined) throw new ApiError(403, "Only an owner can set a product bottom price.", "BOTTOM_PRICE_OWNER_ONLY", { sku: row.sku });
+    const bottomPrice = row.bottomPrice ?? row.costPrice;
+    if (bottomPrice < row.costPrice || row.sellingPrice < bottomPrice) throw new ApiError(400, "Imported product prices must satisfy cost price ≤ bottom price ≤ selling price.", "INVALID_PRODUCT_PRICE_RANGE", { sku: row.sku });
     if (skuSet.has(row.sku.toLowerCase()) || (row.barcode && barcodeSet.has(row.barcode.toLowerCase()))) throw new ApiError(409, "The import contains repeated SKUs or barcodes.", "DUPLICATE_IMPORT_IDENTIFIER");
     skuSet.add(row.sku.toLowerCase());
     if (row.barcode) barcodeSet.add(row.barcode.toLowerCase());
@@ -470,7 +507,7 @@ productsRouter.post("/import/commit", requireStaffAccess("SENIOR_STAFF"), async 
     const createdProducts = [];
     for (const [index, row] of parsed.data.rows.entries()) {
       const { category, subcategory } = categorySelections[index];
-      const product = await transaction.product.create({ data: { businessId: auth.businessId, createdById: auth.userId, sku: row.sku, barcode: row.barcode || null, name: row.name, normalizedName: normalizeName(row.name), description: row.description, category: category.name, categoryId: category.id, subcategory: subcategory?.name ?? null, subcategoryId: subcategory?.id ?? null, unit: row.unit, costPrice: row.costPrice, sellingPrice: row.sellingPrice, reorderLevel: row.reorderLevel, state: "ACTIVE", isPublished: true } });
+      const product = await transaction.product.create({ data: { businessId: auth.businessId, createdById: auth.userId, sku: row.sku, barcode: row.barcode || null, name: row.name, normalizedName: normalizeName(row.name), description: row.description, category: category.name, categoryId: category.id, subcategory: subcategory?.name ?? null, subcategoryId: subcategory?.id ?? null, unit: row.unit, costPrice: row.costPrice, bottomPrice: row.bottomPrice ?? row.costPrice, sellingPrice: row.sellingPrice, originalPrice: row.originalPrice == null ? null : new Prisma.Decimal(row.originalPrice), reorderLevel: row.reorderLevel, state: "ACTIVE", isPublished: true } });
       await transaction.stockBalance.create({ data: { productId: product.id, branchId: branch.id, onHand: row.openingStock } });
       if (row.openingStock > 0) await transaction.stockLot.create({ data: { productId: product.id, branchId: branch.id, unitCost: row.costPrice, quantity: row.openingStock, origin: "OPENING" } });
       if (row.openingStock > 0) {
@@ -532,7 +569,12 @@ productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, res
   if (!parsed.success) throw new ApiError(400, "Check the product details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const data = parsed.data;
-  if (data.sellingPrice < data.costPrice) throw new ApiError(400, "Selling price cannot be below cost price. Staff can bargain down to the cost price when making a sale.", "SELLING_PRICE_BELOW_COST");
+  if (auth.role !== "OWNER" && data.bottomPrice !== undefined) throw new ApiError(403, "Only an owner can set a product bottom price.", "BOTTOM_PRICE_OWNER_ONLY");
+  const bottomPrice = data.bottomPrice ?? data.costPrice;
+  if (bottomPrice < data.costPrice || data.sellingPrice < bottomPrice) throw new ApiError(400, "Product prices must satisfy cost price ≤ bottom price ≤ selling price.", "INVALID_PRODUCT_PRICE_RANGE");
+  if (new Set(data.stagedImages.map((image) => image.view)).size !== data.stagedImages.length || data.stagedImages.filter((image) => image.isPrimary).length > 1) {
+    throw new ApiError(400, "Each photo view can be used once and only one photo can be the main image.", "INVALID_STAGED_PRODUCT_IMAGES");
+  }
   const category = data.categoryId ? await prisma.category.findFirst({ where: { id: data.categoryId, businessId: auth.businessId }, select: { id: true, name: true } }) : null;
   if (!category) throw new ApiError(400, "Create and choose a category before adding this product.", "PRODUCT_CATEGORY_REQUIRED");
   const subcategory = data.subcategoryId ? await prisma.subcategory.findFirst({ where: { id: data.subcategoryId, categoryId: category.id }, select: { id: true, name: true } }) : null;
@@ -571,6 +613,25 @@ productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, res
   });
 
   const result = await prisma.$transaction(async (transaction) => {
+    const stagedAssets = data.stagedImages.length
+      ? await transaction.mediaAsset.findMany({
+        where: {
+          id: { in: data.stagedImages.map((image) => image.assetId) },
+          businessId: auth.businessId,
+          ownerId: auth.userId,
+          productId: null,
+          purpose: "PRODUCT_IMAGE",
+          status: "UPLOADED",
+          secureUrl: { not: null },
+        },
+        select: { id: true, publicId: true, secureUrl: true },
+      })
+      : [];
+    if (stagedAssets.length !== data.stagedImages.length) {
+      throw new ApiError(409, "One or more uploaded photos are no longer available. Upload them again before saving.", "STAGED_PRODUCT_IMAGE_CONFLICT");
+    }
+    const primaryImage = data.stagedImages.find((image) => image.isPrimary) ?? data.stagedImages[0];
+    const primaryAsset = primaryImage ? stagedAssets.find((asset) => asset.id === primaryImage.assetId) : undefined;
     const created = await transaction.product.create({
       data: {
         businessId: auth.businessId,
@@ -588,12 +649,41 @@ productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, res
         subcategoryId: subcategory?.id ?? null,
         unit: data.unit,
         costPrice: new Prisma.Decimal(data.costPrice),
+        bottomPrice: new Prisma.Decimal(bottomPrice),
         sellingPrice: new Prisma.Decimal(data.sellingPrice),
+        originalPrice: data.originalPrice == null ? null : new Prisma.Decimal(data.originalPrice),
         reorderLevel: new Prisma.Decimal(data.reorderLevel),
         state: data.publishOnSave ? ProductState.ACTIVE : ProductState.DRAFT,
         isPublished: data.publishOnSave,
+        ...(primaryAsset ? { imageUrl: primaryAsset.secureUrl, imagePublicId: primaryAsset.publicId } : {}),
       },
     });
+    if (data.stagedImages.length) {
+      const claimed = await transaction.mediaAsset.updateMany({
+        where: {
+          id: { in: data.stagedImages.map((image) => image.assetId) },
+          businessId: auth.businessId,
+          ownerId: auth.userId,
+          productId: null,
+          purpose: "PRODUCT_IMAGE",
+          status: "UPLOADED",
+        },
+        data: { productId: created.id, status: "ACTIVE" },
+      });
+      if (claimed.count !== data.stagedImages.length) {
+        throw new ApiError(409, "One or more uploaded photos were changed while the product was being saved. Try again.", "STAGED_PRODUCT_IMAGE_CONFLICT");
+      }
+      const primaryAssetId = primaryImage?.assetId;
+      await transaction.productImage.createMany({
+        data: data.stagedImages.map((image, position) => ({
+          productId: created.id,
+          mediaAssetId: image.assetId,
+          view: image.view,
+          position,
+          isPrimary: image.assetId === primaryAssetId,
+        })),
+      });
+    }
     if (data.specifications.length) await transaction.productSpecification.createMany({ data: data.specifications.map((item, position) => ({ productId: created.id, name: item.name, value: item.value, position })) });
     let openingStockValue = 0;
     for (const assignment of branchAssignments) {
@@ -618,12 +708,14 @@ productsRouter.patch("/:productId", requireStaffAccess("SENIOR_STAFF"), async (r
   if (!parsed.success || Object.keys(parsed.data ?? {}).length === 0) throw new ApiError(400, "Provide at least one valid product field.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const productId = request.params.productId as string;
-  const current = await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId }, select: { id: true, name: true, normalizedName: true, isPublished: true, costPrice: true, sellingPrice: true } });
+  const current = await prisma.product.findFirst({ where: { id: productId, businessId: auth.businessId }, select: { id: true, name: true, normalizedName: true, isPublished: true, costPrice: true, bottomPrice: true, sellingPrice: true } });
   if (!current) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const data = parsed.data;
   const nextCostPrice = data.costPrice ?? Number(current.costPrice);
+  if (auth.role !== "OWNER" && data.bottomPrice !== undefined) throw new ApiError(403, "Only an owner can change a product bottom price.", "BOTTOM_PRICE_OWNER_ONLY");
+  const nextBottomPrice = data.bottomPrice ?? Number(current.bottomPrice);
   const nextSellingPrice = data.sellingPrice ?? Number(current.sellingPrice);
-  if (nextSellingPrice < nextCostPrice) throw new ApiError(400, "Selling price cannot be below cost price. Staff can bargain down to the cost price when making a sale.", "SELLING_PRICE_BELOW_COST");
+  if (nextBottomPrice < nextCostPrice || nextSellingPrice < nextBottomPrice) throw new ApiError(400, "Product prices must satisfy cost price ≤ bottom price ≤ selling price.", "INVALID_PRODUCT_PRICE_RANGE");
   let categoryUpdate: { categoryId?: string | null; category?: string; subcategoryId?: string | null; subcategory?: string | null } = {};
   if (data.categoryId !== undefined || data.subcategoryId !== undefined || data.category !== undefined) {
     const currentProduct = await prisma.product.findUnique({ where: { id: productId }, select: { categoryId: true, subcategoryId: true } });
@@ -660,7 +752,9 @@ productsRouter.patch("/:productId", requireStaffAccess("SENIOR_STAFF"), async (r
       ...categoryUpdate,
       ...(data.unit !== undefined ? { unit: data.unit } : {}),
       ...(data.costPrice !== undefined ? { costPrice: new Prisma.Decimal(data.costPrice) } : {}),
+      ...(data.bottomPrice !== undefined ? { bottomPrice: new Prisma.Decimal(data.bottomPrice) } : {}),
       ...(data.sellingPrice !== undefined ? { sellingPrice: new Prisma.Decimal(data.sellingPrice) } : {}),
+      ...(data.originalPrice !== undefined ? { originalPrice: data.originalPrice === null ? null : new Prisma.Decimal(data.originalPrice) } : {}),
       ...(data.reorderLevel !== undefined ? { reorderLevel: new Prisma.Decimal(data.reorderLevel) } : {}),
       ...(data.state !== undefined ? { state: data.state } : {}),
       ...(data.isPublished !== undefined ? { isPublished: data.isPublished } : {}),

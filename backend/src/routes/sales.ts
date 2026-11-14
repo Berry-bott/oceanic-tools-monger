@@ -98,7 +98,11 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
     if (line.quantity > onHand - reserved) throw new ApiError(409, `${product.name} no longer has enough available stock.`, "INSUFFICIENT_STOCK", { productId: product.id, available: onHand - reserved });
     const unitPrice = line.unitPrice ?? Number(product.sellingPrice);
     const unitCost = Number(product.costPrice);
-    if (unitPrice < unitCost) throw new ApiError(409, `${product.name} cannot be sold below its cost price of ${unitCost.toFixed(2)}.`, "BELOW_COST_PRICE", { productId: product.id, minimumPrice: unitCost });
+    const minimumPrice = auth.role === "OWNER" ? unitCost : Math.max(unitCost, Number(product.bottomPrice));
+    if (unitPrice < minimumPrice) {
+      const reason = auth.role === "OWNER" ? "cost price" : "bottom price";
+      throw new ApiError(409, `${product.name} cannot be sold below its ${reason} of ${minimumPrice.toFixed(2)}.`, auth.role === "OWNER" ? "BELOW_COST_PRICE" : "BELOW_BOTTOM_PRICE", { productId: product.id, minimumPrice });
+    }
     return { product, quantity: line.quantity, unitPrice, unitCost, lineTotal: moneyRound(unitPrice * line.quantity) };
   });
   const subtotal = moneyRound(lines.reduce((sum, line) => sum + line.lineTotal, 0));

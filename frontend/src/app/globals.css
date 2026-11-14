@@ -187,3 +187,34 @@
 .hero-content-enter {
   animation: 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards fadeInUp;
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body.printing-focused * {
+    visibility: hidden !important;
+  }
+
+  body.printing-focused .print-selected,
+  body.printing-focused .print-selected * {
+    visibility: visible !important;
+  }
+
+  body.printing-focused .print-selected {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body.printing-focused .print-selected button {
+    display: none !important;
+  }
+}

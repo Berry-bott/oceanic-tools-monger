@@ -10,7 +10,7 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
     {
       connectionString: runtimeDatabaseUrl,
       max: 10,
-      connectionTimeoutMillis: 15_000,
+      connectionTimeoutMillis: 30_000,
       idleTimeoutMillis: 30_000,
     },
     {

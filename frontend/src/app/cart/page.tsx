@@ -119,6 +119,12 @@ export default function CartPage() {
                         </button>
                       </div>
 
+                      {typeof item.available === "number" && (
+                        <p className={`mt-2 text-xs font-semibold ${item.available <= 0 ? "text-red-600" : item.quantity > item.available ? "text-amber-700" : "text-emerald-700"}`}>
+                          {item.available <= 0 ? "Out of stock" : item.quantity > item.available ? `Only ${item.available} available` : `${item.available} available`}
+                        </p>
+                      )}
+
                       <div className="flex items-center justify-between mt-3">
                         <div className="flex items-center border border-peach-light rounded-xl overflow-hidden">
                           <button
@@ -134,6 +140,7 @@ export default function CartPage() {
                           <button
                             type="button"
                             onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                            disabled={typeof item.available === "number" && item.quantity >= item.available}
                             className="w-9 h-9 flex items-center justify-center text-charcoal hover:bg-peach-xlight transition-colors"
                           >
                             +

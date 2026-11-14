@@ -11,6 +11,7 @@ export type CartItem = {
   imageUrl?: string | null;
   category?: string;
   brand?: string | null;
+  available?: number;
 };
 
 export type StoreCartState = {
@@ -23,18 +24,17 @@ export type StoreCartState = {
   deliveryAddress: string;
   whatsappOptIn: boolean;
   isDrawerOpen: boolean;
-  reservationExpiresAt: number | null;
 
   // Actions
   addItem: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
+  setItemAvailability: (productId: string, available: number) => void;
   clearCart: () => void;
   setDrawerOpen: (isOpen: boolean) => void;
   setSelectedBranchId: (branchId: string | null) => void;
   setFulfillmentMethod: (method: "DELIVERY" | "COLLECTION") => void;
   setCustomerDetails: (details: Partial<{ customerName: string; email: string; phone: string; deliveryAddress: string; whatsappOptIn: boolean }>) => void;
-  resetReservationTimer: () => void;
 };
 
 export const useStoreCart = create<StoreCartState>()(
@@ -49,30 +49,23 @@ export const useStoreCart = create<StoreCartState>()(
       deliveryAddress: "",
       whatsappOptIn: true,
       isDrawerOpen: false,
-      reservationExpiresAt: null,
-
       addItem: (item, quantity = 1) => {
-        const { items, reservationExpiresAt } = get();
+        const { items } = get();
         const existing = items.find((i) => i.productId === item.productId);
-        const newExpiresAt = reservationExpiresAt && reservationExpiresAt > Date.now()
-          ? reservationExpiresAt
-          : Date.now() + 15 * 60 * 1000; // 15-minute reservation timer
 
         if (existing) {
           set({
             items: items.map((i) =>
               i.productId === item.productId
-                ? { ...i, quantity: i.quantity + quantity }
+                ? { ...i, ...item, quantity: i.quantity + quantity }
                 : i
             ),
             isDrawerOpen: true,
-            reservationExpiresAt: newExpiresAt,
           });
         } else {
           set({
             items: [...items, { ...item, quantity }],
             isDrawerOpen: true,
-            reservationExpiresAt: newExpiresAt,
           });
         }
       },
@@ -81,7 +74,6 @@ export const useStoreCart = create<StoreCartState>()(
         const remaining = get().items.filter((i) => i.productId !== productId);
         set({
           items: remaining,
-          reservationExpiresAt: remaining.length === 0 ? null : get().reservationExpiresAt,
         });
       },
 
@@ -97,15 +89,18 @@ export const useStoreCart = create<StoreCartState>()(
         });
       },
 
+      setItemAvailability: (productId, available) => {
+        set({ items: get().items.map((item) => item.productId === productId ? { ...item, available } : item) });
+      },
+
       clearCart: () => {
-        set({ items: [], reservationExpiresAt: null });
+        set({ items: [] });
       },
 
       setDrawerOpen: (isDrawerOpen) => set({ isDrawerOpen }),
       setSelectedBranchId: (selectedBranchId) => set({ selectedBranchId }),
       setFulfillmentMethod: (fulfillmentMethod) => set({ fulfillmentMethod }),
       setCustomerDetails: (details) => set((state) => ({ ...state, ...details })),
-      resetReservationTimer: () => set({ reservationExpiresAt: Date.now() + 15 * 60 * 1000 }),
     }),
     {
       name: "oceanic-store-cart",
@@ -118,7 +113,6 @@ export const useStoreCart = create<StoreCartState>()(
         phone: state.phone,
         deliveryAddress: state.deliveryAddress,
         whatsappOptIn: state.whatsappOptIn,
-        reservationExpiresAt: state.reservationExpiresAt,
       }),
     }
   )

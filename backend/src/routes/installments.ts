@@ -82,7 +82,8 @@ installmentsRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, res
     const balance = product.balances[0];
     const available = Number(balance?.onHand ?? 0) - Number(balance?.reserved ?? 0);
     if (entry.quantity > available) throw new ApiError(409, `${product.name} has only ${available} available in this branch.`, "INSUFFICIENT_STOCK");
-    if (entry.unitPrice < Number(product.costPrice)) throw new ApiError(409, `${product.name} cannot be agreed below its cost price.`, "BELOW_COST_PRICE");
+    const minimumPrice = auth.role === "OWNER" ? Number(product.costPrice) : Math.max(Number(product.costPrice), Number(product.bottomPrice));
+    if (entry.unitPrice < minimumPrice) throw new ApiError(409, `${product.name} cannot be agreed below its ${auth.role === "OWNER" ? "cost price" : "bottom price"}.`, auth.role === "OWNER" ? "BELOW_COST_PRICE" : "BELOW_BOTTOM_PRICE");
     return { product, quantity: entry.quantity, unitPrice: entry.unitPrice, unitCost: Number(product.costPrice), lineTotal: roundMoney(entry.quantity * entry.unitPrice) };
   });
   const total = roundMoney(lines.reduce((sum, line) => sum + line.lineTotal, 0));

@@ -33,11 +33,25 @@ businessRouter.get("/", async (_request, response) => {
 });
 
 businessRouter.patch("/", requireRoles("OWNER"), async (request, response) => {
-  const parsed = z.object({ name: z.string().trim().min(1).max(180).optional(), currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(), timezone: z.string().trim().min(1).max(80).optional(), storeSlug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80).optional() }).safeParse(request.body);
+  const parsed = z.object({
+    name: z.string().trim().min(1).max(180).optional(),
+    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+    timezone: z.string().trim().min(1).max(80).optional(),
+    storeSlug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(80).optional(),
+    onlineDeliveryEnabled: z.boolean().optional(),
+    onlineDeliveryFee: z.coerce.number().min(0).max(1_000_000).optional(),
+    payOnPickupEnabled: z.boolean().optional(),
+  }).safeParse(request.body);
   if (!parsed.success || !Object.keys(parsed.success ? parsed.data : {}).length) throw new ApiError(400, "Provide valid business settings to update.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   if (parsed.data.timezone) { try { new Intl.DateTimeFormat("en", { timeZone: parsed.data.timezone }); } catch { throw new ApiError(400, "Choose a valid IANA timezone.", "INVALID_TIMEZONE"); } }
-  const before = await prisma.business.findUniqueOrThrow({ where: { id: auth.businessId }, select: { name: true, currency: true, timezone: true, storeSlug: true } });
+  const before = await prisma.business.findUniqueOrThrow({
+    where: { id: auth.businessId },
+    select: {
+      name: true, currency: true, timezone: true, storeSlug: true,
+      onlineDeliveryEnabled: true, onlineDeliveryFee: true, payOnPickupEnabled: true,
+    },
+  });
   const result = await prisma.$transaction(async (transaction) => {
     const updated = await transaction.business.update({ where: { id: auth.businessId }, data: parsed.data });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "BUSINESS_SETTINGS_UPDATED", entityType: "Business", entityId: auth.businessId, before, after: parsed.data });
@@ -221,28 +235,45 @@ branchesRouter.get("/", async (_request, response) => {
 });
 
 branchesRouter.post("/", requireRoles("OWNER"), async (request, response) => {
-  const parsed = z.object({ name: z.string().trim().min(1).max(120), isDefault: z.boolean().default(false) }).safeParse(request.body);
+  const parsed = z.object({
+    name: z.string().trim().min(1).max(120),
+    address: z.string().trim().min(1).max(500).nullable().optional(),
+    isDefault: z.boolean().default(false),
+  }).safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Enter a branch name.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const branch = await prisma.$transaction(async (transaction) => {
     if (parsed.data.isDefault) await transaction.branch.updateMany({ where: { businessId: auth.businessId, isDefault: true }, data: { isDefault: false } });
     const created = await transaction.branch.create({ data: { businessId: auth.businessId, ...parsed.data } });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "BRANCH_CREATED", entityType: "Branch", entityId: created.id, after: { name: created.name, isDefault: created.isDefault } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "BRANCH_CREATED", entityType: "Branch", entityId: created.id, after: { name: created.name, address: created.address, isPickupLocation: created.isPickupLocation, isDefault: created.isDefault } });
     return created;
   }, { isolationLevel: "Serializable" });
   response.status(201).json({ data: branch });
 });
 
 branchesRouter.patch("/:branchId", requireRoles("OWNER"), async (request, response) => {
-  const parsed = z.object({ name: z.string().trim().min(1).max(120).optional(), isDefault: z.boolean().optional() }).safeParse(request.body);
+  const parsed = z.object({
+    name: z.string().trim().min(1).max(120).optional(),
+    address: z.string().trim().min(1).max(500).nullable().optional(),
+    isPickupLocation: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
+  }).safeParse(request.body);
   if (!parsed.success || !Object.keys(parsed.success ? parsed.data : {}).length) throw new ApiError(400, "Provide valid branch fields to update.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const branch = await prisma.branch.findFirst({ where: { id: request.params.branchId as string, businessId: auth.businessId } });
   if (!branch) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
+  const isPickupLocation = parsed.data.isPickupLocation ?? branch.isPickupLocation;
+  const address = parsed.data.address === undefined ? branch.address : parsed.data.address;
+  if (isPickupLocation && !address) {
+    throw new ApiError(400, "Add an address to this branch before enabling pickup.", "PICKUP_ADDRESS_REQUIRED");
+  }
   const updated = await prisma.$transaction(async (transaction) => {
     if (parsed.data.isDefault) await transaction.branch.updateMany({ where: { businessId: auth.businessId, isDefault: true, id: { not: branch.id } }, data: { isDefault: false } });
-    const result = await transaction.branch.update({ where: { id: branch.id }, data: parsed.data });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "BRANCH_UPDATED", entityType: "Branch", entityId: branch.id, before: { name: branch.name, isDefault: branch.isDefault }, after: { name: result.name, isDefault: result.isDefault } });
+    const result = await transaction.branch.update({
+      where: { id: branch.id },
+      data: { ...parsed.data, ...(parsed.data.address !== undefined ? { address } : {}) },
+    });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "BRANCH_UPDATED", entityType: "Branch", entityId: branch.id, before: { name: branch.name, address: branch.address, isPickupLocation: branch.isPickupLocation, isDefault: branch.isDefault }, after: { name: result.name, address: result.address, isPickupLocation: result.isPickupLocation, isDefault: result.isDefault } });
     return result;
   }, { isolationLevel: "Serializable" });
   response.json({ data: updated });
