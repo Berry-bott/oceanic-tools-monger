@@ -394,8 +394,18 @@ const customerReturnRequestSchema = z.object({
 
 customerAccountRouter.get("/returns", async (_request, response) => {
   const auth = response.locals.customerAuth as CustomerAuthContext;
+  const onlineOrders = await prisma.onlineOrder.findMany({
+    where: { businessId: auth.businessId, OR: [{ customerId: auth.customerId }, { customerEmail: { equals: auth.email, mode: "insensitive" } }] },
+    select: { number: true },
+  });
   const requests = await prisma.saleReturn.findMany({
-    where: { customerId: auth.customerId },
+    where: {
+      OR: [
+        { customerId: auth.customerId },
+        { sale: { customerId: auth.customerId } },
+        ...(onlineOrders.length ? [{ sale: { number: { in: onlineOrders.map((order) => order.number) } } }] : []),
+      ],
+    },
     include: { sale: { select: { number: true } }, lines: { include: { saleLine: { select: { productName: true, sku: true } } } }, refunds: { select: { reference: true, amount: true, method: true, status: true, createdAt: true } } },
     orderBy: { createdAt: "desc" },
   });

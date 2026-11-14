@@ -125,9 +125,13 @@ export function AccountClient() {
     if (isAuthenticated) {
       if (activeTab === "orders") {
         setOrdersLoading(true);
-        Promise.all([customerAccountService.getOrders(), customerAccountService.getReturns()])
-          .then(([data, requests]) => { setOrders(data); setReturnRequests(requests); })
-          .catch((err) => console.warn("Failed loading orders:", err))
+        Promise.allSettled([customerAccountService.getOrders(), customerAccountService.getReturns()])
+          .then(([ordersResult, returnsResult]) => {
+            if (ordersResult.status === "fulfilled") setOrders(ordersResult.value);
+            else console.warn("Failed loading orders:", ordersResult.reason);
+            if (returnsResult.status === "fulfilled") setReturnRequests(returnsResult.value);
+            else console.warn("Failed loading return requests:", returnsResult.reason);
+          })
           .finally(() => setOrdersLoading(false));
       } else if (activeTab === "statement") {
         setStatementLoading(true);
@@ -331,6 +335,13 @@ export function AccountClient() {
           <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-200/80 shadow-2xs">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             Processing
+          </span>
+        );
+      case "RETURN_REQUESTED":
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-200/80">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Return Requested
           </span>
         );
       case "CANCELLED":
@@ -720,6 +731,45 @@ export function AccountClient() {
                   </div>
                 )}
 
+                {returnRequests.length > 0 && (
+                  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
+                    <div className="mb-4">
+                      <h3 className="text-base font-bold text-charcoal">Returns &amp; refunds</h3>
+                      <p className="mt-1 text-xs text-charcoal-light">Track your return decisions and refund payments here.</p>
+                    </div>
+                    <div className="space-y-3">
+                      {returnRequests.map((item) => {
+                        const status = item.status === "REQUESTED"
+                          ? "Awaiting store review"
+                          : item.status === "REJECTED"
+                            ? "Return declined"
+                            : item.refunds.some((refund) => refund.status === "SUCCEEDED")
+                              ? "Refund completed"
+                              : item.refunds.some((refund) => refund.status === "FAILED")
+                                ? "Refund failed — contact the store"
+                                : item.refunds.some((refund) => refund.status === "PENDING")
+                                  ? "Refund processing"
+                                  : "Return completed";
+                        return (
+                          <article key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-bold text-charcoal">Order #{item.sale.number}</p>
+                                <p className="mt-0.5 text-[11px] text-charcoal-light">Return {item.reference}</p>
+                              </div>
+                              <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-charcoal">{status}</span>
+                            </div>
+                            <p className="mt-3 text-xs text-charcoal-light">{item.reason} · Requested value {formatCurrency(item.total)}</p>
+                            {item.lines.length > 0 && <p className="mt-1 text-xs text-charcoal-light">Items: {item.lines.map((line) => `${line.saleLine.productName} × ${line.quantity}`).join(", ")}</p>}
+                            {item.resolutionNote && <p className="mt-2 text-xs font-medium text-charcoal">Store update: {item.resolutionNote}</p>}
+                            {item.refunds.map((refund) => <p key={refund.reference} className="mt-2 text-xs font-semibold text-charcoal">Refund {formatCurrency(refund.amount)} · {refund.status.toLowerCase()} · Ref {refund.reference}</p>)}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
                 {/* Orders Content */}
                 {ordersLoading ? (
                   <div className="bg-white rounded-3xl p-16 text-center border border-slate-200/90 shadow-2xs">
@@ -773,10 +823,10 @@ export function AccountClient() {
                       <div
                         key={order.id}
                         data-print-order={order.id}
-                        className="bg-white rounded-3xl border border-slate-200/90 shadow-xs hover:border-peach-light/70 hover:shadow-md transition-all overflow-hidden"
+                        className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-peach-light/70 hover:shadow-md transition-all overflow-hidden"
                       >
                         {/* Order Card Top Bar */}
-                        <div className="bg-slate-50/80 px-5 sm:px-6 py-4 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-3">
+                        <div className="bg-slate-50/80 px-4 sm:px-5 py-3 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-2.5">
                           <div className="flex flex-wrap items-center gap-3">
                             {/* Order Number Badge */}
                             <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
@@ -834,7 +884,7 @@ export function AccountClient() {
                         </div>
 
                         {/* Order Line Items */}
-                        <div className="p-5 sm:p-6 divide-y divide-slate-100">
+                        <div className="px-4 py-2.5 sm:px-5 divide-y divide-slate-100">
                           {order.lines.map((line) => {
                             const unitPrice = typeof line.unitPrice === "string" ? parseFloat(line.unitPrice) : line.unitPrice;
                             const lineTotal = typeof line.lineTotal === "string" ? parseFloat(line.lineTotal) : line.lineTotal;
@@ -842,10 +892,10 @@ export function AccountClient() {
                             const isReordered = reorderedLineId === line.id;
 
                             return (
-                              <div key={line.id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex items-center gap-4">
+                              <div key={line.id} className="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                <div className="flex items-center gap-3">
                                   {/* Product Thumbnail */}
-                                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200/80 overflow-hidden flex items-center justify-center shrink-0 shadow-2xs">
+                                  <div className="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden flex items-center justify-center shrink-0">
                                     {thumbUrl ? (
                                       <img
                                         src={thumbUrl}
@@ -882,7 +932,7 @@ export function AccountClient() {
                                   <button
                                     type="button"
                                     onClick={() => handleReorder(line)}
-                                    className={`px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs active:scale-95 ${
+                                    className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1 active:scale-95 ${
                                       isReordered
                                         ? "bg-emerald-600 text-white"
                                         : "bg-peach-xlight hover:bg-peach-light/70 text-peach-dark"
@@ -900,19 +950,8 @@ export function AccountClient() {
                         </div>
 
                         {/* Customer initiated return request and refund status */}
-                        <div className="border-t border-slate-100 px-5 py-4 sm:px-6 space-y-3">
-                          {returnRequests.filter((item) => item.sale.number === order.number).map((item) => (
-                            <div key={item.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-bold text-charcoal">Return {item.reference}</span>
-                                <span className="rounded-full bg-white px-2.5 py-1 font-bold text-charcoal">{item.status === "REQUESTED" ? "Awaiting review" : item.status === "REJECTED" ? "Declined" : item.refunds.some((refund) => refund.status === "SUCCEEDED") ? "Refund completed" : item.refunds.some((refund) => refund.status === "PENDING") ? "Refund processing" : "Return completed"}</span>
-                              </div>
-                              <p className="mt-1 text-charcoal-light">{item.reason} · {formatCurrency(item.total)}</p>
-                              {item.resolutionNote && <p className="mt-1 text-charcoal-light">Store update: {item.resolutionNote}</p>}
-                              {item.refunds.map((refund) => <p key={refund.reference} className="mt-1 font-medium text-charcoal-light">Refund {refund.reference}: {refund.status.toLowerCase()} · {formatCurrency(refund.amount)}</p>)}
-                            </div>
-                          ))}
-                          {["DELIVERED", "COLLECTED", "RETURN_REQUESTED"].includes(order.status) && !returnRequests.some((item) => item.sale.number === order.number && item.status === "REQUESTED") && (
+                        <div className="border-t border-slate-100 px-4 py-2.5 sm:px-5">
+                          {["DELIVERED", "COLLECTED"].includes(order.status) && !returnRequests.some((item) => item.sale.number === order.number && item.status === "REQUESTED") && (
                             returnOrderNumber === order.number ? (
                               <form onSubmit={(event) => void submitReturnRequest(event, order)} className="rounded-2xl border border-peach-light bg-peach-xlight/40 p-4 space-y-3">
                                 <h4 className="text-sm font-bold text-charcoal">Request a return</h4>
@@ -935,10 +974,13 @@ export function AccountClient() {
                               <button type="button" onClick={() => { setReturnOrderNumber(order.number); setReturnReason(""); setReturnQuantities({}); setReturnError(""); }} className="rounded-lg border border-peach-light px-3 py-2 text-xs font-bold text-peach-dark hover:bg-peach-xlight">Request a return</button>
                             )
                           )}
+                          {!(["DELIVERED", "COLLECTED", "RETURN_REQUESTED", "CANCELLED"].includes(order.status)) && (
+                            <p className="text-[11px] text-charcoal-light">Return requests open after delivery or pickup.</p>
+                          )}
                         </div>
 
                         {/* Order Card Footer */}
-                        <div className="bg-slate-50/60 px-5 sm:px-6 py-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="bg-slate-50/60 px-4 sm:px-5 py-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                           {/* Left: Email Receipt Status */}
                           <div className="flex items-center gap-2 text-emerald-800 font-semibold">
                             <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
