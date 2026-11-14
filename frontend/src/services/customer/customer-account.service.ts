@@ -72,6 +72,19 @@ export interface CustomerStatement {
   outstanding: number;
 }
 
+export interface CustomerReturnRequest {
+  id: string;
+  reference: string;
+  reason: string;
+  total: number | string;
+  status: "REQUESTED" | "REJECTED" | "COMPLETED";
+  resolutionNote?: string | null;
+  createdAt: string;
+  sale: { number: string };
+  lines: Array<{ quantity: number | string; saleLine: { productName: string; sku: string } }>;
+  refunds: Array<{ reference: string; amount: number | string; method: string; status: string; createdAt: string }>;
+}
+
 export const customerAccountService = {
   async getMe(): Promise<{ customer: CustomerProfile; email: string } | null> {
     try {
@@ -165,6 +178,26 @@ export const customerAccountService = {
       throw new Error(json?.error?.message || "Could not load account statement.");
     }
     return json.data || { entries: [], outstanding: 0 };
+  },
+
+  async getReturns(): Promise<CustomerReturnRequest[]> {
+    const res = await fetch(`${API_BASE_URL}/customer-account/returns`, { credentials: "include", cache: "no-store" });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error?.message || "Could not load return requests.");
+    return json.data || [];
+  },
+
+  async requestReturn(orderNumber: string, input: { reason: string; lines: Array<{ sku: string; quantity: number }> }): Promise<CustomerReturnRequest> {
+    const res = await fetch(`${API_BASE_URL}/customer-account/orders/${encodeURIComponent(orderNumber)}/return-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify(input),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error?.message || "Could not submit your return request.");
+    return json.data;
   },
 
   async logout(): Promise<void> {

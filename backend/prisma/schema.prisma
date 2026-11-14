@@ -102,6 +102,12 @@ enum PaymentStatus {
   REVERSED
 }
 
+enum SaleReturnStatus {
+  REQUESTED
+  REJECTED
+  COMPLETED
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -687,6 +693,7 @@ model Customer {
   updatedAt             DateTime               @updatedAt
   business              Business               @relation(fields: [businessId], references: [id], onDelete: Restrict)
   sales                 Sale[]
+  saleReturns           SaleReturn[]
   onlineOrders          OnlineOrder[]
   account               CustomerAccount?
   productReviews        ProductReview[]
@@ -1086,17 +1093,23 @@ model PaymentProviderEvent {
 model SaleReturn {
   id        String           @id @default(cuid())
   saleId    String
-  userId    String
+  userId    String?
+  customerId String?
+  status    SaleReturnStatus @default(COMPLETED)
+  resolutionNote String?
   reference String           @unique @db.VarChar(50)
   reason    String
   total     Decimal          @db.Decimal(14, 2)
   createdAt DateTime         @default(now())
   sale      Sale             @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  customer  Customer?        @relation(fields: [customerId], references: [id], onDelete: Restrict)
   lines     SaleReturnLine[]
   refunds   Refund[]
 
   @@index([saleId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
 }
 
 model SaleReturnLine {

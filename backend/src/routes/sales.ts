@@ -178,11 +178,114 @@ salesRouter.post("/", requireRoles("OWNER", "STAFF"), async (request, response) 
 });
 
 const returnSchema = z.object({ reason: z.string().trim().min(3).max(500), method: z.enum(["CASH", "BANK_TRANSFER", "OTHER"]).default("OTHER"), lines: z.array(z.object({ saleLineId: z.string(), quantity: z.coerce.number().positive(), restock: z.boolean().default(true) })).min(1) });
+
+salesRouter.get("/return-requests", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const requests = await prisma.saleReturn.findMany({
+    where: { sale: { businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, OR: [{ status: "REQUESTED" }, { refunds: { some: { status: { in: ["PENDING", "FAILED"] } } } }] },
+    include: { customer: { select: { name: true, email: true, phone: true } }, sale: { select: { id: true, number: true, channel: true, total: true, payments: { include: { payment: { select: { method: true, status: true, provider: true } } } } } }, lines: { include: { saleLine: { select: { productName: true, sku: true } } } }, refunds: true },
+    orderBy: { createdAt: "asc" },
+  });
+  response.set("Cache-Control", "no-store");
+  response.json({ data: requests });
+});
+
+salesRouter.post("/returns/:returnId/resolve-request", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
+  const parsed = z.object({ decision: z.enum(["APPROVE", "REJECT"]), method: z.enum(["BANK_TRANSFER", "CASH", "OTHER", "PAYSTACK"]).default("BANK_TRANSFER"), note: z.string().trim().max(500).optional() }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Choose whether to approve or reject this request.", "VALIDATION_ERROR", parsed.error.issues);
+  const auth = response.locals.auth as AuthContext;
+  const requestRecord = await prisma.saleReturn.findFirst({ where: { id: request.params.returnId as string, status: "REQUESTED", sale: { businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) } }, include: { sale: { include: { lines: { include: { lotAllocations: true, returns: { include: { lotAllocations: true } } } }, payments: { include: { payment: true } }, returns: { include: { refunds: true, lines: true } } } }, lines: true } });
+  if (!requestRecord) throw new ApiError(404, "Return request not found or already resolved.", "RETURN_REQUEST_NOT_FOUND");
+  if (parsed.data.decision === "REJECT") {
+    const rejected = await prisma.$transaction(async (transaction) => {
+      const updated = await transaction.saleReturn.update({ where: { id: requestRecord.id }, data: { status: "REJECTED", userId: auth.userId, resolutionNote: parsed.data.note || "Return request declined." } });
+      await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CUSTOMER_RETURN_REJECTED", entityType: "SaleReturn", entityId: updated.id, after: { status: "REJECTED" }, reason: updated.resolutionNote ?? undefined });
+      return updated;
+    });
+    return response.json({ data: rejected });
+  }
+
+  const originalPaid = requestRecord.sale.payments.filter((item) => item.payment.status === "SUCCEEDED").reduce((sum, item) => sum + Number(item.amount), 0);
+  const alreadyRefunded = requestRecord.sale.returns.flatMap((item) => item.refunds).filter((item) => item.status !== "FAILED").reduce((sum, item) => sum + Number(item.amount), 0);
+  const refundAmount = moneyRound(Math.min(Number(requestRecord.total), Math.max(0, originalPaid - alreadyRefunded)));
+  const refundReference = `RF-${requestRecord.reference.replace(/^CR-/, "")}`;
+  let paystackStatus: "PENDING" | "SUCCEEDED" | "FAILED" = "PENDING";
+  let paystackRef: string | undefined;
+  if (parsed.data.method === "PAYSTACK" && refundAmount > 0) {
+    const originalPayment = requestRecord.sale.payments.find((item) => item.payment.status === "SUCCEEDED" && item.payment.provider === "PAYSTACK");
+    if (!originalPayment) throw new ApiError(409, "This sale has no successful Paystack payment to refund.", "PAYSTACK_PAYMENT_NOT_FOUND");
+    const secret = process.env.PAYSTACK_SECRET_KEY;
+    if (!secret) throw new ApiError(503, "Paystack refunds are not configured.", "PAYMENT_PROVIDER_UNAVAILABLE");
+    const paystackResponse = await fetch("https://api.paystack.co/refund", { method: "POST", headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" }, body: JSON.stringify({ transaction: originalPayment.payment.providerReference || originalPayment.payment.reference, amount: Math.round(refundAmount * 100), reference: refundReference, customer_note: requestRecord.reason, merchant_note: `Return ${requestRecord.reference}` }), signal: AbortSignal.timeout(15000) }).catch(() => null);
+    const paystackJson = await paystackResponse?.json().catch(() => null) as { status?: boolean; message?: string; data?: { status?: string; reference?: string } } | null;
+    let resolvedPaystackResponse = paystackResponse;
+    let resolvedPaystackJson = paystackJson;
+    // Paystack returns 409 for a retry with the same reference. Fetch that
+    // refund and continue with its actual state instead of creating a second one.
+    if (paystackResponse?.status === 409) {
+      const existingResponse = await fetch(`https://api.paystack.co/refund?reference=${encodeURIComponent(refundReference)}`, { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(15000) }).catch(() => null);
+      const existingJson = await existingResponse?.json().catch(() => null) as { status?: boolean; data?: Array<{ status?: string; reference?: string }> } | null;
+      if (existingResponse?.ok && existingJson?.status && existingJson.data?.length) {
+        resolvedPaystackResponse = existingResponse;
+        resolvedPaystackJson = { status: true, data: existingJson.data[0] };
+      }
+    }
+    if (!resolvedPaystackResponse?.ok || !resolvedPaystackJson?.status) throw new ApiError(502, resolvedPaystackJson?.message || "Paystack could not initiate the refund. No return was processed.", "PAYSTACK_REFUND_FAILED");
+    const status = resolvedPaystackJson.data?.status?.toLowerCase();
+    if (status === "failed") throw new ApiError(502, "Paystack could not process this refund. No return was completed.", "PAYSTACK_REFUND_FAILED");
+    paystackStatus = "PENDING";
+    paystackRef = resolvedPaystackJson.data?.reference;
+  }
+
+  const returnLines = requestRecord.lines.map((line) => ({ saleLineId: line.saleLineId, productId: line.productId, quantity: line.quantity, restock: true }));
+  const cost = moneyRound(returnLines.reduce((sum, item) => sum + Number(requestRecord.sale.lines.find((line) => line.id === item.saleLineId)?.unitCost ?? 0) * Number(item.quantity), 0));
+  await prisma.$transaction(async (transaction) => {
+    await transaction.saleReturn.update({ where: { id: requestRecord.id }, data: { status: "COMPLETED", userId: auth.userId, resolutionNote: parsed.data.note || null } });
+    for (const item of returnLines) {
+      const saleLine = requestRecord.sale.lines.find((line) => line.id === item.saleLineId)!;
+      const returnLine = requestRecord.lines.find((line) => line.saleLineId === item.saleLineId)!;
+      await transaction.saleReturnLine.updateMany({ where: { saleReturnId: requestRecord.id, saleLineId: item.saleLineId }, data: { restock: true } });
+      await transaction.stockBalance.upsert({ where: { productId_branchId: { productId: item.productId, branchId: requestRecord.sale.branchId } }, create: { productId: item.productId, branchId: requestRecord.sale.branchId, onHand: item.quantity }, update: { onHand: { increment: item.quantity } } });
+      await transaction.stockMovement.create({ data: { productId: item.productId, branchId: requestRecord.sale.branchId, userId: auth.userId, type: "CUSTOMER_RETURN", quantity: item.quantity, unitCost: saleLine.unitCost, reference: requestRecord.reference, reason: requestRecord.reason } });
+      let remaining = new Prisma.Decimal(item.quantity);
+      for (const original of saleLine.lotAllocations) {
+        if (remaining.isZero()) break;
+        const previouslyReturned = saleLine.returns.flatMap((entry) => entry.lotAllocations).filter((allocation) => allocation.stockLotId === original.stockLotId).reduce((sum, allocation) => sum.add(allocation.quantity), new Prisma.Decimal(0));
+        const available = original.quantity.minus(previouslyReturned);
+        if (available.lessThanOrEqualTo(0)) continue;
+        const quantity = Prisma.Decimal.min(remaining, available);
+        await transaction.stockLot.update({ where: { id: original.stockLotId }, data: { quantity: { increment: quantity } } });
+        await transaction.returnLotAllocation.create({ data: { saleReturnLineId: returnLine.id, stockLotId: original.stockLotId, quantity, unitCost: original.unitCost } });
+        remaining = remaining.minus(quantity);
+      }
+      if (remaining.greaterThan(0)) {
+        const fallbackLot = await transaction.stockLot.create({ data: { productId: item.productId, branchId: requestRecord.sale.branchId, unitCost: saleLine.unitCost, quantity: remaining, origin: "RETURN" } });
+        await transaction.returnLotAllocation.create({ data: { saleReturnLineId: returnLine.id, stockLotId: fallbackLot.id, quantity: remaining, unitCost: saleLine.unitCost } });
+      }
+    }
+    let refund = null;
+    if (refundAmount > 0) refund = await transaction.refund.create({ data: { saleId: requestRecord.saleId, saleReturnId: requestRecord.id, userId: auth.userId, reference: refundReference, amount: refundAmount, method: parsed.data.method === "PAYSTACK" ? "ONLINE" : parsed.data.method, reason: requestRecord.reason, status: parsed.data.method === "PAYSTACK" ? paystackStatus : "PENDING" } });
+    const returnRevenue = Number(requestRecord.sale.total) > 0 ? Number(requestRecord.total) * (Number(requestRecord.sale.subtotal) - Number(requestRecord.sale.discount)) / Number(requestRecord.sale.total) : Number(requestRecord.total);
+    const returnTax = Number(requestRecord.total) - returnRevenue;
+    const journal: LedgerLine[] = [{ code: "4100", debit: returnRevenue, description: "Customer return credit" }];
+    if (returnTax > 0) journal.push({ code: "2100", debit: returnTax, description: "Reverse tax payable on returned goods" });
+    if (refundAmount > 0) journal.push({ code: "2200", credit: refundAmount, description: "Refund payable pending payment confirmation" });
+    if (Number(requestRecord.total) > refundAmount) journal.push({ code: "1100", credit: Number(requestRecord.total) - refundAmount, description: "Customer account credit" });
+    if (cost > 0) journal.push({ code: "1200", debit: cost, description: "Restocked returned goods" }, { code: "5000", credit: cost, description: "Reverse cost of goods sold" });
+    if (Number(requestRecord.total) > 0 || cost > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "SALE_RETURN", sourceId: requestRecord.id, description: `Return ${requestRecord.reference}`, lines: journal });
+    const allReturns = await transaction.saleReturn.findMany({ where: { saleId: requestRecord.saleId, status: { in: ["COMPLETED", "REQUESTED"] } }, include: { lines: { select: { saleLineId: true, quantity: true } } } });
+    const fullReturn = requestRecord.sale.lines.every((line) => allReturns.filter((entry) => entry.status === "COMPLETED").flatMap((entry) => entry.lines).filter((item) => item.saleLineId === line.id).reduce((sum, item) => sum + Number(item.quantity), 0) >= Number(line.quantity));
+    await transaction.sale.update({ where: { id: requestRecord.saleId }, data: { status: fullReturn ? "RETURNED" : "PARTIALLY_RETURNED" } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "CUSTOMER_RETURN_APPROVED", entityType: "SaleReturn", entityId: requestRecord.id, after: { status: "COMPLETED", refundAmount, refundStatus: refund?.status ?? null } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  response.json({ data: { status: "COMPLETED", refundAmount, refundStatus: paystackStatus, paystackReference: paystackRef } });
+});
+
 salesRouter.post("/:saleId/returns", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const parsed = returnSchema.safeParse(request.body);
   if (!parsed.success) throw new ApiError(400, "Check the returned items and reason.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
-  const sale = await prisma.sale.findFirst({ where: { id: request.params.saleId as string, businessId: auth.businessId, status: { not: "CANCELLED" } }, include: { lines: { include: { lotAllocations: true, returns: { include: { lotAllocations: true } } } }, payments: { include: { payment: true } }, returns: true, refunds: true } });
+  const sale = await prisma.sale.findFirst({ where: { id: request.params.saleId as string, businessId: auth.businessId, status: { not: "CANCELLED" } }, include: { lines: { include: { lotAllocations: true, returns: { include: { lotAllocations: true, saleReturn: { select: { status: true } } } } } }, payments: { include: { payment: true } }, returns: true, refunds: true } });
   if (!sale) throw new ApiError(404, "Sale not found.", "SALE_NOT_FOUND");
   if (auth.role === "STAFF" && (!auth.branchId || sale.branchId !== auth.branchId)) throw new ApiError(403, "You can only process returns for your assigned branch.", "BRANCH_ACCESS_DENIED");
   const byLine = new Map(sale.lines.map((line) => [line.id, line]));
@@ -191,17 +294,17 @@ salesRouter.post("/:saleId/returns", requireStaffAccess("SENIOR_STAFF"), async (
   for (const item of parsed.data.lines) {
     const line = byLine.get(item.saleLineId);
     if (!line) throw new ApiError(400, "A returned item does not belong to this sale.", "INVALID_RETURN_LINE");
-    const returnedQuantity = line.returns.reduce((sum, entry) => sum + Number(entry.quantity), 0);
+    const returnedQuantity = line.returns.filter((entry) => entry.saleReturn.status !== "REJECTED").reduce((sum, entry) => sum + Number(entry.quantity), 0);
     if (returnedQuantity + item.quantity > Number(line.quantity)) throw new ApiError(409, "Returned quantity exceeds the quantity sold.", "RETURN_QUANTITY_EXCEEDED");
     returnedValue += Number(line.lineTotal) * item.quantity / Number(line.quantity);
   }
   const proportionalNet = sale.subtotal.isZero() ? 0 : moneyRound(returnedValue * Number(sale.total) / Number(sale.subtotal));
   const originalPaid = sale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0);
-  const alreadyRefunded = sale.refunds.filter((entry) => entry.status === "SUCCEEDED").reduce((sum, entry) => sum + Number(entry.amount), 0);
+  const alreadyRefunded = sale.refunds.filter((entry) => entry.status === "SUCCEEDED" || entry.status === "PENDING").reduce((sum, entry) => sum + Number(entry.amount), 0);
   const refundAmount = Math.min(proportionalNet, Math.max(0, originalPaid - alreadyRefunded));
   const referenceValue = `RET-${randomUUID().slice(0, 8).toUpperCase()}`;
   const result = await prisma.$transaction(async (transaction) => {
-    const returned = await transaction.saleReturn.create({ data: { saleId: sale.id, userId: auth.userId, reference: referenceValue, reason: parsed.data.reason, total: proportionalNet, lines: { create: parsed.data.lines.map((item) => ({ saleLineId: item.saleLineId, productId: byLine.get(item.saleLineId)!.productId, quantity: item.quantity, refundAmount: Number(byLine.get(item.saleLineId)!.lineTotal) * item.quantity / Number(byLine.get(item.saleLineId)!.quantity), restock: item.restock })) }, }, include: { lines: true } });
+    const returned = await transaction.saleReturn.create({ data: { saleId: sale.id, userId: auth.userId, customerId: sale.customerId, reference: referenceValue, reason: parsed.data.reason, total: proportionalNet, lines: { create: parsed.data.lines.map((item) => ({ saleLineId: item.saleLineId, productId: byLine.get(item.saleLineId)!.productId, quantity: item.quantity, refundAmount: Number(byLine.get(item.saleLineId)!.lineTotal) * item.quantity / Number(byLine.get(item.saleLineId)!.quantity), restock: item.restock })) }, }, include: { lines: true } });
     for (const item of parsed.data.lines) {
       const saleLine = byLine.get(item.saleLineId)!;
       if (item.restock) {
@@ -226,20 +329,20 @@ salesRouter.post("/:saleId/returns", requireStaffAccess("SENIOR_STAFF"), async (
       }
     }
     let refund = null;
-    if (refundAmount > 0) refund = await transaction.refund.create({ data: { saleId: sale.id, saleReturnId: returned.id, userId: auth.userId, reference: `RF-${randomUUID().slice(0, 10).toUpperCase()}`, amount: refundAmount, method: parsed.data.method, reason: parsed.data.reason, status: "SUCCEEDED" } });
+    if (refundAmount > 0) refund = await transaction.refund.create({ data: { saleId: sale.id, saleReturnId: returned.id, userId: auth.userId, reference: `RF-${randomUUID().slice(0, 10).toUpperCase()}`, amount: refundAmount, method: parsed.data.method, reason: parsed.data.reason, status: "PENDING" } });
     const returnCost = moneyRound(parsed.data.lines.filter((item) => item.restock).reduce((sum, item) => sum + Number(byLine.get(item.saleLineId)!.unitCost) * item.quantity, 0));
     const returnRevenue = Number(sale.total) > 0 ? proportionalNet * (Number(sale.subtotal) - Number(sale.discount)) / Number(sale.total) : proportionalNet;
     const returnTax = proportionalNet - returnRevenue;
     const returnJournal: LedgerLine[] = [{ code: "4100", debit: returnRevenue, description: "Customer return credit" }];
     if (returnTax > 0) returnJournal.push({ code: "2100", debit: returnTax, description: "Reverse tax payable on returned goods" });
-    if (refundAmount > 0) returnJournal.push({ code: parsed.data.method === "CASH" ? "1000" : "1010", credit: refundAmount, description: `${parsed.data.method} refund issued to customer` });
+    if (refundAmount > 0) returnJournal.push({ code: "2200", credit: refundAmount, description: "Refund payable pending payment confirmation" });
     if (proportionalNet > refundAmount) returnJournal.push({ code: "1100", credit: proportionalNet - refundAmount, description: "Customer receivable credit" });
     if (returnCost > 0) returnJournal.push({ code: "1200", debit: returnCost, description: "Restocked returned goods" }, { code: "5000", credit: returnCost, description: "Reverse cost of goods sold" });
     if (proportionalNet > 0 || returnCost > 0) await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "SALE_RETURN", sourceId: returned.id, description: `Return ${returned.reference}`, lines: returnJournal });
-    const refreshedLines = await transaction.saleLine.findMany({ where: { saleId: sale.id }, include: { returns: { select: { quantity: true } } } });
+    const refreshedLines = await transaction.saleLine.findMany({ where: { saleId: sale.id }, include: { returns: { where: { saleReturn: { status: "COMPLETED" } }, select: { quantity: true } } } });
     const fullyReturned = refreshedLines.every((line) => line.returns.reduce((sum, item) => sum + Number(item.quantity), 0) >= Number(line.quantity));
     await transaction.sale.update({ where: { id: sale.id }, data: { status: fullyReturned ? "RETURNED" : "PARTIALLY_RETURNED" } });
-    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "SALE_RETURN_POSTED", entityType: "SaleReturn", entityId: returned.id, after: { reference: returned.reference, creditAmount: proportionalNet, refundAmount, refundStatus: refund ? "SUCCEEDED" : null, refundedBy: auth.userId } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "SALE_RETURN_POSTED", entityType: "SaleReturn", entityId: returned.id, after: { reference: returned.reference, creditAmount: proportionalNet, refundAmount, refundStatus: refund ? "PENDING" : null, recordedBy: auth.userId } });
     return { return: returned, refund };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   response.status(201).json({ data: result });
@@ -247,14 +350,29 @@ salesRouter.post("/:saleId/returns", requireStaffAccess("SENIOR_STAFF"), async (
 
 salesRouter.post("/returns/:returnId/approve-refund", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const refund = await prisma.refund.findFirst({ where: { saleReturnId: request.params.returnId as string, sale: { businessId: auth.businessId } } });
+  const refund = await prisma.refund.findFirst({ where: { saleReturnId: request.params.returnId as string, sale: { businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) } } });
   if (!refund) throw new ApiError(404, "Refund request not found.", "REFUND_NOT_FOUND");
-  if (refund.status !== "PENDING") throw new ApiError(409, "Only pending refund requests can be approved.", "INVALID_REFUND_TRANSITION");
+  if (refund.status !== "PENDING") throw new ApiError(409, "Only pending refunds can be confirmed.", "INVALID_REFUND_TRANSITION");
+  if (refund.method === "ONLINE") throw new ApiError(409, "Paystack refunds are confirmed by Paystack. Do not mark them as manually paid.", "PAYSTACK_REFUND_WEBHOOK_REQUIRED");
   const updated = await prisma.$transaction(async (transaction) => {
     const result = await transaction.refund.update({ where: { id: refund.id }, data: { status: "SUCCEEDED" } });
     const cashCode = refund.method === "CASH" ? "1000" : "1010";
     await postLedgerEntry(transaction, { businessId: auth.businessId, userId: auth.userId, sourceType: "REFUND", sourceId: refund.id, description: `Refund ${refund.reference}`, lines: [{ code: "2200", debit: refund.amount, description: "Clear approved refund payable" }, { code: cashCode, credit: refund.amount, description: "Refund paid to customer" }] });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "REFUND_APPROVED", entityType: "Refund", entityId: refund.id, before: { status: "PENDING" }, after: { status: "SUCCEEDED", amount: refund.amount.toString() }, reason: refund.reason });
+    return result;
+  });
+  response.json({ data: updated });
+});
+
+salesRouter.post("/returns/:returnId/fallback-refund", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
+  const parsed = z.object({ method: z.enum(["CASH", "BANK_TRANSFER", "OTHER"]) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Choose a manual refund method.", "VALIDATION_ERROR", parsed.error.issues);
+  const auth = response.locals.auth as AuthContext;
+  const refund = await prisma.refund.findFirst({ where: { saleReturnId: request.params.returnId as string, method: "ONLINE", status: "FAILED", sale: { businessId: auth.businessId, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) } } });
+  if (!refund) throw new ApiError(404, "Failed Paystack refund not found.", "REFUND_NOT_FOUND");
+  const updated = await prisma.$transaction(async (transaction) => {
+    const result = await transaction.refund.update({ where: { id: refund.id }, data: { method: parsed.data.method, status: "PENDING" } });
+    await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "REFUND_SWITCHED_TO_MANUAL", entityType: "Refund", entityId: refund.id, before: { method: "ONLINE", status: "FAILED" }, after: { method: parsed.data.method, status: "PENDING" } });
     return result;
   });
   response.json({ data: updated });

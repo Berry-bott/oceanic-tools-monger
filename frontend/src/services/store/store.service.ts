@@ -291,3 +291,18 @@ export async function trackStoreOrder(input: { orderNumber: string; email: strin
   }
   return json.data;
 }
+
+export async function trackStoreOrderForCustomer(orderNumber: string): Promise<StoreOrderDetails> {
+  const res = await fetch(`${API_BASE_URL}/store/orders/track-authenticated`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    body: JSON.stringify({ orderNumber }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error?.message || "We could not find an order matching your account and order number.");
+  }
+  return json.data;
+}

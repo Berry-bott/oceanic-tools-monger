@@ -8,7 +8,11 @@ import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import {
   createSaleReturn,
+  getCustomerReturnRequests,
   lookupSaleForReturn,
+  resolveCustomerReturnRequest,
+  approveSaleRefund,
+  switchFailedRefundToManual,
   salesKeys,
 } from "@/services/sales/sales.service";
 
@@ -38,8 +42,21 @@ type ReturnableSale = {
 type ReturnResult = {
   data: {
     return: { id: string; reference: string; total: number | string };
-    refund: { reference: string; amount: number | string; status: string } | null;
+    refund: { id: string; reference: string; amount: number | string; status: string } | null;
   };
+};
+
+type CustomerReturnRequestRow = {
+  id: string;
+  reference: string;
+  reason: string;
+  total: number | string;
+  status: string;
+  createdAt: string;
+  customer?: { name: string; email: string | null; phone: string | null } | null;
+  sale: { id: string; number: string; total: number | string; payments: { payment: { provider: string | null; method: string; status: string } }[] };
+  lines: { quantity: number | string; saleLine: { productName: string; sku: string } }[];
+  refunds: { reference: string; amount: number | string; method: string; status: string }[];
 };
 
 const money = (amount: number) =>
@@ -68,14 +85,54 @@ export default function SalesReturnsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [customerRequests, setCustomerRequests] = useState<CustomerReturnRequestRow[]>([]);
+  const [requestMethod, setRequestMethod] = useState<Record<string, "BANK_TRANSFER" | "CASH" | "OTHER" | "PAYSTACK">>({});
+  const [requestAction, setRequestAction] = useState<string | null>(null);
+
+  async function refreshCustomerRequests() {
+    const result = await getCustomerReturnRequests<CustomerReturnRequestRow>();
+    setCustomerRequests(result.data);
+  }
 
   useEffect(() => {
+    void refreshCustomerRequests().catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Return requests could not be loaded."));
     const initialReference = new URLSearchParams(window.location.search).get("reference");
     if (initialReference) {
       setReference(initialReference);
       void findSale(initialReference);
     }
   }, []);
+
+  async function resolveRequest(id: string, decision: "APPROVE" | "REJECT") {
+    setRequestAction(id);
+    setError("");
+    setMessage("");
+    try {
+      const result = await resolveCustomerReturnRequest(id, { decision, method: requestMethod[id] || "BANK_TRANSFER" });
+      setMessage(decision === "REJECT" ? "Return request declined." : result.data.refundAmount ? `Return approved. Refund status: ${result.data.refundStatus?.toLowerCase() || "pending"}.` : "Return approved. No refund is due for this order.");
+      await refreshCustomerRequests();
+      await Promise.all([queryClient.invalidateQueries({ queryKey: salesKeys.all }), invalidateAdminSummaries(queryClient)]);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not update the return request.");
+    } finally {
+      setRequestAction(null);
+    }
+  }
+
+  async function confirmManualRefund(id: string) {
+    setRequestAction(id);
+    setError("");
+    setMessage("");
+    try {
+      await approveSaleRefund(id);
+      setMessage("Refund marked as sent and recorded.");
+      await refreshCustomerRequests();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not confirm the refund.");
+    } finally {
+      setRequestAction(null);
+    }
+  }
 
   async function findSale(value: string) {
     const cleaned = value.trim();
@@ -124,7 +181,7 @@ export default function SalesReturnsPage() {
       const refund = result.data.refund;
       setMessage(
         refund
-          ? `Return ${result.data.return.reference} recorded. Refund ${money(Number(refund.amount))} issued by ${method.toLowerCase().replaceAll("_", " ")}. Refund reference: ${refund.reference}.`
+          ? `Return ${result.data.return.reference} recorded. Refund ${money(Number(refund.amount))} is pending. Send it by ${method.toLowerCase().replaceAll("_", " ")} and confirm it in Customer return requests. Reference: ${refund.reference}.`
           : `Return ${result.data.return.reference} recorded. No money was paid on the original sale, so the return was added to the customer's balance.`,
       );
       setSelected({});
@@ -132,6 +189,7 @@ export default function SalesReturnsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: salesKeys.all }),
         invalidateAdminSummaries(queryClient),
+        refreshCustomerRequests(),
       ]);
       const refreshed = await lookupSaleForReturn<ReturnableSale>(sale.number);
       setSale(refreshed.data);
@@ -175,6 +233,33 @@ export default function SalesReturnsPage() {
 
       {error && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {message && <p role="status" className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{message}</p>}
+
+      {customerRequests.length > 0 && <section className="mb-6 rounded-xl border border-line bg-white p-4 sm:p-5">
+        <h2 className="m-0 text-lg font-semibold text-ink">Customer return requests</h2>
+        <p className="mb-4 mt-1 text-sm text-muted">Review customer requests. Paystack refunds are initiated through Paystack; bank and cash refunds must be sent before you confirm them here.</p>
+        <div className="space-y-3">
+          {customerRequests.map((item) => {
+            const pendingRefund = item.refunds.find((refund) => refund.status === "PENDING" || refund.status === "FAILED");
+            const paystackAvailable = item.sale.payments.some((entry) => entry.payment.provider === "PAYSTACK" && entry.payment.status === "SUCCEEDED");
+            return <article key={item.id} className="rounded-xl border border-line bg-[#fafbfa] p-4">
+              <div className="flex flex-wrap justify-between gap-3">
+                <div><strong className="text-sm text-ink">{item.sale.number} · {item.reference}</strong><p className="m-0 mt-1 text-xs text-muted">{item.customer?.name || "Customer"} · {item.customer?.email || "No email"}</p></div>
+              <span className="h-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-ink">{pendingRefund ? `Refund ${pendingRefund.status.toLowerCase()}` : item.status.toLowerCase()}</span>
+              </div>
+              <p className="mb-2 mt-3 text-sm text-ink">{item.reason} · Requested {dateTime(item.createdAt)}</p>
+              <ul className="m-0 list-inside list-disc space-y-1 text-xs text-muted">{item.lines.map((line, index) => <li key={`${line.saleLine.sku}-${index}`}>{line.saleLine.productName} ({line.saleLine.sku}) · Qty {line.quantity}</li>)}</ul>
+              <p className="mb-0 mt-2 text-xs font-semibold text-ink">Return value: {money(Number(item.total))}{pendingRefund ? ` · Refund ${money(Number(pendingRefund.amount))} (${pendingRefund.reference})` : ""}</p>
+              {item.status === "REQUESTED" ? <div className="mt-4 flex flex-wrap items-center gap-2">
+                <select value={requestMethod[item.id] || "BANK_TRANSFER"} onChange={(event) => setRequestMethod((current) => ({ ...current, [item.id]: event.target.value as "BANK_TRANSFER" | "CASH" | "OTHER" | "PAYSTACK" }))} className="h-9 rounded-lg border border-line bg-white px-2 text-xs">
+                  <option value="BANK_TRANSFER">Bank transfer (confirm after sending)</option><option value="CASH">Cash (confirm after paying)</option><option value="OTHER">Other manual method</option>{paystackAvailable && <option value="PAYSTACK">Refund to original Paystack payment</option>}
+                </select>
+                <button type="button" disabled={requestAction === item.id} onClick={() => void resolveRequest(item.id, "APPROVE")} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Approve request</button>
+                <button type="button" disabled={requestAction === item.id} onClick={() => void resolveRequest(item.id, "REJECT")} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink disabled:opacity-50">Decline</button>
+              </div> : pendingRefund?.status === "FAILED" ? <div className="mt-4 flex flex-wrap items-center gap-2"><p className="m-0 text-xs text-red-700">Paystack could not complete this refund. Send it manually, then confirm below.</p><select value={requestMethod[item.id] || "BANK_TRANSFER"} onChange={(event) => setRequestMethod((current) => ({ ...current, [item.id]: event.target.value as "BANK_TRANSFER" | "CASH" | "OTHER" }))} className="h-9 rounded-lg border border-line bg-white px-2 text-xs"><option value="BANK_TRANSFER">Bank transfer</option><option value="CASH">Cash</option><option value="OTHER">Other</option></select><button type="button" disabled={requestAction === item.id} onClick={async () => { setRequestAction(item.id); try { await switchFailedRefundToManual(item.id, requestMethod[item.id] || "BANK_TRANSFER"); await refreshCustomerRequests(); setMessage("Refund moved to manual payment. Send the money before confirming it."); } catch (err) { setError(err instanceof Error ? err.message : "Could not switch refund to manual payment."); } finally { setRequestAction(null); } }} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink disabled:opacity-50">Switch to manual refund</button></div> : pendingRefund && pendingRefund.method !== "ONLINE" ? <button type="button" disabled={requestAction === item.id} onClick={() => void confirmManualRefund(item.id)} className="mt-4 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirm refund sent</button> : pendingRefund ? <p className="mb-0 mt-3 text-xs text-amber-800">Paystack is processing this refund. This will update when Paystack confirms it.</p> : null}
+            </article>;
+          })}
+        </div>
+      </section>}
 
       {sale && (
         <>

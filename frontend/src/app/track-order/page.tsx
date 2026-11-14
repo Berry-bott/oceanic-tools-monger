@@ -5,7 +5,8 @@ import { StoreHeader } from "@/components/storefront/store-header";
 import { StoreFooter } from "@/components/storefront/store-footer";
 import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 import { StoreCartDrawer } from "@/components/storefront/store-cart-drawer";
-import { trackStoreOrder, type StoreOrderDetails } from "@/services/store/store.service";
+import { useCustomerAuth } from "@/stores/customer-auth.store";
+import { trackStoreOrder, trackStoreOrderForCustomer, type StoreOrderDetails } from "@/services/store/store.service";
 
 const label = (value: string) => value.toLowerCase().replaceAll("_", " ");
 const formatDate = (value: string) =>
@@ -18,6 +19,7 @@ const formatMoney = (value: number | string, currency: string) =>
   }).format(Number(value));
 
 export default function TrackOrderPage() {
+  const { isAuthenticated } = useCustomerAuth();
   const [orderNumber, setOrderNumber] = useState("");
   const [email, setEmail] = useState("");
   const [order, setOrder] = useState<StoreOrderDetails | null>(null);
@@ -30,7 +32,9 @@ export default function TrackOrderPage() {
     setOrder(null);
     setIsLoading(true);
     try {
-      setOrder(await trackStoreOrder({ orderNumber: orderNumber.trim(), email: email.trim() }));
+      setOrder(isAuthenticated
+        ? await trackStoreOrderForCustomer(orderNumber.trim())
+        : await trackStoreOrder({ orderNumber: orderNumber.trim(), email: email.trim() }));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The order could not be found.");
     } finally {
@@ -52,14 +56,16 @@ export default function TrackOrderPage() {
               Track Your Order
             </h1>
             <p className="mt-2 text-sm text-charcoal-light">
-              Look up your order with the order number and the email used at checkout.
+              {isAuthenticated
+                ? "Enter your order number to see the latest status and details."
+                : "Look up your order with the order number and the email used at checkout."}
             </p>
           </div>
         </div>
 
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-6">
           <div className="bg-white rounded-2xl border border-peach-light p-4 sm:p-6 shadow-xs">
-            <form onSubmit={(event) => void handleSubmit(event)} className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={(event) => void handleSubmit(event)} className={`grid gap-4 ${isAuthenticated ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
               <label className="grid gap-1.5 text-xs font-medium text-charcoal">
                 Order number
                 <input
@@ -71,7 +77,7 @@ export default function TrackOrderPage() {
                   className="w-full px-4 py-3 border border-peach-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-peach"
                 />
               </label>
-              <label className="grid gap-1.5 text-xs font-medium text-charcoal">
+              {!isAuthenticated && <label className="grid gap-1.5 text-xs font-medium text-charcoal">
                 Checkout email
                 <input
                   required
@@ -82,11 +88,11 @@ export default function TrackOrderPage() {
                   placeholder="you@example.com"
                   className="w-full px-4 py-3 border border-peach-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-peach"
                 />
-              </label>
+              </label>}
               <button
                 type="submit"
                 disabled={isLoading}
-                className="sm:col-span-2 px-6 py-3 bg-peach-dark text-white rounded-xl font-semibold text-sm hover:bg-peach-deep transition-colors disabled:opacity-60"
+                className={`${isAuthenticated ? "" : "sm:col-span-2"} px-6 py-3 bg-peach-dark text-white rounded-xl font-semibold text-sm hover:bg-peach-deep transition-colors disabled:opacity-60`}
               >
                 {isLoading ? "Looking up order..." : "Find order"}
               </button>

@@ -387,13 +387,85 @@ customerAccountRouter.get("/orders", async (_request, response) => {
   response.json({ data: orders });
 });
 
+const customerReturnRequestSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+  lines: z.array(z.object({ sku: z.string().trim().min(1).max(80), quantity: z.coerce.number().positive() })).min(1).max(50),
+});
+
+customerAccountRouter.get("/returns", async (_request, response) => {
+  const auth = response.locals.customerAuth as CustomerAuthContext;
+  const requests = await prisma.saleReturn.findMany({
+    where: { customerId: auth.customerId },
+    include: { sale: { select: { number: true } }, lines: { include: { saleLine: { select: { productName: true, sku: true } } } }, refunds: { select: { reference: true, amount: true, method: true, status: true, createdAt: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  response.set("Cache-Control", "no-store");
+  response.json({ data: requests });
+});
+
+customerAccountRouter.post("/orders/:orderNumber/return-requests", async (request, response) => {
+  const auth = response.locals.customerAuth as CustomerAuthContext;
+  const parsed = customerReturnRequestSchema.safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Choose the items and quantities and provide a return reason.", "VALIDATION_ERROR", parsed.error.issues);
+  const orderNumber = String(request.params.orderNumber).trim();
+  const order = await prisma.onlineOrder.findFirst({
+    where: { businessId: auth.businessId, number: orderNumber, OR: [{ customerId: auth.customerId }, { customerEmail: { equals: auth.email, mode: "insensitive" } }] },
+    select: { id: true, number: true, status: true },
+  });
+  if (!order) throw new ApiError(404, "We could not find that order in your account.", "ORDER_NOT_FOUND");
+  if (!["DELIVERED", "COLLECTED", "RETURN_REQUESTED"].includes(order.status)) {
+    throw new ApiError(409, "Return requests are available after an order has been delivered or collected.", "ORDER_NOT_RETURNABLE");
+  }
+  const sale = await prisma.sale.findFirst({
+    where: { businessId: auth.businessId, number: order.number, channel: "ONLINE", status: { not: "CANCELLED" } },
+    include: {
+      lines: {
+        include: {
+          returns: { include: { saleReturn: { select: { status: true } } } },
+        },
+      },
+      returns: { include: { lines: true } },
+    },
+  });
+  if (!sale) throw new ApiError(409, "This order is not ready for return requests yet. Please try again later.", "ORDER_NOT_INVOICED");
+  if (new Set(parsed.data.lines.map((line) => line.sku)).size !== parsed.data.lines.length) throw new ApiError(400, "Each product can appear only once in a return request.", "DUPLICATE_RETURN_LINE");
+  const selectedLines: Array<{ saleLineId: string; productId: string; quantity: number; refundAmount: number }> = [];
+  let requestedValue = 0;
+  for (const requested of parsed.data.lines) {
+    const line = sale.lines.find((candidate) => candidate.sku.toLowerCase() === requested.sku.toLowerCase());
+    if (!line) throw new ApiError(400, "A selected product does not belong to this order.", "INVALID_RETURN_LINE");
+    const alreadyRequested = sale.returns.filter((entry) => entry.status !== "REJECTED").flatMap((entry) => entry.lines).filter((entry) => entry.saleLineId === line.id).reduce((sum, entry) => sum + Number(entry.quantity), 0);
+    const remaining = Number(line.quantity) - alreadyRequested;
+    if (requested.quantity > remaining) throw new ApiError(409, `Return quantity exceeds the remaining quantity for ${line.productName}.`, "RETURN_QUANTITY_EXCEEDED");
+    const refundAmount = Number(line.lineTotal) * requested.quantity / Number(line.quantity);
+    requestedValue += refundAmount;
+    selectedLines.push({ saleLineId: line.id, productId: line.productId, quantity: requested.quantity, refundAmount });
+  }
+  const total = sale.subtotal.isZero() ? 0 : Math.round(requestedValue * Number(sale.total) / Number(sale.subtotal) * 100) / 100;
+  const created = await prisma.saleReturn.create({
+    data: {
+      saleId: sale.id, customerId: auth.customerId, status: "REQUESTED", reference: `CR-${randomBytes(8).toString("hex").toUpperCase()}`,
+      reason: parsed.data.reason, total,
+      lines: { create: selectedLines.map((line) => ({ ...line, restock: false })) },
+    },
+    include: { lines: { include: { saleLine: { select: { productName: true, sku: true } } } } },
+  });
+  response.status(201).json({ data: created });
+});
+
 customerAccountRouter.get("/statement", async (_request, response) => {
   const auth = response.locals.customerAuth as CustomerAuthContext;
-  const sales = await prisma.sale.findMany({ where: { businessId: auth.businessId, customerId: auth.customerId, status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true, method: true, paidAt: true, reference: true } } } }, returns: { select: { total: true, reference: true, createdAt: true } } }, orderBy: { createdAt: "asc" }, take: 500 });
+  const onlineOrders = await prisma.onlineOrder.findMany({
+    where: { businessId: auth.businessId, OR: [{ customerId: auth.customerId }, { customerEmail: { equals: auth.email, mode: "insensitive" } }] },
+    select: { number: true },
+  });
+  const sales = await prisma.sale.findMany({ where: { businessId: auth.businessId, status: { not: "CANCELLED" }, OR: [{ customerId: auth.customerId }, { number: { in: onlineOrders.map((order) => order.number) } }] }, include: { payments: { include: { payment: { select: { status: true, method: true, paidAt: true, reference: true } } } }, returns: { where: { status: "COMPLETED" }, select: { total: true, reference: true, createdAt: true, refunds: { where: { status: "SUCCEEDED" }, select: { amount: true, reference: true, method: true, createdAt: true } } } } }, orderBy: { createdAt: "asc" }, take: 500 });
   const entries = sales.map((sale) => {
     const paid = sale.payments.filter((allocation) => allocation.payment.status === "SUCCEEDED").reduce((sum, allocation) => sum + Number(allocation.amount), 0);
     const credits = sale.returns.reduce((sum, entry) => sum + Number(entry.total), 0);
-    return { saleId: sale.id, number: sale.number, date: sale.createdAt, dueAt: sale.dueAt, total: sale.total, paid, credits, balance: Math.max(0, Number(sale.total) - paid - credits), payments: sale.payments.filter((allocation) => allocation.payment.status === "SUCCEEDED").map((allocation) => ({ amount: allocation.amount, method: allocation.payment.method, paidAt: allocation.payment.paidAt, reference: allocation.payment.reference })), returns: sale.returns };
+    const refunds = sale.returns.flatMap((entry) => entry.refunds);
+    const refunded = refunds.reduce((sum, refund) => sum + Number(refund.amount), 0);
+    return { saleId: sale.id, number: sale.number, date: sale.createdAt, dueAt: sale.dueAt, total: sale.total, paid, refunded, credits, balance: Math.max(0, Number(sale.total) - paid - credits), payments: sale.payments.filter((allocation) => allocation.payment.status === "SUCCEEDED").map((allocation) => ({ amount: allocation.amount, method: allocation.payment.method, paidAt: allocation.payment.paidAt, reference: allocation.payment.reference })), returns: sale.returns.map(({ refunds: returnRefunds, ...entry }) => ({ ...entry, refunds: returnRefunds })) };
   });
   response.json({ data: { entries, outstanding: entries.reduce((sum, entry) => sum + entry.balance, 0) } });
 });

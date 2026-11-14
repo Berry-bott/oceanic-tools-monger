@@ -52,3 +52,21 @@ export function approveSaleRefund(returnId: string) {
     method: "POST",
   });
 }
+
+export function getCustomerReturnRequests<ReturnRequest>() {
+  return apiRequest<{ data: ReturnRequest[] }>("/sales/return-requests");
+}
+
+export function resolveCustomerReturnRequest(returnId: string, input: { decision: "APPROVE" | "REJECT"; method?: "BANK_TRANSFER" | "CASH" | "OTHER" | "PAYSTACK"; note?: string }) {
+  return apiRequest<{ data: { status: string; refundAmount?: number; refundStatus?: string } }>(`/sales/returns/${encodeURIComponent(returnId)}/resolve-request`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function switchFailedRefundToManual(returnId: string, method: "BANK_TRANSFER" | "CASH" | "OTHER") {
+  return apiRequest(`/sales/returns/${encodeURIComponent(returnId)}/fallback-refund`, {
+    method: "POST",
+    body: JSON.stringify({ method }),
+  });
+}

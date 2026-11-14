@@ -12,6 +12,7 @@ import { writeAudit } from "../lib/audit.js";
 import { postLedgerEntry, type LedgerLine } from "../lib/accounting.js";
 import { consumeReservedLots, releaseReservedLots, reserveFefoLots } from "../lib/stock-lots.js";
 import { requireAuth, requireRoles, requireStaffAccess, type AuthContext } from "../middleware/auth.js";
+import { requireCustomerAuth, type CustomerAuthContext } from "../middleware/customer-auth.js";
 import { sendEmail } from "../lib/mailer.js";
 
 export const storeRouter = Router();
@@ -414,6 +415,26 @@ storeRouter.post("/orders/track", async (request, response) => {
     select: { id: true },
   });
   if (!order) throw new ApiError(404, "We could not find an order matching those details.", "ORDER_NOT_FOUND");
+  response.set("Cache-Control", "no-store");
+  response.json({ data: trackedOrderData(await getPublicOnlineOrderDetails(order.id)) });
+});
+
+storeRouter.post("/orders/track-authenticated", requireCustomerAuth, async (request, response) => {
+  const parsed = z.object({ orderNumber: z.string().trim().min(8).max(40) }).safeParse(request.body);
+  if (!parsed.success) throw new ApiError(400, "Enter a valid order number.", "VALIDATION_ERROR", parsed.error.issues);
+  const auth = response.locals.customerAuth as CustomerAuthContext;
+  const order = await prisma.onlineOrder.findFirst({
+    where: {
+      businessId: auth.businessId,
+      number: parsed.data.orderNumber,
+      OR: [
+        { customerId: auth.customerId },
+        { customerEmail: { equals: auth.email, mode: "insensitive" } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!order) throw new ApiError(404, "We could not find an order matching your account and order number.", "ORDER_NOT_FOUND");
   response.set("Cache-Control", "no-store");
   response.json({ data: trackedOrderData(await getPublicOnlineOrderDetails(order.id)) });
 });
@@ -957,7 +978,7 @@ async function completeOnlineOrderPayment(
         if (!new Prisma.Decimal(reservedQuantity).equals(line.quantity)) throw new ApiError(409, "Order reservations exceed the ordered quantity.", "RESERVATION_INVALID");
         lotAllocationsByProduct.set(line.productId, lotsForProduct);
       }
-      const sale = await transaction.sale.create({ data: { businessId: liveOrder.businessId, branchId: liveOrder.branchId, actorType: "CUSTOMER_CHECKOUT", number: liveOrder.number, channel: "ONLINE", subtotal: liveOrder.subtotal, discount: liveOrder.discount, tax: liveOrder.tax, deliveryFee: liveOrder.deliveryFee, total: liveOrder.total, lines: { create: liveOrder.lines.map((line) => ({ productId: line.productId, productName: line.productName, sku: line.sku, quantity: line.quantity, unitPrice: line.unitPrice, unitCost: line.unitCost, lineTotal: line.lineTotal })) }, }, include: { lines: true } });
+      const sale = await transaction.sale.create({ data: { businessId: liveOrder.businessId, branchId: liveOrder.branchId, customerId: liveOrder.customerId, actorType: "CUSTOMER_CHECKOUT", number: liveOrder.number, channel: "ONLINE", subtotal: liveOrder.subtotal, discount: liveOrder.discount, tax: liveOrder.tax, deliveryFee: liveOrder.deliveryFee, total: liveOrder.total, lines: { create: liveOrder.lines.map((line) => ({ productId: line.productId, productName: line.productName, sku: line.sku, quantity: line.quantity, unitPrice: line.unitPrice, unitCost: line.unitCost, lineTotal: line.lineTotal })) }, }, include: { lines: true } });
       let cogs = 0;
       for (const line of liveOrder.lines) {
         const saleLine = sale.lines.find((item) => item.productId === line.productId)!;
@@ -1054,10 +1075,10 @@ paystackWebhookRouter.post("/paystack", async (request, response) => {
   const providedBuffer = Buffer.from(signature, "hex");
   const expectedBuffer = Buffer.from(expected, "hex");
   if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) throw new ApiError(401, "Invalid payment webhook signature.", "INVALID_WEBHOOK_SIGNATURE");
-  let event: { event?: string; data?: { id?: number; reference?: string; status?: string; amount?: number; currency?: string; paid_at?: string } };
+  let event: { event?: string; data?: { id?: number; reference?: string; refund_reference?: string; transaction_reference?: string; status?: string; amount?: number | string; currency?: string; paid_at?: string } };
   try { event = JSON.parse(rawBody.toString("utf8")); } catch { throw new ApiError(400, "Malformed webhook payload.", "INVALID_WEBHOOK_BODY"); }
   const provider = "PAYSTACK";
-  const eventId = `${provider}:${event.data?.id ?? randomUUID()}`;
+  const eventId = `${provider}:${event.event ?? "unknown"}:${event.data?.id ?? event.data?.refund_reference ?? event.data?.reference ?? randomUUID()}:${event.data?.status ?? "unknown"}`;
   const ref = event.data?.reference;
   let payment = ref ? await prisma.payment.findFirst({ where: { provider, providerReference: ref }, include: { onlineOrder: true } }) : null;
   try {
@@ -1069,6 +1090,35 @@ paystackWebhookRouter.post("/paystack", async (request, response) => {
   if (event.event === "charge.success" && payment && ref) {
     const verified = await paystackRequest<VerifiedTransaction>(`/transaction/verify/${encodeURIComponent(ref)}`, { method: "GET" });
     await settleOnlinePayment(payment.id, verified);
+  }
+  if (event.event?.startsWith("refund.")) {
+    let refund = event.data?.refund_reference ? await prisma.refund.findUnique({ where: { reference: event.data.refund_reference } }) : null;
+    // Paystack's initial refund.pending webhook may have a null refund_reference.
+    // In that case correlate the event to a single pending refund by the original
+    // transaction reference and amount.
+    if (!refund && event.data?.transaction_reference && event.data.amount !== undefined) {
+      const amount = Number(event.data.amount) / 100;
+      const candidates = await prisma.refund.findMany({
+        where: {
+          method: "ONLINE", status: "PENDING", amount,
+          sale: { payments: { some: { payment: { provider: "PAYSTACK", providerReference: event.data.transaction_reference } } } },
+        },
+        take: 2,
+      });
+      if (candidates.length === 1) refund = candidates[0];
+    }
+    if (refund && refund.method === "ONLINE") {
+      const refundStatus = event.event === "refund.processed" ? "SUCCEEDED" : event.event === "refund.failed" ? "FAILED" : "PENDING";
+      if (refund.status !== refundStatus) {
+        await prisma.$transaction(async (transaction) => {
+          await transaction.refund.update({ where: { id: refund.id }, data: { status: refundStatus } });
+          if (refundStatus === "SUCCEEDED") {
+            await postLedgerEntry(transaction, { businessId: (await transaction.sale.findUniqueOrThrow({ where: { id: refund.saleId }, select: { businessId: true } })).businessId, userId: refund.userId, sourceType: "REFUND", sourceId: refund.id, description: `Paystack refund ${refund.reference} completed`, lines: [{ code: "2200", debit: refund.amount, description: "Clear confirmed customer refund payable" }, { code: "1010", credit: refund.amount, description: "Refund paid through Paystack" }] });
+            await writeAudit(transaction, { businessId: (await transaction.sale.findUniqueOrThrow({ where: { id: refund.saleId }, select: { businessId: true } })).businessId, userId: refund.userId, action: "PAYSTACK_REFUND_CONFIRMED", entityType: "Refund", entityId: refund.id, after: { status: "SUCCEEDED", amount: refund.amount.toString(), providerReference: event.data?.refund_reference } });
+          }
+        });
+      }
+    }
   }
   payment = ref ? await prisma.payment.findFirst({ where: { provider, providerReference: ref }, include: { onlineOrder: true } }) : null;
   response.status(200).json({ received: true, processed: Boolean(payment) });

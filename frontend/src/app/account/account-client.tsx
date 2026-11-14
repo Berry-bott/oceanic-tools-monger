@@ -13,6 +13,7 @@ import { MobileBottomNav } from "@/components/storefront/mobile-bottom-nav";
 import {
   customerAccountService,
   type CustomerOrder,
+  type CustomerReturnRequest,
   type CustomerStatement,
 } from "@/services/customer/customer-account.service";
 
@@ -84,6 +85,12 @@ export function AccountClient() {
 
   // Orders and Statement state
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
+  const [returnRequests, setReturnRequests] = useState<CustomerReturnRequest[]>([]);
+  const [returnOrderNumber, setReturnOrderNumber] = useState<string | null>(null);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
+  const [returnError, setReturnError] = useState("");
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [statement, setStatement] = useState<CustomerStatement | null>(null);
   const [statementLoading, setStatementLoading] = useState(false);
@@ -118,9 +125,8 @@ export function AccountClient() {
     if (isAuthenticated) {
       if (activeTab === "orders") {
         setOrdersLoading(true);
-        customerAccountService
-          .getOrders()
-          .then((data) => setOrders(data))
+        Promise.all([customerAccountService.getOrders(), customerAccountService.getReturns()])
+          .then(([data, requests]) => { setOrders(data); setReturnRequests(requests); })
           .catch((err) => console.warn("Failed loading orders:", err))
           .finally(() => setOrdersLoading(false));
       } else if (activeTab === "statement") {
@@ -259,6 +265,27 @@ export function AccountClient() {
     setReorderedLineId(line.id);
     setDrawerOpen(true);
     setTimeout(() => setReorderedLineId(null), 2500);
+  };
+
+  const submitReturnRequest = async (event: React.FormEvent<HTMLFormElement>, order: CustomerOrder) => {
+    event.preventDefault();
+    const lines = order.lines.map((line) => ({ sku: line.sku, quantity: returnQuantities[line.sku] || 0 })).filter((line) => line.quantity > 0);
+    if (!lines.length) { setReturnError("Choose at least one item and quantity to return."); return; }
+    setReturnSubmitting(true);
+    setReturnError("");
+    try {
+      await customerAccountService.requestReturn(order.number, { reason: returnReason, lines });
+      setReturnOrderNumber(null);
+      setReturnReason("");
+      setReturnQuantities({});
+      setReturnRequests(await customerAccountService.getReturns());
+      setActionSuccess("Return request submitted. We’ll update you when the store reviews it.");
+      window.setTimeout(() => setActionSuccess(null), 5000);
+    } catch (error) {
+      setReturnError(error instanceof Error ? error.message : "Could not submit your return request.");
+    } finally {
+      setReturnSubmitting(false);
+    }
   };
 
   const formatCurrency = (amount: number | string) => {
@@ -423,10 +450,11 @@ export function AccountClient() {
       return acc + (val || 0);
     }, 0) || totalSpent;
 
-    const statementTotalPaid = statement?.entries?.reduce((acc, e) => {
+    const statementTotalPaid = statement?.entries ? statement.entries.reduce((acc, e) => {
       const val = typeof e.paid === "string" ? parseFloat(e.paid as any) : e.paid;
-      return acc + (val || 0);
-    }, 0) || totalSpent;
+      const refunded = typeof e.refunded === "string" ? parseFloat(e.refunded as any) : e.refunded;
+      return acc + (val || 0) - (refunded || 0);
+    }, 0) : totalSpent;
 
     const initial = customer.name?.charAt(0).toUpperCase() || customer.firstName?.charAt(0).toUpperCase() || "C";
 
@@ -869,6 +897,44 @@ export function AccountClient() {
                               </div>
                             );
                           })}
+                        </div>
+
+                        {/* Customer initiated return request and refund status */}
+                        <div className="border-t border-slate-100 px-5 py-4 sm:px-6 space-y-3">
+                          {returnRequests.filter((item) => item.sale.number === order.number).map((item) => (
+                            <div key={item.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-bold text-charcoal">Return {item.reference}</span>
+                                <span className="rounded-full bg-white px-2.5 py-1 font-bold text-charcoal">{item.status === "REQUESTED" ? "Awaiting review" : item.status === "REJECTED" ? "Declined" : item.refunds.some((refund) => refund.status === "SUCCEEDED") ? "Refund completed" : item.refunds.some((refund) => refund.status === "PENDING") ? "Refund processing" : "Return completed"}</span>
+                              </div>
+                              <p className="mt-1 text-charcoal-light">{item.reason} · {formatCurrency(item.total)}</p>
+                              {item.resolutionNote && <p className="mt-1 text-charcoal-light">Store update: {item.resolutionNote}</p>}
+                              {item.refunds.map((refund) => <p key={refund.reference} className="mt-1 font-medium text-charcoal-light">Refund {refund.reference}: {refund.status.toLowerCase()} · {formatCurrency(refund.amount)}</p>)}
+                            </div>
+                          ))}
+                          {["DELIVERED", "COLLECTED", "RETURN_REQUESTED"].includes(order.status) && !returnRequests.some((item) => item.sale.number === order.number && item.status === "REQUESTED") && (
+                            returnOrderNumber === order.number ? (
+                              <form onSubmit={(event) => void submitReturnRequest(event, order)} className="rounded-2xl border border-peach-light bg-peach-xlight/40 p-4 space-y-3">
+                                <h4 className="text-sm font-bold text-charcoal">Request a return</h4>
+                                <div className="space-y-2">
+                                  {order.lines.map((line) => (
+                                    <label key={line.id} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
+                                      <span className="min-w-0 truncate font-medium text-charcoal">{line.productName} <span className="text-charcoal-light">(ordered {line.quantity})</span></span>
+                                      <input type="number" min="0" max={Number(line.quantity)} step="1" value={returnQuantities[line.sku] || ""} onChange={(event) => setReturnQuantities((current) => ({ ...current, [line.sku]: Number(event.target.value) }))} aria-label={`Return quantity for ${line.productName}`} className="w-20 rounded-md border border-peach-light px-2 py-1.5 text-sm" />
+                                    </label>
+                                  ))}
+                                </div>
+                                <textarea required minLength={3} maxLength={500} value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="Tell us why you are requesting a return" className="w-full rounded-lg border border-peach-light bg-white p-3 text-sm" />
+                                {returnError && <p role="alert" className="text-xs font-medium text-red-700">{returnError}</p>}
+                                <div className="flex gap-2">
+                                  <button type="submit" disabled={returnSubmitting} className="rounded-lg bg-peach-dark px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{returnSubmitting ? "Submitting…" : "Submit return request"}</button>
+                                  <button type="button" onClick={() => { setReturnOrderNumber(null); setReturnError(""); }} className="rounded-lg px-4 py-2 text-xs font-semibold text-charcoal hover:bg-white">Cancel</button>
+                                </div>
+                              </form>
+                            ) : (
+                              <button type="button" onClick={() => { setReturnOrderNumber(order.number); setReturnReason(""); setReturnQuantities({}); setReturnError(""); }} className="rounded-lg border border-peach-light px-3 py-2 text-xs font-bold text-peach-dark hover:bg-peach-xlight">Request a return</button>
+                            )
+                          )}
                         </div>
 
                         {/* Order Card Footer */}
