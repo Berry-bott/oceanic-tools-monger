@@ -8,5 +8,7 @@ export function useOnlineOrders<Order>(branchId: string, enabled = true) {
     queryKey: orderKeys.list(branchId),
     queryFn: () => getOnlineOrders<Order>(branchId),
     enabled,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 }

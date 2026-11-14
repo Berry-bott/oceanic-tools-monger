@@ -258,6 +258,17 @@ function trackedOrderData(order: Awaited<ReturnType<typeof getPublicOnlineOrderD
 }
 
 onlineOrdersRouter.use(requireAuth, requireStaffAccess("SENIOR_STAFF"));
+onlineOrdersRouter.get("/return-count", requireRoles("OWNER", "STAFF"), async (_request, response) => {
+  const auth = response.locals.auth as AuthContext;
+  const count = await prisma.saleReturn.count({
+    where: {
+      status: "REQUESTED",
+      sale: { businessId: auth.businessId, channel: "ONLINE", ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) },
+    },
+  });
+  response.json({ data: { count } });
+});
+
 onlineOrdersRouter.get("/", requireRoles("OWNER", "STAFF"), async (request, response) => {
   const auth = response.locals.auth as AuthContext;
   const status = typeof request.query.status === "string" ? request.query.status : undefined;
@@ -279,7 +290,25 @@ onlineOrdersRouter.get("/", requireRoles("OWNER", "STAFF"), async (request, resp
     }),
     prisma.onlineOrder.groupBy({ by: ["status"], where, _count: { _all: true } }),
   ]);
-  response.json({ data, counts: Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count._all])) });
+  const onlineSales = data.length ? await prisma.sale.findMany({
+    where: { businessId: auth.businessId, channel: "ONLINE", number: { in: data.map((order) => order.number) } },
+    select: {
+      number: true,
+      returns: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true, reference: true, status: true, total: true, reason: true, createdAt: true, resolutionNote: true,
+          refunds: { select: { reference: true, amount: true, method: true, status: true } },
+        },
+      },
+    },
+  }) : [];
+  const returnsByOrder = new Map(onlineSales.map((sale) => [sale.number, sale.returns]));
+  const returnRequestCount = onlineSales.reduce((count, sale) => count + sale.returns.filter((item) => item.status === "REQUESTED").length, 0);
+  response.json({
+    data: data.map((order) => ({ ...order, returns: returnsByOrder.get(order.number) ?? [] })),
+    counts: { ...Object.fromEntries(statusCounts.map((entry) => [entry.status, entry._count._all])), RETURN_REQUESTED: returnRequestCount },
+  });
 });
 
 onlineOrdersRouter.post("/:orderId/receive-pickup-payment", requireRoles("OWNER", "STAFF"), async (request, response) => {

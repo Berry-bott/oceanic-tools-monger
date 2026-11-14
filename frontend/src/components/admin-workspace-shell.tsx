@@ -43,6 +43,14 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const currentUserQuery = useCurrentUser();
+  const onlineReturnBadgeQuery = useQuery({
+    queryKey: ["online-orders", "return-count"],
+    queryFn: () => apiRequest<{ data: { count: number } }>("/online-orders/return-count"),
+    enabled: currentUserQuery.data?.user.role === "OWNER" || (currentUserQuery.data?.user.role === "STAFF" && currentUserQuery.data.user.staffAccessRole === "SENIOR_STAFF"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const onlineReturnCount = onlineReturnBadgeQuery.data?.data.count ?? 0;
   const notificationsQuery = useQuery({
     queryKey: ["workspace-notifications"],
     queryFn: () => apiRequest<{ data: { id: string; title: string; message: string; createdAt: string; readAt: string | null }[]; unreadCount: number }>("/notifications"),
@@ -156,6 +164,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                           <AdminNavIcon name={item.icon} />
                         </span>
                         {item.label}
+                        {item.href === "/admin/orders" && onlineReturnCount > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[#d56f5c] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white" aria-label={`${onlineReturnCount} pending online return requests`} title={`${onlineReturnCount} pending online return requests`}>{onlineReturnCount > 99 ? "99+" : onlineReturnCount}</span>}
                         {item.href === "/admin/inventory" && stockAlertCount > 0 && <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-[#d56f5c] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white" aria-label={`${stockAlertCount} low or out of stock items`} title={`${stockAlertCount} low or out of stock items`}>{stockAlertCount > 99 ? "99+" : stockAlertCount}</span>}
                       </Link>
                     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { apiRequest } from "@/lib/api";
 import { AdminTableSkeleton } from "@/components/admin-loading-skeleton";
@@ -65,6 +66,7 @@ export default function AdminNotificationsPage() {
               <p className="mb-0 mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#536159]">{notice.message}</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="text-xs capitalize text-muted">{notice.type.toLowerCase().replaceAll("_", " ")}{notice.severity === "INFO" ? "" : ` · ${notice.severity.toLowerCase()}`}</span>
+                {notice.type === "ONLINE_RETURN" && <Link href="/admin/orders" className="text-xs font-medium text-brand underline">Open online orders</Link>}
                 {!notice.readAt && <button type="button" onClick={() => markRead.mutate(notice.id)} disabled={markRead.isPending} className="cursor-pointer text-xs font-medium text-brand hover:underline disabled:cursor-wait disabled:opacity-60">Mark as read</button>}
               </div>
             </div>

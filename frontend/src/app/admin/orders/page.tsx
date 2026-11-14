@@ -30,6 +30,16 @@ type Payment = {
   provider?: string | null;
   paidAt?: string | null;
 };
+type OrderReturn = {
+  id: string;
+  reference: string;
+  status: "REQUESTED" | "REJECTED" | "COMPLETED";
+  total: number | string;
+  reason: string;
+  createdAt: string;
+  resolutionNote?: string | null;
+  refunds: { reference: string; amount: number | string; method: string; status: string }[];
+};
 type OnlineOrder = {
   id: string;
   number: string;
@@ -51,6 +61,7 @@ type OnlineOrder = {
   expiresAt?: string | null;
   lines: OrderLine[];
   payments: Payment[];
+  returns: OrderReturn[];
 };
 type Transition =
   | "PROCESSING"
@@ -101,8 +112,6 @@ function nextTransition(
     return { status: "COLLECTED", label: "Mark picked up" };
   if (order.status === "DISPATCHED")
     return { status: "DELIVERED", label: "Mark delivered" };
-  if (["DELIVERED", "COLLECTED"].includes(order.status))
-    return { status: "RETURN_REQUESTED", label: "Report a return" };
   return undefined;
 }
 
@@ -144,7 +153,9 @@ export default function OnlineOrdersPage() {
     const needle = search.trim().toLowerCase();
     return orders.filter(
       (order) =>
-        (status === "ALL" || order.status === status) &&
+        (status === "ALL" || (status === "RETURN_REQUESTED"
+          ? order.returns.some((item) => item.status === "REQUESTED") || order.status === status
+          : order.status === status)) &&
         (!needle ||
           `${order.number} ${order.customerName} ${order.customerEmail} ${order.customerPhone ?? ""}`
             .toLowerCase()
@@ -377,6 +388,11 @@ export default function OnlineOrdersPage() {
                         <span className={statusPill(order.status)}>
                           {label(order.status)}
                         </span>
+                        {order.returns.map((item) => (
+                          <span key={item.id} className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${item.status === "REQUESTED" ? "bg-amber-100 text-amber-800" : item.status === "COMPLETED" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                            {item.status === "REQUESTED" ? "Online return requested" : item.status === "COMPLETED" ? "Online return approved" : "Online return declined"}
+                          </span>
+                        ))}
                         <span className="rounded bg-canvas px-2 py-1 text-sm capitalize text-muted">
                           {label(order.fulfillmentMethod)}
                         </span>
@@ -398,6 +414,14 @@ export default function OnlineOrdersPage() {
                         {order.lines.length} item
                         {order.lines.length === 1 ? "" : "s"}
                       </p>
+                      {order.returns.map((item) => (
+                        <div key={item.id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                          <span><strong>{item.status === "REQUESTED" ? "Customer return request" : `Return ${label(item.status)}`} · {item.reference}</strong> · {formatMoney(item.total, currency)} · {item.reason}</span>
+                          {item.refunds.map((refund) => <span key={refund.reference} className="font-medium">Refund {label(refund.status)} · {formatMoney(refund.amount, currency)}</span>)}
+                          {item.status === "REQUESTED" && <Link href={`/admin/sales/returns?reference=${encodeURIComponent(order.number)}`} className="font-semibold text-brand underline">Review request</Link>}
+                          {item.resolutionNote && <span>Store note: {item.resolutionNote}</span>}
+                        </div>
+                      ))}
                       <details className="mt-3 text-xs">
                         <summary className="w-fit cursor-pointer font-normal text-brand">
                           Order details

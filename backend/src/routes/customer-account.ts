@@ -452,13 +452,28 @@ customerAccountRouter.post("/orders/:orderNumber/return-requests", async (reques
     selectedLines.push({ saleLineId: line.id, productId: line.productId, quantity: requested.quantity, refundAmount });
   }
   const total = sale.subtotal.isZero() ? 0 : Math.round(requestedValue * Number(sale.total) / Number(sale.subtotal) * 100) / 100;
-  const created = await prisma.saleReturn.create({
-    data: {
-      saleId: sale.id, customerId: auth.customerId, status: "REQUESTED", reference: `CR-${randomBytes(8).toString("hex").toUpperCase()}`,
-      reason: parsed.data.reason, total,
-      lines: { create: selectedLines.map((line) => ({ ...line, restock: false })) },
-    },
-    include: { lines: { include: { saleLine: { select: { productName: true, sku: true } } } } },
+  const created = await prisma.$transaction(async (transaction) => {
+    const returnRequest = await transaction.saleReturn.create({
+      data: {
+        saleId: sale.id, customerId: auth.customerId, status: "REQUESTED", reference: `CR-${randomBytes(8).toString("hex").toUpperCase()}`,
+        reason: parsed.data.reason, total,
+        lines: { create: selectedLines.map((line) => ({ ...line, restock: false })) },
+      },
+      include: { lines: { include: { saleLine: { select: { productName: true, sku: true } } } } },
+    });
+    await transaction.notification.create({
+      data: {
+        businessId: auth.businessId,
+        type: "ONLINE_RETURN",
+        severity: "WARNING",
+        title: "Online return requested",
+        message: `${auth.name} requested a return for online order ${order.number} (${returnRequest.reference}), valued at ₦${total.toLocaleString("en-NG", { maximumFractionDigits: 2 })}. Review it in Website orders and Returns.`,
+        entityType: "SaleReturn",
+        entityId: returnRequest.id,
+        dedupeKey: `ONLINE-RETURN-REQUESTED:${returnRequest.id}`,
+      },
+    });
+    return returnRequest;
   });
   response.status(201).json({ data: created });
 });
