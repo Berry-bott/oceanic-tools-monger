@@ -67,11 +67,7 @@ export function CustomerProfileDropdown() {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1.5 rounded-2xl transition-all duration-150 border active:scale-[0.98] ${
-          isOpen
-            ? "bg-peach-xlight/80 border-peach-light text-peach-dark ring-2 ring-peach-light/30"
-            : "text-charcoal hover:text-peach-dark hover:bg-peach-xlight/60 border-slate-200/70 hover:border-peach-light/60 bg-white shadow-2xs"
-        }`}
+        className="flex items-center gap-2 rounded-full p-0 transition-transform duration-150 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-peach-light"
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-label="Customer profile menu"

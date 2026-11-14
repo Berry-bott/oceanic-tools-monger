@@ -116,6 +116,22 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+.announcement-marquee-track {
+  animation: announcement-scroll 26s linear infinite;
+}
+
+@keyframes announcement-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcement-marquee-track {
+    animation: none;
+  }
+}
+
 /* 3D Cube Viewer & Store Animations */
 .viewer-stage {
   perspective: 900px;

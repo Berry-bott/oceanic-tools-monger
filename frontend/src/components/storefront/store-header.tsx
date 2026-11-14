@@ -57,8 +57,11 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
   return (
     <>
       {/* Announcement Bar */}
-      <div className="bg-charcoal text-white text-center text-xs py-2 px-4 font-medium tracking-wide">
-        Free delivery on orders over ₦100,000 &nbsp;•&nbsp; Secure payment &nbsp;•&nbsp; Shop authentic industrial tools with Oceanic Tools Monger
+      <div className="overflow-hidden bg-charcoal py-2 text-white font-medium" role="region" aria-label="Store announcement">
+        <div className="announcement-marquee-track flex w-max whitespace-nowrap text-xs tracking-wide">
+          <span className="px-6">Free delivery on orders over ₦100,000 &nbsp;•&nbsp; Secure payment &nbsp;•&nbsp; Shop authentic industrial tools with Oceanic Tools Monger</span>
+          <span className="px-6" aria-hidden="true">Free delivery on orders over ₦100,000 &nbsp;•&nbsp; Secure payment &nbsp;•&nbsp; Shop authentic industrial tools with Oceanic Tools Monger</span>
+        </div>
       </div>
 
       {/* Main Header */}

@@ -206,8 +206,8 @@ export function ProductDetailClient({
       </div>
 
       {/* Main Showcase */}
-      <div className="max-w-7xl mx-auto w-full min-w-0 px-3 sm:px-6 py-5 sm:py-10">
-        <div className="grid gap-7 lg:grid-cols-2 lg:gap-12 items-start">
+      <div className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 py-7 sm:py-10">
+        <div className="grid gap-9 lg:grid-cols-2 lg:gap-12 items-start">
           {/* Left Column: 3D Viewer or Photos */}
           <div className="space-y-4">
             <div className="flex gap-2">
@@ -242,7 +242,7 @@ export function ProductDetailClient({
               <Product3DViewer images={product.images} productName={product.name} />
             ) : (
               <div className="space-y-3">
-                <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-3 sm:p-6 border border-peach-light">
+                <div className="aspect-square rounded-2xl overflow-hidden bg-peach-xlight flex items-center justify-center p-4 sm:p-6 border border-peach-light">
                   {product.images.length ? (
                     <img
                       src={product.images[activePhotoIdx] || product.images[0]}

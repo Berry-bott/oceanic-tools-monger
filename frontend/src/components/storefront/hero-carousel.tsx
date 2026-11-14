@@ -65,7 +65,7 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
 
   return (
     <div
-      className="relative h-[440px] w-full overflow-hidden bg-peach-xlight select-none sm:h-[580px]"
+      className="relative h-[480px] w-full overflow-hidden bg-peach-xlight select-none sm:h-[580px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
@@ -88,11 +88,11 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
 
       {/* Hero Content */}
       <div
-        className={`relative z-10 max-w-7xl mx-auto px-10 sm:px-6 flex items-center h-full transition-opacity duration-300 ${
+        className={`relative z-10 max-w-7xl mx-auto px-10 min-[380px]:px-11 sm:px-6 flex items-center h-full transition-opacity duration-300 ${
           isFading ? "opacity-0" : "opacity-100"
         }`}
       >
-        <div className="max-w-xl py-6 sm:py-20">
+        <div className="max-w-xl py-9 sm:py-20">
           <span className="hero-content-enter inline-block text-[10px] sm:text-[11px] font-bold tracking-[0.2em] text-peach uppercase mb-4 border border-peach/50 px-3 py-1 rounded-full">
             {slide.category}
           </span>
@@ -110,7 +110,7 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
           {/* Price Section: Displayed ONLY if product exists in backend and has a price */}
           {livePrice !== undefined ? (
             <div className="hero-content-enter flex items-baseline gap-1.5 sm:gap-3 mb-8">
-              <span className="shrink-0 text-lg font-extrabold text-white sm:text-2xl md:text-3xl">
+              <span className="shrink-0 text-xl font-extrabold text-white sm:text-2xl md:text-3xl">
                 ₦{livePrice.toLocaleString("en-NG")}
               </span>
               {originalPrice && originalPrice > livePrice && (
@@ -119,7 +119,7 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
                     ₦{originalPrice.toLocaleString("en-NG")}
                   </span>
                   {discount && discount > 0 && (
-                    <span className="shrink-0 whitespace-nowrap rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white sm:px-2 sm:text-xs">
+                    <span className="shrink-0 whitespace-nowrap rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white sm:px-2 sm:text-xs">
                       -{discount}% OFF
                     </span>
                   )}
@@ -137,14 +137,14 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
           <div className="hero-content-enter flex flex-nowrap gap-1.5 sm:gap-3">
             <Link
               href={`/product/${slide.productSlug}`}
-              className="shrink-0 whitespace-nowrap rounded-full bg-peach-dark px-3.5 py-3 text-xs font-semibold text-white shadow-lg transition-all duration-200 hover:bg-peach-deep hover:scale-105 sm:px-7 sm:py-3.5 sm:text-sm"
+              className="shrink-0 whitespace-nowrap rounded-full bg-peach-dark px-3.5 py-3.5 text-xs font-semibold text-white shadow-lg transition-all duration-200 hover:bg-peach-deep hover:scale-105 sm:px-7 sm:py-3.5 sm:text-sm"
             >
               <span className="sm:hidden">{slide.id === "h2" ? "Shop Saws" : slide.id === "h3" ? "Shop Boots" : "Shop Drills"}</span>
               <span className="hidden sm:inline">{slide.cta}</span>
             </Link>
             <Link
               href={`/product/${slide.productSlug}`}
-              className="shrink-0 whitespace-nowrap rounded-full border border-white/30 bg-white/15 px-3.5 py-3 text-xs font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/25 sm:px-7 sm:py-3.5 sm:text-sm"
+              className="shrink-0 whitespace-nowrap rounded-full border border-white/30 bg-white/15 px-3.5 py-3.5 text-xs font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/25 sm:px-7 sm:py-3.5 sm:text-sm"
             >
               View Product
             </Link>
