@@ -109,17 +109,17 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
 
           {/* Price Section: Displayed ONLY if product exists in backend and has a price */}
           {livePrice !== undefined ? (
-            <div className="hero-content-enter flex items-baseline gap-3 mb-8">
-              <span className="text-2xl md:text-3xl font-extrabold text-white">
+            <div className="hero-content-enter flex items-baseline gap-1.5 sm:gap-3 mb-8">
+              <span className="shrink-0 text-lg font-extrabold text-white sm:text-2xl md:text-3xl">
                 ₦{livePrice.toLocaleString("en-NG")}
               </span>
               {originalPrice && originalPrice > livePrice && (
                 <>
-                  <span className="text-white/60 line-through text-base">
+                  <span className="shrink-0 whitespace-nowrap text-[11px] text-white/60 line-through sm:text-base">
                     ₦{originalPrice.toLocaleString("en-NG")}
                   </span>
                   {discount && discount > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    <span className="shrink-0 whitespace-nowrap rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white sm:px-2 sm:text-xs">
                       -{discount}% OFF
                     </span>
                   )}
@@ -134,16 +134,17 @@ export function HeroCarousel({ products = [] }: HeroCarouselProps) {
             </div>
           )}
 
-          <div className="hero-content-enter flex flex-wrap gap-3">
+          <div className="hero-content-enter flex flex-nowrap gap-2 sm:gap-3">
             <Link
               href={`/product/${slide.productSlug}`}
-              className="px-5 py-3 sm:px-7 sm:py-3.5 bg-peach-dark text-white rounded-full font-semibold text-xs sm:text-sm hover:bg-peach-deep transition-all duration-200 hover:scale-105 shadow-lg"
+              className="shrink-0 whitespace-nowrap rounded-full bg-peach-dark px-3 py-2.5 text-[11px] font-semibold text-white shadow-lg transition-all duration-200 hover:bg-peach-deep hover:scale-105 sm:px-7 sm:py-3.5 sm:text-sm"
             >
-              {slide.cta}
+              <span className="sm:hidden">{slide.id === "h2" ? "Shop Saws" : slide.id === "h3" ? "Shop Boots" : "Shop Drills"}</span>
+              <span className="hidden sm:inline">{slide.cta}</span>
             </Link>
             <Link
               href={`/product/${slide.productSlug}`}
-              className="px-5 py-3 sm:px-7 sm:py-3.5 bg-white/15 backdrop-blur-sm text-white rounded-full font-semibold text-xs sm:text-sm border border-white/30 hover:bg-white/25 transition-all duration-200"
+              className="shrink-0 whitespace-nowrap rounded-full border border-white/30 bg-white/15 px-3 py-2.5 text-[11px] font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/25 sm:px-7 sm:py-3.5 sm:text-sm"
             >
               View Product
             </Link>
