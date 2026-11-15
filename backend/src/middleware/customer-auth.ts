@@ -11,6 +11,7 @@ export type CustomerAuthContext = {
   businessId: string;
   customerId: string;
   email: string;
+  name: string;
 };
 
 export const requireCustomerAuth = async (request: Request, response: Response, next: NextFunction) => {
@@ -24,7 +25,7 @@ export const requireCustomerAuth = async (request: Request, response: Response, 
     }
     if (!token) throw new ApiError(401, "Sign in to view your customer account.", "CUSTOMER_UNAUTHENTICATED");
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const session = await prisma.customerSession.findUnique({ where: { tokenHash }, include: { customerAccount: { include: { customer: { select: { isActive: true } } } } } });
+    const session = await prisma.customerSession.findUnique({ where: { tokenHash }, include: { customerAccount: { include: { customer: { select: { isActive: true, name: true } } } } } });
     if (!session || session.expiresAt <= new Date() || !session.customerAccount.customer.isActive) {
       if (session) await prisma.customerSession.delete({ where: { id: session.id } });
       throw new ApiError(401, "Your customer session has expired. Sign in again.", "CUSTOMER_SESSION_EXPIRED");
@@ -35,6 +36,7 @@ export const requireCustomerAuth = async (request: Request, response: Response, 
       businessId: session.customerAccount.businessId,
       customerId: session.customerAccount.customerId,
       email: session.customerAccount.email,
+      name: session.customerAccount.customer.name,
     } satisfies CustomerAuthContext;
     next();
   } catch (error) { next(error); }

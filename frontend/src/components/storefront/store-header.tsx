@@ -74,7 +74,7 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
 
       {/* Main Header */}
       <header
-        className={`sticky top-0 z-50 bg-white transition-shadow duration-300 ${
+        className={`sticky top-0 z-[70] bg-white transition-shadow duration-300 ${
           isScrolled ? "shadow-md" : "border-b border-peach-light"
         }`}
       >
@@ -227,7 +227,7 @@ export function StoreHeader({}: StoreHeaderProps = {}) {
 
         {/* Mobile Navigation Menu */}
         <div
-          className={`lg:hidden fixed inset-x-0 bottom-0 top-24 z-40 transition-[background-color] duration-300 ${isMobileMenuOpen ? "bg-black/30" : "pointer-events-none bg-transparent"}`}
+          className={`lg:hidden fixed inset-x-0 bottom-0 top-24 z-[75] transition-[background-color] duration-300 ${isMobileMenuOpen ? "bg-black/30" : "pointer-events-none bg-transparent"}`}
           aria-hidden={!isMobileMenuOpen}
           onClick={() => setIsMobileMenuOpen(false)}
         >
