@@ -433,6 +433,15 @@ export default function SettingsPage() {
           </section>
           <section className="mb-3 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-white p-5 shadow-sm">
             <div>
+              <h2 className="m-0 text-base font-bold text-[#26372d]">Admin password & security</h2>
+              <p className="mb-0 mt-1 text-sm text-muted">Update your administrator password to maintain strong store security.</p>
+            </div>
+            <Link href="/admin/change-password" className="inline-flex h-10 items-center justify-center rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-dark">
+              Change password
+            </Link>
+          </section>
+          <section className="mb-3 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-white p-5 shadow-sm">
+            <div>
               <h2 className="m-0 text-base font-bold text-[#26372d]">Staff accounts</h2>
               <p className="mb-0 mt-1 text-sm text-muted">Create accounts, update staff details, or turn off access.</p>
             </div>

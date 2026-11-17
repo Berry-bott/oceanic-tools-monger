@@ -13,6 +13,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:studio": "prisma studio",
+    "db:reset": "tsx src/scripts/reset-db.ts",
+    "db:clean-products": "tsx src/scripts/delete-all-products-and-media.ts",
     "seed:owner": "tsx src/scripts/create-owner.ts"
   },
   "dependencies": {

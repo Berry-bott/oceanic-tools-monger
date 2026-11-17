@@ -543,7 +543,7 @@ export function StoreCatalog({
                     Everything you need for industrial jobsites, in one box.
                   </p>
                   <Link
-                    href="/product/BOS-GSR180LI"
+                    href="/store?category=power-tools"
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-peach-dark text-white rounded-full text-sm font-semibold hover:bg-peach-deep transition-all shadow-md hover:shadow-lg"
                   >
                     <span>Shop Power Tools</span>
@@ -580,7 +580,7 @@ export function StoreCatalog({
                     Find your certified safety gear from our curated equipment inventory.
                   </p>
                   <Link
-                    href="/product/CAT-BOOT-ST"
+                    href="/store?category=safety-boots"
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/20 backdrop-blur-md text-white rounded-full text-sm font-semibold border border-white/30 hover:bg-white/35 transition-all shadow-md hover:shadow-lg"
                   >
                     <span>Shop Safety Boots</span>

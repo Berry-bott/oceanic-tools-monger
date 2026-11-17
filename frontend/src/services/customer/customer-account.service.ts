@@ -65,6 +65,7 @@ export interface StatementEntry {
   balance: number;
   payments: Array<{ amount: number | string; method?: string; paidAt?: string | null; reference?: string }>;
   returns: Array<{ total: number | string; reference?: string; createdAt: string }>;
+  refunded?: number | string;
 }
 
 export interface CustomerStatement {

@@ -15,9 +15,13 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
+    if (url.searchParams.get("passwordChanged") === "1") {
+      setPasswordChanged(true);
+    }
     const hadCredentials = url.searchParams.has("email") || url.searchParams.has("password");
     if (!hadCredentials) return;
     url.searchParams.delete("email");
@@ -114,6 +118,13 @@ export default function LoginPage() {
           <p className="mt-2 text-sm leading-6 text-[#68766e]">
             {isStaffLogin ? "Sign in to start selling." : "Sign in to manage stock, sales and money."}
           </p>
+
+          {passwordChanged && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800" role="status">
+              <p className="font-semibold">Password updated successfully</p>
+              <p className="mt-0.5 text-xs text-emerald-700">Please sign in with your new password.</p>
+            </div>
+          )}
 
           <form method="post" action={isStaffLogin ? "/staff/login" : "/oceanicadminlogin"} className="mt-8 grid gap-5" onSubmit={(event) => void signIn(event)}>
             <label className="grid gap-2 text-sm font-bold text-[#34413a]">

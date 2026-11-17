@@ -36,6 +36,7 @@ const navigation: { section: string; label: string; href: string; access?: "owne
   { section: "Manage", label: "Staff", href: "/admin/staff", access: "owner", icon: "settings" },
   { section: "Manage", label: "Audit history", href: "/admin/audit-logs", access: "owner", icon: "settings" },
   { section: "Manage", label: "Settings", href: "/admin/settings", access: "owner", icon: "settings" },
+  { section: "Manage", label: "Change password", href: "/admin/change-password", access: "owner", icon: "lock" },
 ];
 
 export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
@@ -78,6 +79,8 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const [signingOut, setSigningOut] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
   const isNavigationItemActive = (item: (typeof navigation)[number]) => item.href === "/admin"
     ? pathname === item.href || pathname.startsWith("/staff")
     : item.href === "/admin/sales"
@@ -111,6 +114,24 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [notificationsOpen]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !profileRef.current?.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProfileMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileMenuOpen]);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -220,7 +241,80 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
               </AdminPageEntrance>}
             </div>}
             <span className="h-6 w-px bg-line" />
-            <span className="grid size-8 place-items-center rounded-full bg-[#153c2a] text-xs text-[#dcebe0]">{(currentUserQuery.data?.user.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
+            <div className="relative" ref={profileRef}>
+              <button
+                type="button"
+                onClick={() => setProfileMenuOpen((prev) => !prev)}
+                aria-expanded={profileMenuOpen}
+                aria-haspopup="true"
+                aria-label="User profile menu"
+                className="grid size-8 cursor-pointer place-items-center rounded-full bg-[#153c2a] text-xs font-semibold text-[#dcebe0] ring-offset-2 transition hover:ring-2 hover:ring-brand focus:outline-none focus:ring-2 focus:ring-brand"
+              >
+                {(user?.name ?? "O").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}
+              </button>
+              {profileMenuOpen && (
+                <AdminPageEntrance className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-xl border border-line bg-white shadow-xl">
+                  <div className="border-b border-line p-3">
+                    <p className="truncate text-sm font-semibold text-[#162721]">{user?.name ?? "Administrator"}</p>
+                    <p className="truncate text-xs text-[#68766e]">{user?.email ?? ""}</p>
+                    <span className="mt-1.5 inline-block rounded-full bg-[#eef7f2] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1f6b53]">
+                      {isOwner ? "Business Owner" : isSenior ? "Senior Staff" : "Staff"}
+                    </span>
+                  </div>
+                  <div className="p-1">
+                    <Link
+                      href="/admin/change-password"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#34413a] transition-colors hover:bg-[#f1f6f2]"
+                    >
+                      <AdminNavIcon name="lock" />
+                      <span>Change password</span>
+                    </Link>
+                    {isOwner && (
+                      <Link
+                        href="/admin/settings"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#34413a] transition-colors hover:bg-[#f1f6f2]"
+                      >
+                        <AdminNavIcon name="settings" />
+                        <span>Settings</span>
+                      </Link>
+                    )}
+                    <Link
+                      href="/store"
+                      target="_blank"
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#34413a] transition-colors hover:bg-[#f1f6f2]"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                      <span>View Storefront</span>
+                    </Link>
+                  </div>
+                  <div className="border-t border-line p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        void handleSignOut();
+                      }}
+                      disabled={signingOut}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                      </svg>
+                      <span>{signingOut ? "Signing out…" : "Sign out"}</span>
+                    </button>
+                  </div>
+                </AdminPageEntrance>
+              )}
+            </div>
           </div>
         </header>
         <AdminPageEntrance key={pathname}>{children}</AdminPageEntrance>
