@@ -560,8 +560,9 @@ productsRouter.get("/:productId", async (request, response) => {
   const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, include: { branch: { select: { name: true } } } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const canSeeCost = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
-  const { costPrice, bottomPrice, ...safeProduct } = product;
-  response.json({ data: canSeeCost ? product : safeProduct });
+  const { costPrice, ...safeProduct } = product;
+  const productData = canSeeCost ? product : { ...safeProduct, bottomPrice: product.bottomPrice };
+  response.json({ data: productData });
 });
 
 productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
@@ -569,7 +570,8 @@ productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, res
   if (!parsed.success) throw new ApiError(400, "Check the product details and try again.", "VALIDATION_ERROR", parsed.error.issues);
   const auth = response.locals.auth as AuthContext;
   const data = parsed.data;
-  if (auth.role !== "OWNER" && data.bottomPrice !== undefined) throw new ApiError(403, "Only an owner can set a product bottom price.", "BOTTOM_PRICE_OWNER_ONLY");
+  const isAuthorizedToSetBottomPrice = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
+  if (!isAuthorizedToSetBottomPrice && data.bottomPrice !== undefined) throw new ApiError(403, "Only an owner or senior staff can set a product bottom price.", "BOTTOM_PRICE_ACCESS_DENIED");
   const bottomPrice = data.bottomPrice ?? data.costPrice;
   if (bottomPrice < data.costPrice || data.sellingPrice < bottomPrice) throw new ApiError(400, "Product prices must satisfy cost price ≤ bottom price ≤ selling price.", "INVALID_PRODUCT_PRICE_RANGE");
   if (new Set(data.stagedImages.map((image) => image.view)).size !== data.stagedImages.length || data.stagedImages.filter((image) => image.isPrimary).length > 1) {
