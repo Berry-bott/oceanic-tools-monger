@@ -560,7 +560,7 @@ productsRouter.get("/:productId", async (request, response) => {
   const product = await prisma.product.findFirst({ where: { id: request.params.productId as string, businessId: auth.businessId }, include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, include: { branch: { select: { name: true } } } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } } });
   if (!product) throw new ApiError(404, "Product not found.", "PRODUCT_NOT_FOUND");
   const canSeeCost = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
-  const { costPrice, ...safeProduct } = product;
+  const { costPrice, bottomPrice, ...safeProduct } = product;
   response.json({ data: canSeeCost ? product : safeProduct });
 });
 
