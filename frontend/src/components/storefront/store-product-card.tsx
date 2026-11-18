@@ -161,12 +161,7 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
       </div>
 
       <div className="p-2.5 sm:p-3">
-        {product.brand && (
-          <p className="mb-1 hidden text-[10px] font-bold uppercase tracking-[0.12em] text-peach-dark sm:block">
-            {product.brand}
-          </p>
-        )}
-
+        {/* Product Name */}
         <Link
           href={detailUrl}
           className="line-clamp-2 block text-sm font-semibold leading-snug text-charcoal transition-colors hover:text-peach-dark"
@@ -174,24 +169,33 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
           {product.name}
         </Link>
 
-        {(product.model || (product.specifications && Object.keys(product.specifications).length > 0)) && (
-          <div className="mt-1.5 mb-2 flex min-w-0 items-start justify-between gap-3 text-[10px] leading-snug text-charcoal-light">
-            {product.model && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-charcoal">Model: {product.model}</p>
-              </div>
+        {/* Brand, Model & Specs */}
+        <div className="mt-1.5 mb-2 flex min-w-0 items-start justify-between gap-3 text-[10px] leading-snug">
+          {/* Left: Brand & Model */}
+          <div className="min-w-0 flex-1">
+            {product.brand && (
+              <p className="font-bold uppercase tracking-[0.12em] text-peach-dark">
+                {product.brand}
+              </p>
             )}
-            {product.specifications && Object.entries(product.specifications).length > 0 && (
-              <div className="hidden min-w-0 flex-1 space-y-0.5 text-right sm:block">
-                {Object.entries(product.specifications).slice(0, 2).map(([key, value]) => (
-                  <p key={key} className="truncate">
-                    <span className="font-medium text-charcoal">{key}:</span> {value}
-                  </p>
-                ))}
-              </div>
+            {product.model && (
+              <p className="mt-0.5 truncate font-medium text-charcoal-light">
+                Model: {product.model}
+              </p>
             )}
           </div>
-        )}
+
+          {/* Right: Specifications */}
+          {product.specifications && Object.keys(product.specifications).length > 0 && (
+            <div className="hidden min-w-0 flex-1 space-y-0.5 text-right text-charcoal-light sm:block">
+              {Object.entries(product.specifications).slice(0, 2).map(([key, value]) => (
+                <p key={key} className="truncate">
+                  <span className="font-medium text-charcoal">{key}:</span> {value}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
 
         {product.rating > 0 && product.reviewCount > 0 && (
           <div className="mb-2 hidden items-center gap-1.5 sm:flex">

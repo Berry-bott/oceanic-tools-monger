@@ -31,6 +31,8 @@ type Product = {
   id: string;
   name: string;
   sku: string;
+  brand?: string | null;
+  model?: string | null;
   sellingPrice: number | string;
   bottomPrice?: number | string;
   costPrice?: number | string;
@@ -179,9 +181,9 @@ export default function SalesPage() {
   const availableProducts = useMemo(
     () =>
       products.filter((product) => {
-        const matches = `${product.name} ${product.sku} ${product.unit}`
-          .toLowerCase()
-          .includes(search.toLowerCase());
+        const searchTokens = search.toLowerCase().split(/\s+/).filter(Boolean);
+        const productString = `${product.name} ${product.sku} ${product.unit} ${product.brand ?? ""} ${product.model ?? ""}`.toLowerCase();
+        const matches = searchTokens.every(token => productString.includes(token));
         const balance = product.balances.find(
           (row) => row.branchId === branchId,
         );
@@ -513,8 +515,11 @@ export default function SalesPage() {
                     onClick={() => addProduct(product)}
                   >
                     <span className="min-w-0">
-                      <strong className="block truncate text-sm font-medium">{product.name}</strong>
-                      <small className="mt-1 block text-xs text-[#8e9a91]">{product.sku} | Sold per {product.unit || "piece"}</small>
+                      <div className="flex items-center justify-between">
+                        <strong className="block truncate text-sm font-medium">{product.name}</strong>
+                        {product.brand && <small className="text-[10px] font-semibold uppercase tracking-wider text-[#2d7d5a]">{product.brand}</small>}
+                      </div>
+                      <small className="mt-1 block text-xs text-[#8e9a91]">{product.sku} {product.model ? `| ${product.model} ` : ""} | Sold per {product.unit || "piece"}</small>
                     </span>
                     <span className="text-right">
                       <strong className="block text-sm font-extrabold text-[#28664e]">{fmtMoney(Number(product.sellingPrice))}</strong>

@@ -317,9 +317,9 @@ export function ProductDetailClient({
               <span className="text-3xl font-bold text-charcoal">
                 ₦{product.price.toLocaleString("en-NG")}
               </span>
-              {product.originalPrice && (
+              {product.originalPrice != null && Number(product.originalPrice) > 0 && (
                 <span className="text-lg text-charcoal-light line-through">
-                  ₦{product.originalPrice.toLocaleString("en-NG")}
+                  ₦{Number(product.originalPrice).toLocaleString("en-NG")}
                 </span>
               )}
             </div>
@@ -347,41 +347,53 @@ export function ProductDetailClient({
               {product.description}
             </p>
 
-            {/* Spec Attributes Summary Grid */}
-            <div className="grid grid-cols-2 gap-3 py-4 border-y border-peach-light">
-              <div>
-                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
-                  Size / Package
-                </p>
-                <p className="text-sm font-medium text-charcoal">
-                  {specifications["Size / Package"] || product.unit}
-                </p>
-              </div>
-              {specifications["Duty Rating"] && (
+            <div className="space-y-3 py-4 border-y border-peach-light">
+              <h3 className="text-sm font-bold text-peach-dark">Specifications</h3>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">Duty Rating</p>
-                  <p className="text-sm font-medium text-charcoal">{specifications["Duty Rating"]}</p>
+                  <p className="text-[11px] text-peach font-semibold">
+                    Size / Package
+                  </p>
+                  <p className="text-sm font-medium text-charcoal">
+                    {specifications["Size / Package"] || product.unit}
+                  </p>
                 </div>
-              )}
-              <div>
-                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
-                  Category
-                </p>
-                <p className="text-sm font-medium text-charcoal">{product.category}</p>
-              </div>
-              <div>
-                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
-                  Model
-                </p>
-                <p className="text-sm font-medium text-charcoal">{product.model || "—"}</p>
-              </div>
-              <div>
-                <p className="text-[11px] text-charcoal-light uppercase tracking-wide font-semibold">
-                  Brand / SKU
-                </p>
-                <p className="text-sm font-medium text-charcoal font-mono">
-                  {product.brand ? `${product.brand} / ` : ""}{product.sku}
-                </p>
+                {specifications["Duty Rating"] && (
+                  <div>
+                    <p className="text-[11px] text-peach font-semibold">Duty Rating</p>
+                    <p className="text-sm font-medium text-charcoal">{specifications["Duty Rating"]}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-[11px] text-peach font-semibold">
+                    Category
+                  </p>
+                  <p className="text-sm font-medium text-charcoal">{product.category}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-peach font-semibold">
+                    Model
+                  </p>
+                  <p className="text-sm font-medium text-charcoal">{product.model || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-peach font-semibold">
+                    Brand / SKU
+                  </p>
+                  <p className="text-sm font-medium text-charcoal font-mono">
+                    {product.brand ? `${product.brand} / ` : ""}{product.sku}
+                  </p>
+                </div>
+                {Object.entries(specifications).map(([key, value]) => {
+                  // Skip already rendered specs
+                  if (["Size / Package", "Duty Rating"].includes(key)) return null;
+                  return (
+                    <div key={key}>
+                      <p className="text-[11px] text-peach font-semibold">{key}</p>
+                      <p className="text-sm font-medium text-charcoal">{value}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

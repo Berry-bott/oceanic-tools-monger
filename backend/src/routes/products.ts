@@ -527,13 +527,24 @@ productsRouter.post("/import/commit", requireStaffAccess("SENIOR_STAFF"), async 
 
 productsRouter.get("/", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const search = typeof request.query.search === "string" ? request.query.search.trim() : "";
+  const searchTokens = typeof request.query.search === "string" ? request.query.search.trim().split(/\s+/).filter(Boolean) : [];
   const state = typeof request.query.state === "string" && Object.values(ProductState).includes(request.query.state as ProductState) ? request.query.state as ProductState : undefined;
+  
+  const searchCondition = searchTokens.length > 0 ? {
+    AND: searchTokens.map(token => ({
+      OR: [
+        { name: { contains: token, mode: "insensitive" as const } },
+        { sku: { contains: token, mode: "insensitive" as const } },
+        { barcode: { contains: token, mode: "insensitive" as const } }
+      ]
+    }))
+  } : {};
+
   const products = await prisma.product.findMany({
     where: {
       businessId: auth.businessId,
       ...(state ? { state } : {}),
-      ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { barcode: { contains: search, mode: "insensitive" } }] } : {}),
+      ...searchCondition,
     },
     include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, select: { branchId: true, onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } },
     orderBy: { name: "asc" },

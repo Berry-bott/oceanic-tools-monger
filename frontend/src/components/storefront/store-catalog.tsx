@@ -191,12 +191,9 @@ export function StoreCatalog({
         return false;
       }
       if (searchFilter) {
-        const query = searchFilter.toLowerCase();
-        const matchesName = p.name.toLowerCase().includes(query);
-        const matchesCat = p.category.toLowerCase().includes(query);
-        const matchesBrand = p.brand.toLowerCase().includes(query);
-        const matchesSku = p.sku.toLowerCase().includes(query);
-        if (!matchesName && !matchesCat && !matchesBrand && !matchesSku) return false;
+        const searchTokens = searchFilter.toLowerCase().split(/\s+/).filter(Boolean);
+        const productString = `${p.name} ${p.sku} ${p.brand ?? ""} ${p.model ?? ""}`.toLowerCase();
+        return searchTokens.every((token) => productString.includes(token));
       }
       return true;
     });

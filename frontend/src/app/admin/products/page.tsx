@@ -86,13 +86,21 @@ export default function ProductsPage() {
     [products],
   );
   const filtered = useMemo(
-    () =>
-      products.filter(
-        (product) =>
-          (stockFilter === "ALL" || stockState(product) === stockFilter) &&
-          (category === "ALL" || product.category === category),
-      ),
-    [products, stockFilter, category],
+    () => {
+      const searchTokens = search.toLowerCase().split(/\s+/).filter(Boolean);
+      return products.filter(
+        (product) => {
+          const productString = `${product.name} ${product.sku} ${product.category} ${product.brand ?? ""} ${product.model ?? ""}`.toLowerCase();
+          const matchesSearch = searchTokens.every(token => productString.includes(token));
+          return (
+            (stockFilter === "ALL" || stockState(product) === stockFilter) &&
+            (category === "ALL" || product.category === category) &&
+            matchesSearch
+          );
+        }
+      );
+    },
+    [products, stockFilter, category, search],
   );
   const pageSize = 20;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
