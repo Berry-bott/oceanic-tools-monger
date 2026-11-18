@@ -82,7 +82,7 @@ export function initGoogleGIS(clientId: string): boolean {
         }
       },
       auto_select: false,
-      cancel_on_tap_outside: false,
+      cancel_on_tap_outside: true,
       context: "signin",
       itp_support: true,
     });

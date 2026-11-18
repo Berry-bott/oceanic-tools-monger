@@ -13,7 +13,7 @@ import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 import { getProduct, productKeys, updateProduct } from "@/services/products/product.service";
 
-const canManage = (user?: { role: string; staffAccessRole?: string | null }) => user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
+const canManage = (user?: { role: string }) => user?.role === "OWNER";
 const fieldClass = "grid gap-1.5 text-sm text-[#536159]";
 const inputClass = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-[#6e9e7d] focus:ring-4 focus:ring-[#eaf3ec]";
 const sectionClass = "grid gap-4 rounded-xl border border-line bg-white p-4 shadow-sm sm:p-5";

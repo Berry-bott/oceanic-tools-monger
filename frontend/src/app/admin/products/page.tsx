@@ -19,7 +19,7 @@ type Role = "OWNER" | "STAFF";
 type User = { id: string; name: string; email: string; role: Role; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null };
 type StockFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 const canManage = (user: User | null) =>
-  user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
+  user?.role === "OWNER";
 const currency = (amount: number | string) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
