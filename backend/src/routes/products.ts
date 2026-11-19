@@ -545,6 +545,11 @@ productsRouter.get("/", async (request, response) => {
     }))
   } : {};
 
+  const requestedLimit = typeof request.query.limit === "string" ? parseInt(request.query.limit, 10) : undefined;
+  const limit = requestedLimit && !Number.isNaN(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 5000)
+    : (searchTokens.length > 0 ? 250 : 2000);
+
   const products = await prisma.product.findMany({
     where: {
       businessId: auth.businessId,
@@ -553,10 +558,10 @@ productsRouter.get("/", async (request, response) => {
     },
     include: { balances: { where: { branch: { businessId: auth.businessId }, ...(auth.role === "STAFF" ? { branchId: auth.branchId ?? "__unassigned__" } : {}) }, select: { branchId: true, onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE" } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: productImageInclude }, specifications: { orderBy: { position: "asc" } } },
     orderBy: { name: "asc" },
-    take: 100,
+    take: limit,
   });
   const canSeeCost = auth.role === "OWNER" || auth.staffAccessRole === "SENIOR_STAFF";
-  response.json({ data: canSeeCost ? products : products.map(({ costPrice: _costPrice, ...product }) => product), meta: { count: products.length, limit: 100 } });
+  response.json({ data: canSeeCost ? products : products.map(({ costPrice: _costPrice, ...product }) => product), meta: { count: products.length, limit } });
 });
 
 productsRouter.get("/check-duplicates", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {

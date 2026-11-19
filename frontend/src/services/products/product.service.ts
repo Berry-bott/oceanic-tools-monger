@@ -50,12 +50,13 @@ export type ProductDuplicate = Pick<Product, "id" | "sku" | "name"> & {
 
 export const productKeys = {
   all: ["products"] as const,
-  list: (search: string) => [...productKeys.all, "list", search] as const,
+  list: (search: string = "", limit?: number) => [...productKeys.all, "list", search, limit ?? "default"] as const,
 };
 
-export function getProducts(search = "") {
+export function getProducts(search = "", limit?: number) {
   const params = new URLSearchParams();
   if (search.trim()) params.set("search", search.trim());
+  if (limit) params.set("limit", String(limit));
   const query = params.toString();
   return apiRequest<ProductResponse>(`/products${query ? `?${query}` : ""}`);
 }
