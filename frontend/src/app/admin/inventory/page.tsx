@@ -8,20 +8,11 @@ import { useBranches } from "@/hooks/queries/use-branches";
 import { useProducts } from "@/hooks/queries/use-products";
 import { useInventoryOverview } from "@/hooks/queries/use-inventory-overview";
 import { useBranchStore } from "@/stores/branch.store";
-import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AppErrorModal } from "@/components/app-error-modal";
-import {
-  adjustProductStock,
-  approveStockCount,
-  createStockCount,
-  createStockTransfer,
-  dispatchStockTransfer,
-  postStockCount,
-  receiveStockTransferWithLines,
-  changeStockLotCondition,
-  submitStockCount,
-} from "@/services/inventory/inventory.service";
+import { AdminUiIcon } from "@/components/admin-ui-icon";
+import { FourDotLoader } from "@/components/four-dot-loader";
+import { changeStockLotCondition } from "@/services/inventory/inventory.service";
 import { useInventoryWorkflow } from "@/hooks/mutations/use-inventory-workflow";
 
 type User = { id: string; name: string; email: string; role: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null; branchId?: string | null };
@@ -140,8 +131,6 @@ export default function InventoryPage() {
   const workflowMutation = useInventoryWorkflow();
   const summary = inventoryQuery.data?.summary;
   const movements = inventoryQuery.data?.movements ?? [];
-  const transfers = inventoryQuery.data?.transfers ?? [];
-  const counts = inventoryQuery.data?.counts ?? [];
   const lots = inventoryQuery.data?.lots ?? [];
   const loading = inventoryQuery.isLoading;
   const error = inventoryQuery.error instanceof Error
@@ -157,8 +146,6 @@ export default function InventoryPage() {
   const [stockStatusFilter, setStockStatusFilter] = useState("all");
   const [productPage, setProductPage] = useState(1);
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(() => new Set());
-  const [countLineKeys, setCountLineKeys] = useState([0]);
-  const [receivingTransferId, setReceivingTransferId] = useState("");
 
   const loadData = useCallback(() => inventoryQuery.refetch(), [inventoryQuery.refetch]);
 
@@ -190,57 +177,11 @@ export default function InventoryPage() {
     }
   }
 
-  async function createTransfer(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await action("create-transfer", () => createStockTransfer({
-      sourceBranchId: form.get("source"),
-      destinationBranchId: form.get("destination"),
-      lines: [
-        {
-          productId: form.get("product"),
-          quantity: Number(form.get("quantity")),
-        },
-      ],
-    }));
-  }
-  async function createCount(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const productIds = form.getAll("product").map(String);
-    const countedQuantities = form.getAll("countedQuantity").map(Number);
-    await action("create-count", () => createStockCount({
-      branchId: form.get("branch"),
-      reason: form.get("reason"),
-      lines: productIds.map((productId, index) => ({ productId, countedQuantity: countedQuantities[index] })),
-    }));
-  }
-  async function receiveTransfer(event: React.FormEvent<HTMLFormElement>, transfer: Transfer) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const lines = transfer.lines.map((line) => ({
-      lineId: line.id,
-      receivedQuantity: Number(form.get(`${line.id}-quantity`)),
-      discrepancyReason: String(form.get(`${line.id}-reason`) ?? "").trim() || undefined,
-    }));
-    await action(transfer.id, () => receiveStockTransferWithLines(transfer.id, { lines }));
-    setReceivingTransferId("");
-  }
   async function changeLotCondition(event: React.FormEvent<HTMLFormElement>, lot: Lot) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await action(`lot-${lot.id}`, () => changeStockLotCondition(lot.id, {
       condition: form.get("condition"),
-      reason: form.get("reason"),
-    }));
-  }
-  async function createAdjustment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const productId = String(form.get("product"));
-    await action(`adjust-${productId}`, () => adjustProductStock(productId, {
-      branchId: form.get("branch"),
-      quantity: Number(form.get("quantity")),
       reason: form.get("reason"),
     }));
   }
@@ -267,8 +208,11 @@ export default function InventoryPage() {
     return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [stockRows]);
   const filteredStockRows = groupedStockRows.filter((row) => {
+    const product = products.find((p) => p.id === row.productId);
     const query = productSearch.trim().toLowerCase();
-    const matchesSearch = !query || `${row.name} ${row.sku} ${row.category}`.toLowerCase().includes(query);
+    const searchTokens = query.split(/\s+/).filter(Boolean);
+    const productString = `${row.name} ${row.sku} ${row.category} ${product?.brand ?? ""} ${product?.model ?? ""}`.toLowerCase();
+    const matchesSearch = !query || searchTokens.every((token) => productString.includes(token));
     const isOut = row.available <= 0;
     const isLow = !isOut && Number(row.reorderLevel) > 0 && row.available <= Number(row.reorderLevel);
     const matchesStatus = stockStatusFilter === "all" || (stockStatusFilter === "out" ? isOut : stockStatusFilter === "low" ? isLow : !isOut && !isLow);
@@ -380,8 +324,17 @@ export default function InventoryPage() {
               <small>Products with no available stock</small>
             </article>
           </section>
-          <div className="grid [grid-template-columns:minmax(0,1.6fr)_minmax(270px,1fr)] gap-3 mb-3 items-start max-[950px]:grid-cols-1">
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
+
+          <div className="flex justify-end mb-6">
+            <Link
+              href="/admin/inventory/settings"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark transition-colors animate-pulse"
+            >
+              Stock Settings
+            </Link>
+          </div>
+
+          <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden mb-3">
               <div className="grid gap-3 border-b border-[#edf1ed] px-5 py-4 max-[620px]:px-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -419,14 +372,33 @@ export default function InventoryPage() {
                     </Link>
                   </div>
                 </div>
-                <input
-                  type="search"
-                  value={productSearch}
-                  onChange={(event) => { setProductSearch(event.target.value); setProductPage(1); }}
-                  placeholder="Search products"
-                  aria-label="Search stock products"
-                  className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-ink placeholder:text-muted focus:border-brand focus:outline-none"
-                />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="search"
+                      value={productSearch}
+                      onChange={(event) => { setProductSearch(event.target.value); setProductPage(1); }}
+                      placeholder="Search products"
+                      aria-label="Search stock products"
+                      className="h-10 w-full rounded-lg border border-line bg-white px-3 text-xs text-ink placeholder:text-muted focus:border-brand focus:outline-none"
+                    />
+                    {productSearch.trim().length > 0 && (
+                      <div className="absolute right-3 top-2.5">
+                        <FourDotLoader />
+                      </div>
+                    )}
+                  </div>
+                  {productSearch.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setProductSearch(""); setProductPage(1); }}
+                      className="h-10 w-10 flex items-center justify-center rounded-lg border border-line bg-white text-muted hover:text-ink"
+                      aria-label="Cancel search"
+                    >
+                      <AdminUiIcon name="close" size={20} />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="overflow-x-auto overscroll-x-contain">
                 <table className="w-full min-w-[1220px] table-fixed border-collapse text-left">
@@ -456,6 +428,7 @@ export default function InventoryPage() {
                   </thead>
                   <tbody>
                     {visibleStockRows.map((row) => {
+                      const product = products.find((p) => p.id === row.productId);
                       const availableUnits = Number(row.available);
                       const reorderLevel = Number(row.reorderLevel);
                       const isOut = availableUnits <= 0;
@@ -473,7 +446,14 @@ export default function InventoryPage() {
                                 {row.name.trim().charAt(0).toUpperCase() || "P"}
                               </span>
                             )}
-                            <span className="min-w-0 truncate" title={`${row.name} · ${row.sku} · per ${row.unit}`}><strong className="text-[13px] font-semibold leading-4 text-ink">{row.name}</strong><small className="ml-1 text-[10px] text-muted">· {row.sku}</small></span>
+                            <span className="min-w-0 truncate" title={`${row.name} · ${row.sku} · ${product?.brand ?? "No brand"} · ${product?.model ?? "No model"} · per ${row.unit}`}>
+                                <strong className="text-[13px] font-semibold leading-4 text-ink block truncate">{row.name}</strong>
+                                <small className="text-[10px] text-muted flex gap-1">
+                                  <span>{row.sku}</span>
+                                  {product?.brand && <span>· {product.brand}</span>}
+                                  {product?.model && <span>· {product.model}</span>}
+                                </small>
+                              </span>
                           </div>
                         </td>
                         <td className="truncate whitespace-nowrap px-3 py-2 align-middle text-[#65736a]" title={row.category || "Uncategorised"}>{row.category || "Uncategorised"}</td>
@@ -530,272 +510,7 @@ export default function InventoryPage() {
                   {stockRows.length ? "No products match your search or category." : "No stock balances to show."}
                 </div>
               )}
-            </section>
-            <section className="min-w-0 rounded-xl border border-[#e5ebe6] bg-white p-4 shadow-[0_2px_8px_rgba(32,52,40,0.04)] min-[1500px]:p-5 max-[620px]:p-3 [&_select]:[font:inherit] [&_input]:[font:inherit]">
-              <div className="mb-4 flex items-start justify-between gap-3 [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:tracking-[-.2px] [&_p]:mt-1 [&_p]:text-sm [&_p]:text-[#87948b]">
-                <div>
-                  <h2>Stock workflows</h2>
-                  <p>You need owner or stock manager access to do this.</p>
-                </div>
-              </div>
-              {canManage ? (
-                <>
-                  <form
-                    className="grid gap-3 rounded-lg border border-[#edf1ed] bg-[#fafcfb] p-3 [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:text-[#43544a] [&_input]:h-10 [&_input]:min-w-0 [&_input]:rounded-md [&_input]:border [&_input]:border-[#dce5de] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#45564b] [&_input]:outline-none [&_input]:placeholder:text-[#9aa69e] [&_input:focus]:border-[#8aab91] [&_input:focus]:ring-2 [&_input:focus]:ring-[#e5efe7] [&_select]:h-10 [&_select]:min-w-0 [&_select]:rounded-md [&_select]:border [&_select]:border-[#dce5de] [&_select]:bg-white [&_select]:px-3 [&_select]:text-sm [&_select]:text-[#45564b] [&_select:focus]:border-[#8aab91] [&_.button-primary]:h-10 [&_.button-primary]:text-sm [&_.button-primary]:font-medium"
-                    onSubmit={(event) => void createTransfer(event)}
-                  >
-                    <strong>New transfer</strong>
-                    <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
-                      <select name="source" required aria-label="Source branch">
-                        <option value="">From branch</option>
-                        {branches.map((b) => (
-                          <option value={b.id} key={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        name="destination"
-                        required
-                        aria-label="Destination branch"
-                      >
-                        <option value="">To branch</option>
-                        {branches.map((b) => (
-                          <option value={b.id} key={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <select name="product" required defaultValue="">
-                      <option value="" disabled>
-                        Select product
-                      </option>
-                      {products.map((p) => (
-                        <option value={p.id} key={p.id}>
-                          {p.name} {p.sku}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="grid grid-cols-2 gap-3 max-[620px]:grid-cols-1">
-                      <input
-                        name="quantity"
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        required
-                        placeholder="Quantity"
-                      />
-                      <button
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
-                        disabled={busy === "create-transfer"}
-                      >
-                        {busy === "create-transfer"
-                          ? "Creating"
-                          : "Create transfer"}
-                      </button>
-                    </div>
-                  </form>
-                  <form
-                    className="grid gap-3 rounded-lg border border-[#edf1ed] bg-[#fafcfb] p-3 [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:text-[#43544a] [&_input]:h-10 [&_input]:min-w-0 [&_input]:rounded-md [&_input]:border [&_input]:border-[#dce5de] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#45564b] [&_input]:outline-none [&_input]:placeholder:text-[#9aa69e] [&_input:focus]:border-[#8aab91] [&_input:focus]:ring-2 [&_input:focus]:ring-[#e5efe7] [&_select]:h-10 [&_select]:min-w-0 [&_select]:rounded-md [&_select]:border [&_select]:border-[#dce5de] [&_select]:bg-white [&_select]:px-3 [&_select]:text-sm [&_select]:text-[#45564b] [&_select:focus]:border-[#8aab91] [&_.button-primary]:h-10 [&_.button-primary]:text-sm [&_.button-primary]:font-medium [&_.button-secondary]:h-10 [&_.button-secondary]:text-sm"
-                    onSubmit={(event) => void createCount(event)}
-                  >
-                    <strong>Start stock count</strong>
-                    <select name="branch" required defaultValue={branchId}>
-                      <option value="" disabled>
-                        Select branch
-                      </option>
-                      {branches.map((b) => (
-                        <option value={b.id} key={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="grid gap-2">
-                      {countLineKeys.map((key, index) => (
-                        <div key={key} className="grid grid-cols-[minmax(0,1fr)_130px_auto] gap-2 max-[620px]:grid-cols-1">
-                          <select name="product" required defaultValue="">
-                            <option value="" disabled>Product {index + 1}</option>
-                            {products.map((p) => <option value={p.id} key={p.id}>{p.name} {p.sku}</option>)}
-                          </select>
-                          <input name="countedQuantity" type="number" min="0" step="0.01" required placeholder="Physical count" aria-label={`Physical count for product ${index + 1}`} />
-                          {countLineKeys.length > 1 && <button type="button" className="grid size-8 cursor-pointer place-items-center rounded-md border border-line bg-white text-muted hover:bg-canvas" aria-label={`Remove product ${index + 1} from count`} onClick={() => setCountLineKeys((keys) => keys.filter((item) => item !== key))}>×</button>}
-                        </div>
-                      ))}
-                      <button type="button" className="w-fit cursor-pointer text-sm font-medium text-brand hover:underline" onClick={() => setCountLineKeys((keys) => [...keys, Math.max(...keys) + 1])}>+ Add another product</button>
-                    </div>
-                    <input
-                      name="reason"
-                      placeholder="Count note (optional)"
-                      maxLength={500}
-                    />
-                    <button
-                      className="h-10 rounded-lg border border-brand bg-brand px-3 text-sm font-medium text-white shadow-[0_1px_2px_rgba(24,63,51,0.1)] transition-colors hover:bg-brand-dark disabled:opacity-60"
-                      disabled={busy === "create-count"}
-                    >
-                      {busy === "create-count" ? "Saving" : "Create count"}
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <p className="text-sm text-[#929e96] py-2.5 px-1 m-0">
-                  You can view stock, but only the owner or stock manager can
-                  change it.
-                </p>
-              )}
-            </section>
-          </div>
-          <div className="grid [grid-template-columns:minmax(0,1.6fr)_minmax(270px,1fr)] gap-3 mb-3 items-start max-[950px]:grid-cols-1">
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
-              <div className="flex items-center justify-between gap-[15px] py-[17px] px-[18px] [border-bottom:1px_solid_#edf1ed] [&_h2]:text-sm [&_h2]:mt-0 mx-0 mb-1 [&_p]:text-sm [&_p]:text-[#929d95] [&_p]:m-0 max-[1000px]:items-start max-[1000px]:flex-col max-[620px]:p-[13px]">
-                <div>
-                  <h2>Branch transfers</h2>
-                  <p>Dispatch drafts and receive in-transit stock.</p>
-                </div>
-              </div>
-              <div className="py-[3px] px-[15px]">
-                {transfers.map((transfer) => (
-                  <Fragment key={transfer.id}>
-                  <article
-                    className="min-h-[59px] flex items-center gap-2 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>div]:grid [&>div]:gap-1 [&>div]:min-w-0 [&>div]:[flex:1] [&>div_strong]:text-sm [&>div_strong]:text-[#3c4d42] [&>div_small]:text-sm [&>div_small]:text-[#909c94] [&>div_small]:leading-[1.4] [&>.button-primary]:h-[27px] [&>.button-primary]:py-0 px-2 [&>.button-primary]:text-sm [&>.button-primary]:whitespace-nowrap [&>.button-secondary]:h-[27px] [&>.button-secondary]:py-0 px-2 [&>.button-secondary]:text-sm [&>.button-secondary]:whitespace-nowrap max-[620px]:[flex-wrap:wrap] max-[620px]:py-2 px-0 max-[620px]:[&>div]:[flex-basis:100%] max-[620px]:[&>.catalogue-pill]:[margin-left:auto]"
-                  >
-                    <div>
-                      <strong>{transfer.reference}</strong>
-                      <small>
-                        {transfer.sourceBranch.name}{" "}
-                        {transfer.destinationBranch.name}{" "}
-                        {transfer.lines
-                          .map(
-                            (line) =>
-                              `${line.product.name}  ${fmt(line.quantity)}`,
-                          )
-                          .join(", ")}
-                      </small>
-                    </div>
-                    <span className={statusPill(transfer.status.toLowerCase())}>
-                      {transfer.status.toLowerCase().replaceAll("_", " ")}
-                    </span>
-                    {canManage && transfer.status === "DRAFT" && (
-                      <button
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-[#4e5e54] bg-white border border-[#e0e7e1] [&:hover]:bg-[#f8faf8] [&:hover]:[border-color:#ccd9ce]"
-                        disabled={busy === transfer.id}
-                        onClick={() =>
-                          void action(transfer.id, () => dispatchStockTransfer(transfer.id))
-                        }
-                      >
-                        Dispatch
-                      </button>
-                    )}
-                    {canManage && transfer.status === "IN_TRANSIT" && (
-                      <button type="button"
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
-                        onClick={() => setReceivingTransferId((current) => current === transfer.id ? "" : transfer.id)}>
-                        {receivingTransferId === transfer.id ? "Close receipt" : "Record items received"}
-                      </button>
-                    )}
-                  </article>
-                  {canManage && transfer.status === "IN_TRANSIT" && receivingTransferId === transfer.id && (
-                    <form className="grid gap-3 border-b border-line bg-canvas p-4" onSubmit={(event) => void receiveTransfer(event, transfer)}>
-                      <strong className="text-sm font-semibold text-ink">Check each item received</strong>
-                      {transfer.lines.map((line) => (
-                        <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_140px_minmax(180px,1fr)] items-center gap-2 max-[700px]:grid-cols-1">
-                          <label className="text-xs text-ink">{line.product.name} · sent {fmt(line.quantity)} {line.product.unit}</label>
-                          <input name={`${line.id}-quantity`} type="number" min="0" step="0.001" required defaultValue={line.quantity} aria-label={`Quantity received for ${line.product.name}`} className="h-9 rounded-md border border-line bg-white px-2 text-sm" />
-                          <input name={`${line.id}-reason`} maxLength={500} placeholder="Explain any difference" aria-label={`Reason for quantity difference for ${line.product.name}`} className="h-9 rounded-md border border-line bg-white px-2 text-sm" />
-                        </div>
-                      ))}
-                      <button className="button-primary w-fit" disabled={busy === transfer.id}>{busy === transfer.id ? "Saving" : "Confirm received quantities"}</button>
-                    </form>
-                  )}
-                  </Fragment>
-                ))}
-                {!transfers.length && (
-                  <p className="text-sm text-[#929e96] py-2.5 px-1 m-0">
-                    No stock transfers yet.
-                  </p>
-                )}
-              </div>
-            </section>
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
-              <div className="flex items-center justify-between gap-[15px] py-[17px] px-[18px] [border-bottom:1px_solid_#edf1ed] [&_h2]:text-sm [&_h2]:mt-0 mx-0 mb-1 [&_p]:text-sm [&_p]:text-[#929d95] [&_p]:m-0 max-[1000px]:items-start max-[1000px]:flex-col max-[620px]:p-[13px]">
-                <div>
-                  <h2>Stock counts</h2>
-                  <p>
-                    Send a stock check for approval, then save the approved
-                    count.
-                  </p>
-                </div>
-              </div>
-              <div className="py-[3px] px-[15px]">
-                {counts.map((count) => (
-                  <article
-                    className="min-h-[59px] flex items-center gap-2 [border-bottom:1px_solid_#eff2ef] [&:last-child]:[border-bottom:0] [&>div]:grid [&>div]:gap-1 [&>div]:min-w-0 [&>div]:[flex:1] [&>div_strong]:text-sm [&>div_strong]:text-[#3c4d42] [&>div_small]:text-sm [&>div_small]:text-[#909c94] [&>div_small]:leading-[1.4] [&>.button-primary]:h-[27px] [&>.button-primary]:py-0 px-2 [&>.button-primary]:text-sm [&>.button-primary]:whitespace-nowrap [&>.button-secondary]:h-[27px] [&>.button-secondary]:py-0 px-2 [&>.button-secondary]:text-sm [&>.button-secondary]:whitespace-nowrap max-[620px]:[flex-wrap:wrap] max-[620px]:py-2 px-0 max-[620px]:[&>div]:[flex-basis:100%] max-[620px]:[&>.catalogue-pill]:[margin-left:auto]"
-                    key={count.id}
-                  >
-                    <div>
-                      <strong>{count.reference}</strong>
-                      <small>
-                        {count.branch.name} · {count.lines.length} products · started by {count.createdBy.name} · {date(count.createdAt)}
-                      </small>
-                      <small>
-                        {count.approvedBy ? `Approved by ${count.approvedBy.name}` : "Waiting for approval"}
-                        {count.postedBy ? ` · Confirmed by ${count.postedBy.name}` : ""}
-                      </small>
-                    </div>
-                    <details className="relative text-xs">
-                      <summary className="cursor-pointer whitespace-nowrap text-brand">Review count</summary>
-                      <div className="absolute right-0 z-10 mt-2 max-h-64 w-80 overflow-auto rounded-lg border border-line bg-white p-3 shadow-lg">
-                        {count.lines.map((line) => (
-                          <div key={line.product.sku} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-line py-2 last:border-0">
-                            <strong className="font-medium text-ink">{line.product.name}</strong>
-                            <span className={Number(line.variance) === 0 ? "text-[#397853]" : "text-[#ad5b4d]"}>{Number(line.variance) > 0 ? "+" : ""}{fmt(line.variance)} {line.product.unit}</span>
-                            <small className="col-span-2 text-muted">System {fmt(line.systemQuantity)} · Counted {fmt(line.countedQuantity)} {line.product.unit}</small>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                    <span className={statusPill(count.status.toLowerCase())}>
-                      {count.status.toLowerCase()}
-                    </span>
-                    {canManage && count.status === "DRAFT" && (
-                      <button
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-[#4e5e54] bg-white border border-[#e0e7e1] [&:hover]:bg-[#f8faf8] [&:hover]:[border-color:#ccd9ce]"
-                        disabled={busy === count.id}
-                        onClick={() =>
-                          void action(count.id, () => submitStockCount(count.id))
-                        }
-                      >
-                        Send for approval
-                      </button>
-                    )}
-                    {(user.role === "OWNER" || user.role === "STAFF") && count.status === "SUBMITTED" && (
-                      <button
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-[#4e5e54] bg-white border border-[#e0e7e1] [&:hover]:bg-[#f8faf8] [&:hover]:[border-color:#ccd9ce]"
-                        disabled={busy === count.id}
-                        onClick={() =>
-                          void action(count.id, () => approveStockCount(count.id))
-                        }
-                      >
-                        Approve
-                      </button>
-                    )}
-                    {(user.role === "OWNER" || user.role === "STAFF") && count.status === "APPROVED" && (
-                      <button
-                        className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
-                        disabled={busy === count.id}
-                        onClick={() =>
-                          void action(count.id, () => postStockCount(count.id))
-                        }
-                      >
-                        Confirm entry
-                      </button>
-                    )}
-                  </article>
-                ))}
-                {!counts.length && <AdminEmptyState icon="box" title="No stock counts yet" description="Start a count when you are ready to compare shelf quantities with the system." />}
-              </div>
-            </section>
-          </div>
+          </section>
           <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
             <div className="flex items-center justify-between gap-4 border-b border-[#edf1ed] px-5 py-4 max-[1000px]:items-start max-[1000px]:flex-col max-[620px]:px-4">
               <div>
@@ -862,68 +577,7 @@ export default function InventoryPage() {
               </p>
             )}
           </section>
-          <div className="grid [grid-template-columns:minmax(0,1.6fr)_minmax(270px,1fr)] gap-3 mb-3 items-start max-[950px]:grid-cols-1 [margin-top:12px]">
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-[15px] [&>.panel-heading]:[margin-bottom:10px] [&_select]:[font:inherit] [&_input]:[font:inherit]">
-              <div className="flex items-start justify-between gap-3 mb-3 [&_h2]:text-sm [&_h2]:m-0 [&_h2]:font-bold [&_h2]:tracking-[-.1px] [&_p]:text-sm [&_p]:text-[#8d9991] [&_p]:mt-1 mx-0 mb-0">
-                <div>
-                  <h2>Adjust stock</h2>
-                  <p>Add or remove stock and say why.</p>
-                </div>
-              </div>
-              {canManage ? (
-                <form
-                  className="grid gap-2 py-2.5 px-0 [border-top:1px_solid_#edf1ed] [&>strong]:text-sm [&>strong]:text-[#43544a] [&_input]:h-[33px] [&_input]:min-w-0 [&_input]:border border-[#e4eae5] [&_input]:rounded-[5px] [&_input]:py-0 px-2 [&_input]:bg-white [&_input]:text-[#536159] [&_input]:text-sm [&_select]:h-[33px] [&_select]:min-w-0 [&_select]:border border-[#e4eae5] [&_select]:rounded-[5px] [&_select]:py-0 px-2 [&_select]:bg-white [&_select]:text-[#536159] [&_select]:text-sm [&_.form-row]:gap-2 [&_.button-primary]:h-[33px] [&_.button-primary]:text-sm [&_.button-primary]:py-0 px-2 [&_.button-secondary]:h-[33px] [&_.button-secondary]:text-sm [&_.button-secondary]:py-0 px-2"
-                  onSubmit={(event) => void createAdjustment(event)}
-                >
-                  <select name="branch" required defaultValue={branchId}>
-                    <option value="" disabled>
-                      Select branch
-                    </option>
-                    {branches.map((b) => (
-                      <option value={b.id} key={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select name="product" required defaultValue="">
-                    <option value="" disabled>
-                      Select product
-                    </option>
-                    {products.map((p) => (
-                      <option value={p.id} key={p.id}>
-                        {p.name} {p.sku}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    name="quantity"
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="Positive gain, negative loss"
-                  />
-                  <input
-                    name="reason"
-                    required
-                    minLength={3}
-                    maxLength={500}
-                    placeholder="Reason for adjustment"
-                  />
-                  <button
-                    className="h-[35px] px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm font-normal transition-colors text-white bg-brand border border-brand shadow-[0_1px_2px_#183f3318] [&:hover]:bg-brand-dark [&:disabled]:[opacity:.65]"
-                    disabled={!!busy}
-                  >
-                    Confirm entry stock adjustment
-                  </button>
-                </form>
-              ) : (
-                <p className="text-sm text-[#929e96] py-2.5 px-1 m-0">
-                  Stock adjustments are restricted to inventory managers and
-                  owners.
-                </p>
-              )}
-            </section>
-            <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
+          <section className="min-w-0 bg-white border border-line rounded-xl p-[15px] shadow-[0_1px_2px_#24333704] min-[1500px]:p-[17px] max-[620px]:p-3 p-0 overflow-hidden">
               <div className="flex items-center justify-between gap-[15px] py-[17px] px-[18px] [border-bottom:1px_solid_#edf1ed] [&_h2]:text-sm [&_h2]:mt-0 mx-0 mb-1 [&_p]:text-sm [&_p]:text-[#929d95] [&_p]:m-0 max-[1000px]:items-start max-[1000px]:flex-col max-[620px]:p-[13px]">
                 <div>
                   <h2>Batch lots</h2>
@@ -991,7 +645,6 @@ export default function InventoryPage() {
                 </p>
               )}
             </section>
-          </div>
           <footer className="flex items-center justify-between pt-[13px] px-[1px] pb-0 [border-top:1px_solid_#e9eeea] text-[#9aa49d] text-sm max-[620px]:gap-2 max-[620px]:items-start max-[620px]:flex-col max-[620px]:text-sm">
             <span>OceanicToolsMonger Inventory control</span>
             <span>
@@ -1005,3 +658,5 @@ export default function InventoryPage() {
     </div>
   );
 }
+
+

@@ -284,7 +284,7 @@ inventoryWorkflowRouter.post("/counts/:countId/approve", requireRoles("OWNER", "
   const count = await prisma.stockCount.findFirst({ where: { id: request.params.countId as string, businessId: auth.businessId } });
   if (!count || count.status !== "SUBMITTED") throw new ApiError(409, "A submitted stock count was not found.", "INVALID_COUNT_TRANSITION");
   requireBranchAccess(auth, count.branchId);
-  if (count.createdById === auth.userId) throw new ApiError(403, "The person who started a stock count cannot approve it.", "COUNT_SELF_APPROVAL");
+  if (count.createdById === auth.userId && auth.role !== "OWNER") throw new ApiError(403, "The person who started a stock count cannot approve it.", "COUNT_SELF_APPROVAL");
   const updated = await prisma.$transaction(async (transaction) => {
     const result = await transaction.stockCount.update({ where: { id: count.id }, data: { status: "APPROVED", approvedById: auth.userId, approvedAt: new Date() } });
     await writeAudit(transaction, { businessId: auth.businessId, userId: auth.userId, action: "STOCK_COUNT_APPROVED", entityType: "StockCount", entityId: count.id, before: { status: "SUBMITTED" }, after: { status: "APPROVED" } });
