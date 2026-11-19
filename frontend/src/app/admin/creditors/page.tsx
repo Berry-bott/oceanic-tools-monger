@@ -15,6 +15,7 @@ import { AdminDialogPanel } from "@/components/admin-motion";
 import { createPosSale, salesKeys } from "@/services/sales/sales.service";
 import { recordCustomerPayment, customerKeys } from "@/services/customers/customer.service";
 import { creditorKeys, createCreditor, getCreditors, type Creditor, type CreditorSale } from "@/services/customers/creditor.service";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 type Branch = { id: string; name: string; isDefault: boolean };
 type Product = { id: string; name: string; sku: string; unit: string; state: string; sellingPrice: string | number };
@@ -66,7 +67,10 @@ export default function CreditorsPage() {
   const currency = businessQuery.data?.data.currency || "NGN";
   const selectedCreditor = creditors.find((creditor) => creditor.id === selectedId) ?? null;
   const filtered = useMemo(() => creditors.filter((creditor) => {
-    const matchesSearch = `${creditor.name} ${creditor.contactPerson ?? ""} ${creditor.phone ?? ""} ${creditor.email ?? ""}`.toLowerCase().includes(search.trim().toLowerCase());
+    const matchesSearch = smartSearchMatch(
+      [creditor.name, creditor.contactPerson, creditor.phone, creditor.email],
+      search
+    );
     const matchesFilter = filter === "ALL" || (filter === "OWING" && creditor.outstandingBalance > 0) || (filter === "OVERDUE" && creditor.overdueBalance > 0);
     return matchesSearch && matchesFilter;
   }), [creditors, filter, search]);

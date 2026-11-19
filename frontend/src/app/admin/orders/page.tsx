@@ -10,6 +10,7 @@ import { useOnlineOrders } from "@/hooks/queries/use-online-orders";
 import { useReceivePickupPayment, useTransitionOnlineOrder } from "@/hooks/mutations/use-order-mutations";
 import { useBranchStore } from "@/stores/branch.store";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 type User = { id: string; name: string; email: string; role: string };
 type Business = { currency: string };
@@ -150,16 +151,21 @@ export default function OnlineOrdersPage() {
   }, [branchId, branches]);
 
   const filteredOrders = useMemo(() => {
-    const needle = search.trim().toLowerCase();
     return orders.filter(
       (order) =>
         (status === "ALL" || (status === "RETURN_REQUESTED"
           ? order.returns?.some((item) => item.status === "REQUESTED") || order.status === status
           : order.status === status)) &&
-        (!needle ||
-          `${order.number} ${order.customerName} ${order.customerEmail} ${order.customerPhone ?? ""}`
-            .toLowerCase()
-            .includes(needle)),
+        smartSearchMatch(
+          [
+            order.number,
+            order.customerName,
+            order.customerEmail,
+            order.customerPhone,
+            ...(order.lines?.flatMap((l) => [l.productName, l.sku]) ?? []),
+          ],
+          search
+        ),
     );
   }, [orders, search, status]);
 

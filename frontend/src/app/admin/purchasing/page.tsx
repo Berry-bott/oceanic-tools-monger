@@ -14,6 +14,7 @@ import { AdminDialogPanel } from "@/components/admin-motion";
 import { AppErrorModal } from "@/components/app-error-modal";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
+import { smartSearchMatch } from "@/lib/smart-search";
 import {
   createPurchaseOrder,
   createSupplier as createSupplierRequest,
@@ -27,6 +28,10 @@ type Product = {
   id: string;
   name: string;
   sku: string;
+  brand?: string | null;
+  model?: string | null;
+  category?: string | null;
+  specifications?: Array<{ name: string; value: string }>;
   costPrice?: number | string;
 };
 type Supplier = {
@@ -558,13 +563,36 @@ export default function PurchasingPage() {
                 <label className="grid gap-1.5 text-sm text-[#536159]">Search products
                   <input type="search" value={receiveProductSearch} onChange={(event) => setReceiveProductSearch(event.target.value)} placeholder="Search by product name or SKU" aria-label="Search products to receive" className="h-11 rounded-lg border border-[#dfe6e0] bg-white px-3 text-sm outline-none transition focus:border-[#6e9e7d] focus:ring-2 focus:ring-[#eaf3ec]" />
                 </label>
-                {receiveProductSearch.trim() && <div className="max-h-40 overflow-y-auto rounded-lg border border-[#e6ece7] bg-white" role="listbox" aria-label="Product search results">
-                  {products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(receiveProductSearch.trim().toLowerCase()) && !receiveLineDrafts.some((line) => line.productId === product.id)).slice(0, 8).map((product) => <div key={product.id} className="flex items-center justify-between gap-3 border-b border-[#edf1ed] px-3 py-2 last:border-b-0">
-                    <span className="min-w-0"><strong className="block truncate text-sm font-medium text-[#35453b]">{product.name}</strong><small className="text-xs text-[#89948b]">{product.sku}</small></span>
-                    <button type="button" onClick={() => { const lines = [...receiveLineDrafts, { productId: product.id, quantity: "1", unitCost: String(product.costPrice ?? "0") }]; setReceiveLineDrafts(lines); setReceiptTotal(receiptValue(lines)); setReceiveProductSearch(""); }} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-[#dce7de] px-2.5 text-xs font-medium text-brand hover:bg-[#f1f7f2]"><AdminUiIcon name="plus" size={13} />Add</button>
-                  </div>)}
-                  {products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(receiveProductSearch.trim().toLowerCase()) && !receiveLineDrafts.some((line) => line.productId === product.id)).length === 0 && <p className="m-0 px-3 py-3 text-sm text-muted">No matching products available to add.</p>}
-                </div>}
+                {receiveProductSearch.trim() && (() => {
+                  const matchingProducts = products.filter(
+                    (product) =>
+                      smartSearchMatch(
+                        [
+                          product.name,
+                          product.sku,
+                          product.brand,
+                          product.model,
+                          product.category,
+                          ...(product.specifications?.map((s) => `${s.name} ${s.value}`) ?? []),
+                        ],
+                        receiveProductSearch
+                      ) && !receiveLineDrafts.some((line) => line.productId === product.id)
+                  );
+                  return (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-[#e6ece7] bg-white" role="listbox" aria-label="Product search results">
+                      {matchingProducts.slice(0, 8).map((product) => (
+                        <div key={product.id} className="flex items-center justify-between gap-3 border-b border-[#edf1ed] px-3 py-2 last:border-b-0">
+                          <span className="min-w-0">
+                            <strong className="block truncate text-sm font-medium text-[#35453b]">{product.name}</strong>
+                            <small className="text-xs text-[#89948b]">{product.sku} {product.model ? `• ${product.model}` : ""}</small>
+                          </span>
+                          <button type="button" onClick={() => { const lines = [...receiveLineDrafts, { productId: product.id, quantity: "1", unitCost: String(product.costPrice ?? "0") }]; setReceiveLineDrafts(lines); setReceiptTotal(receiptValue(lines)); setReceiveProductSearch(""); }} className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-[#dce7de] px-2.5 text-xs font-medium text-brand hover:bg-[#f1f7f2]"><AdminUiIcon name="plus" size={13} />Add</button>
+                        </div>
+                      ))}
+                      {matchingProducts.length === 0 && <p className="m-0 px-3 py-3 text-sm text-muted">No matching products available to add.</p>}
+                    </div>
+                  );
+                })()}
                 {receiveLineDrafts.map((line, index) => {
                   const product = products.find((item) => item.id === line.productId);
                   return <div key={line.productId} className="grid grid-cols-[minmax(0,1fr)_120px_150px_36px] items-end gap-2 rounded-lg border border-[#e9eeea] bg-[#fbfcfb] p-3 max-[620px]:grid-cols-2">

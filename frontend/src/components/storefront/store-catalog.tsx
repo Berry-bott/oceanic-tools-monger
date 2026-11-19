@@ -6,6 +6,7 @@ import { HeroCarousel } from "./hero-carousel";
 import { StoreProductCard } from "./store-product-card";
 import type { StoreProduct } from "@/data/tools-catalog";
 import type { StoreBranch, StoreCategorySummary } from "@/services/store/store.service";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 interface StoreCatalogProps {
   initialProducts?: StoreProduct[];
@@ -191,9 +192,21 @@ export function StoreCatalog({
         return false;
       }
       if (searchFilter) {
-        const searchTokens = searchFilter.toLowerCase().split(/\s+/).filter(Boolean);
-        const productString = `${p.name} ${p.sku} ${p.brand ?? ""} ${p.model ?? ""}`.toLowerCase();
-        return searchTokens.every((token) => productString.includes(token));
+        const specTexts = p.specifications ? Object.entries(p.specifications).flat() : [];
+        return smartSearchMatch(
+          [
+            p.name,
+            p.sku,
+            p.brand,
+            p.model,
+            p.category,
+            p.subcategory,
+            p.description,
+            ...(p.tags ?? []),
+            ...specTexts,
+          ],
+          searchFilter
+        );
       }
       return true;
     });

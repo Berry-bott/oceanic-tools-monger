@@ -14,11 +14,14 @@ import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loadin
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { AppErrorModal } from "@/components/app-error-modal";
 import { FourDotLoader } from "@/components/four-dot-loader";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 type Role = "OWNER" | "STAFF";
 type User = { id: string; name: string; email: string; role: Role; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null };
 type StockFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
-const canManage = (user: User | null) =>
+const canCreate = (user: User | null) =>
+  user?.role === "OWNER" || (user?.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
+const canEdit = (user: User | null) =>
   user?.role === "OWNER";
 const currency = (amount: number | string) =>
   new Intl.NumberFormat("en-NG", {
@@ -87,11 +90,21 @@ export default function ProductsPage() {
   );
   const filtered = useMemo(
     () => {
-      const searchTokens = search.toLowerCase().split(/\s+/).filter(Boolean);
       return products.filter(
         (product) => {
-          const productString = `${product.name} ${product.sku} ${product.category} ${product.brand ?? ""} ${product.model ?? ""}`.toLowerCase();
-          const matchesSearch = searchTokens.every(token => productString.includes(token));
+          const matchesSearch = smartSearchMatch(
+            [
+              product.name,
+              product.sku,
+              product.barcode,
+              product.category,
+              product.subcategory,
+              product.brand,
+              product.model,
+              ...(product.specifications?.map((s) => `${s.name} ${s.value}`) ?? []),
+            ],
+            search
+          );
           return (
             (stockFilter === "ALL" || stockState(product) === stockFilter) &&
             (category === "ALL" || product.category === category) &&
@@ -156,7 +169,7 @@ export default function ProductsPage() {
               <h1>Products</h1>
               <p>Manage your catalogue, pricing and stock health.</p>
             </div>
-            {canManage(user) && (
+            {canCreate(user) && (
               <div className="flex gap-2">
                 {user.role === "OWNER" && <Link href="/admin/products/merge" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Merge duplicates</Link>}
                 <Link href="/admin/products/import" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Import</Link>
@@ -287,8 +300,8 @@ export default function ProductsPage() {
               <AdminEmptyState
                 icon="box"
                 title={search || stockFilter !== "ALL" || category !== "ALL" ? "No matching products" : "Your catalogue is empty"}
-                description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canManage(user) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
-                action={canManage(user) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
+                description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canCreate(user) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
+                action={canCreate(user) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
               />
             ) : (
               <>
@@ -375,7 +388,7 @@ export default function ProductsPage() {
                             <td className="px-2 py-2">
                               <div className="flex items-center justify-end gap-1">
                                 <button type="button" aria-label={`View ${product.name} details`} title="View details" className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#dce8f2] bg-[#f3f8fc] text-[#478264] transition-colors hover:bg-[#e4eff8] hover:text-[#32674f]" onClick={() => setViewingProduct(product)}><AdminUiIcon name="eye" size={15} /></button>
-                                {canManage(user) && <>
+                                {canEdit(user) && <>
                                   <Link
                                     aria-label={`Edit ${product.name}`}
                                     title="Edit product"
@@ -477,7 +490,7 @@ export default function ProductsPage() {
             {viewingProduct.balances.length > 0 && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Branch stock</h3><div className="grid gap-2">{viewingProduct.balances.map((balance) => <div key={balance.branchId} className="grid grid-cols-2 gap-2 rounded-lg bg-[#f7f9f7] px-3 py-3 text-xs sm:grid-cols-4"><strong className="col-span-2 font-medium text-[#35453b] sm:col-span-1">{balance.branch?.name ?? "Branch"}</strong><span>On hand <strong>{quantity(Number(balance.onHand))}</strong></span><span>Reserved <strong>{quantity(Number(balance.reserved))}</strong></span><span>Available <strong>{quantity(Number(balance.onHand) - Number(balance.reserved))}</strong></span></div>)}</div></section>}
             {!!viewingProduct.specifications?.length && <section className="rounded-xl border border-[#e8ede9] p-4 sm:p-5"><h3 className="mb-3 mt-0 text-sm font-semibold text-ink">Specifications</h3><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{viewingProduct.specifications.map((spec) => <div key={spec.id} className="flex justify-between gap-3 rounded-lg bg-[#f7f9f7] px-3 py-2.5 text-xs"><span className="text-muted">{spec.name}</span><strong className="text-right font-medium text-ink">{spec.value}</strong></div>)}</div></section>}
           </div>
-          <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canManage(user) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
+          <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canEdit(user) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
         </AdminDialogPanel>
       </div>, document.body)}
       <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Product update could not be completed" />

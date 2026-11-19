@@ -13,6 +13,7 @@ import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { customerKeys, saveCustomer } from "@/services/customers/customer.service";
 import { invalidateAdminSummaries } from "@/lib/invalidate-admin-data";
+import { smartSearchMatch } from "@/lib/smart-search";
 import {
   cancelInstallmentAgreement,
   createInstallmentAgreement,
@@ -83,14 +84,16 @@ export default function InstallmentsPage() {
     const isOverdue = agreement.status === "ACTIVE" && agreement.installments.some((installment) => installment.status === "OVERDUE" || (number(installment.amount) > number(installment.paidAmount) && new Date(installment.dueAt).getTime() < Date.now()));
     const matchesStatus = agreementFilter === "ALL" ||
       (agreementFilter === "OVERDUE" ? isOverdue : agreement.status === agreementFilter);
-    const search = agreementSearch.trim().toLowerCase();
-    const matchesSearch = !search || [
-      agreement.number,
-      agreement.customer.name,
-      agreement.customer.phone ?? "",
-      agreement.customer.email ?? "",
-      ...agreement.lines.flatMap((line) => [line.productName, line.sku]),
-    ].some((value) => value.toLowerCase().includes(search));
+    const matchesSearch = smartSearchMatch(
+      [
+        agreement.number,
+        agreement.customer.name,
+        agreement.customer.phone ?? "",
+        agreement.customer.email ?? "",
+        ...agreement.lines.flatMap((line) => [line.productName, line.sku]),
+      ],
+      agreementSearch
+    );
     const matchesBranch = !branchFilter || agreement.branch.id === branchFilter;
     const matchesDueDate = (!dueFrom && !dueTo) || agreement.installments.some((installment) => {
       if (number(installment.paidAmount) >= number(installment.amount) || installment.status === "CANCELLED") return false;

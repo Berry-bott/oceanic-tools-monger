@@ -14,16 +14,20 @@ import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import { changeStockLotCondition } from "@/services/inventory/inventory.service";
 import { useInventoryWorkflow } from "@/hooks/mutations/use-inventory-workflow";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 type User = { id: string; name: string; email: string; role: string; staffAccessRole?: "CASHIER" | "SENIOR_STAFF" | null; branchId?: string | null };
 type Branch = { id: string; name: string; isDefault: boolean };
-type Product = { id: string; name: string; sku: string; unit?: string };
+type Product = { id: string; name: string; sku: string; unit?: string; brand?: string | null; model?: string | null; category?: string; specifications?: Array<{ name: string; value: string }>; };
 type Balance = {
   productId: string;
   name: string;
   sku: string;
   category: string;
   unit: string;
+  brand?: string | null;
+  model?: string | null;
+  specifications?: Array<{ name: string; value: string }>;
   imageUrl?: string | null;
   branch: string;
   branchId?: string;
@@ -209,10 +213,19 @@ export default function InventoryPage() {
   }, [stockRows]);
   const filteredStockRows = groupedStockRows.filter((row) => {
     const product = products.find((p) => p.id === row.productId);
-    const query = productSearch.trim().toLowerCase();
-    const searchTokens = query.split(/\s+/).filter(Boolean);
-    const productString = `${row.name} ${row.sku} ${row.category} ${product?.brand ?? ""} ${product?.model ?? ""}`.toLowerCase();
-    const matchesSearch = !query || searchTokens.every((token) => productString.includes(token));
+    const matchesSearch = smartSearchMatch(
+      [
+        row.name,
+        row.sku,
+        row.category,
+        row.unit,
+        row.brand ?? product?.brand,
+        row.model ?? product?.model,
+        ...(row.specifications?.map((s) => `${s.name} ${s.value}`) ?? []),
+        ...(product?.specifications?.map((s) => `${s.name} ${s.value}`) ?? []),
+      ],
+      productSearch
+    );
     const isOut = row.available <= 0;
     const isLow = !isOut && Number(row.reorderLevel) > 0 && row.available <= Number(row.reorderLevel);
     const matchesStatus = stockStatusFilter === "all" || (stockStatusFilter === "out" ? isOut : stockStatusFilter === "low" ? isLow : !isOut && !isLow);

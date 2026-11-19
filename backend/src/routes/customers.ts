@@ -13,8 +13,17 @@ customersRouter.use(requireAuth);
 
 customersRouter.get("/", async (request, response) => {
   const auth = response.locals.auth as AuthContext;
-  const search = typeof request.query.search === "string" ? request.query.search.trim() : "";
-  const customers = await prisma.customer.findMany({ where: { businessId: auth.businessId, ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { phone: { contains: search } }, { email: { contains: search, mode: "insensitive" } }] } : {}) }, include: { sales: { where: { status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } }, returns: { select: { total: true } } } }, _count: { select: { sales: true } } }, orderBy: { name: "asc" }, take: 200 });
+  const searchTokens = typeof request.query.search === "string" ? request.query.search.trim().split(/\s+/).filter(Boolean) : [];
+  const searchCondition = searchTokens.length > 0 ? {
+    AND: searchTokens.map((token) => ({
+      OR: [
+        { name: { contains: token, mode: "insensitive" as const } },
+        { phone: { contains: token } },
+        { email: { contains: token, mode: "insensitive" as const } }
+      ]
+    }))
+  } : {};
+  const customers = await prisma.customer.findMany({ where: { businessId: auth.businessId, ...searchCondition }, include: { sales: { where: { status: { not: "CANCELLED" } }, include: { payments: { include: { payment: { select: { status: true } } } }, returns: { select: { total: true } } } }, _count: { select: { sales: true } } }, orderBy: { name: "asc" }, take: 200 });
   response.json({ data: customers.map(({ sales, ...customer }) => {
     const invoiced = sales.reduce((sum, sale) => sum + Number(sale.total) - sale.returns.reduce((returnSum, entry) => returnSum + Number(entry.total), 0), 0);
     const paid = sales.reduce((sum, sale) => sum + sale.payments.filter((entry) => entry.payment.status === "SUCCEEDED").reduce((subtotal, entry) => subtotal + Number(entry.amount), 0), 0);

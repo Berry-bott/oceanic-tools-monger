@@ -535,7 +535,12 @@ productsRouter.get("/", async (request, response) => {
       OR: [
         { name: { contains: token, mode: "insensitive" as const } },
         { sku: { contains: token, mode: "insensitive" as const } },
-        { barcode: { contains: token, mode: "insensitive" as const } }
+        { barcode: { contains: token, mode: "insensitive" as const } },
+        { brand: { contains: token, mode: "insensitive" as const } },
+        { model: { contains: token, mode: "insensitive" as const } },
+        { category: { contains: token, mode: "insensitive" as const } },
+        { subcategory: { contains: token, mode: "insensitive" as const } },
+        { specifications: { some: { OR: [{ name: { contains: token, mode: "insensitive" as const } }, { value: { contains: token, mode: "insensitive" as const } }] } } }
       ]
     }))
   } : {};
@@ -716,7 +721,7 @@ productsRouter.post("/", requireStaffAccess("SENIOR_STAFF"), async (request, res
   response.status(201).json({ data: result.product, openingStockValue: result.openingStockValue, possibleMatches });
 });
 
-productsRouter.patch("/:productId", requireStaffAccess("SENIOR_STAFF"), async (request, response) => {
+productsRouter.patch("/:productId", requireRoles("OWNER"), async (request, response) => {
   const parsed = updateProductSchema.safeParse(request.body);
   if (!parsed.success || Object.keys(parsed.data ?? {}).length === 0) throw new ApiError(400, "Provide at least one valid product field.", "VALIDATION_ERROR", parsed.success ? undefined : parsed.error.issues);
   const auth = response.locals.auth as AuthContext;

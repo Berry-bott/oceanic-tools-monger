@@ -13,6 +13,7 @@ import { useBranches } from "@/hooks/queries/use-branches";
 import { useRecordExpense } from "@/hooks/mutations/use-finance-mutations";
 import { apiRequest } from "@/lib/api";
 import { financeKeys } from "@/services/finance/finance.service";
+import { smartSearchMatch } from "@/lib/smart-search";
 
 type Branch = { id: string; name: string };
 type Expense = {
@@ -71,9 +72,17 @@ export default function ExpensesPage() {
   const currency = "NGN";
   const branches = branchesQuery.data?.data ?? [];
   const visibleExpenses = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return expenses.filter((expense) =>
-      !query || `${expense.category} ${expense.description} ${expense.payment.reference} ${expense.payment.method} ${expense.user.name}`.toLowerCase().includes(query),
+      smartSearchMatch(
+        [
+          expense.category,
+          expense.description,
+          expense.payment.reference,
+          expense.payment.method,
+          expense.user.name,
+        ],
+        search
+      )
     );
   }, [expenses, search]);
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);

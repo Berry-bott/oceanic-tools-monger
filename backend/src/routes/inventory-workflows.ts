@@ -30,7 +30,7 @@ inventoryWorkflowRouter.get("/summary", async (request, response) => {
   const branchId = scopeBranch(auth, typeof request.query.branchId === "string" ? request.query.branchId : undefined);
   if (branchId && !await prisma.branch.findFirst({ where: { id: branchId, businessId: auth.businessId }, select: { id: true } })) throw new ApiError(404, "Branch not found.", "BRANCH_NOT_FOUND");
   const [balances, stockLots, expiringWithin30Days] = await Promise.all([
-    prisma.stockBalance.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) } }, include: { product: { select: { id: true, name: true, sku: true, category: true, unit: true, imageUrl: true, reorderLevel: true, costPrice: true } }, branch: { select: { id: true, name: true } } } }),
+    prisma.stockBalance.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) } }, include: { product: { select: { id: true, name: true, sku: true, category: true, unit: true, imageUrl: true, reorderLevel: true, costPrice: true, brand: true, model: true, specifications: { select: { name: true, value: true } } } }, branch: { select: { id: true, name: true } } } }),
     prisma.stockLot.findMany({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, quantity: { gt: 0 }, condition: "GOOD", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { productId: true, branchId: true, quantity: true, reserved: true } }),
     prisma.stockLot.count({ where: { branch: { businessId: auth.businessId, ...(branchId ? { id: branchId } : {}) }, quantity: { gt: 0 }, condition: "GOOD", expiresAt: { gte: new Date(), lte: new Date(Date.now() + 30 * 86_400_000) } } }),
   ]);
@@ -45,7 +45,7 @@ inventoryWorkflowRouter.get("/summary", async (request, response) => {
   const canSeeCost = ["OWNER", "STAFF"].includes(auth.role);
   const rows = balances.map(({ product, branch, onHand, updatedAt }) => {
     const sellable = sellableByBalance.get(`${product.id}:${branch.id}`) ?? { available: 0, reserved: 0 };
-    return { productId: product.id, name: product.name, sku: product.sku, category: product.category, unit: product.unit, imageUrl: product.imageUrl, branchId: branch.id, branch: branch.name, onHand: Number(onHand), reserved: sellable.reserved, available: sellable.available, reorderLevel: Number(product.reorderLevel), updatedAt, unitCost: Number(product.costPrice), inventoryValue: Number(onHand) * Number(product.costPrice) };
+    return { productId: product.id, name: product.name, sku: product.sku, category: product.category, unit: product.unit, brand: product.brand, model: product.model, specifications: product.specifications, imageUrl: product.imageUrl, branchId: branch.id, branch: branch.name, onHand: Number(onHand), reserved: sellable.reserved, available: sellable.available, reorderLevel: Number(product.reorderLevel), updatedAt, unitCost: Number(product.costPrice), inventoryValue: Number(onHand) * Number(product.costPrice) };
   });
   const data = rows.map(({ unitCost, inventoryValue, ...row }) => ({ ...row, ...(canSeeCost ? { unitCost, inventoryValue } : {}) }));
   const products = new Map<string, { available: number; reorderLevel: number }>();

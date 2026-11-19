@@ -629,8 +629,22 @@ storeRouter.get("/collections", async (request, response) => {
 storeRouter.get("/products", async (request, response) => {
   const storeSlug = typeof request.query.store === "string" ? request.query.store : "";
   const business = await resolveStoreBusiness(storeSlug);
-  const search = typeof request.query.search === "string" ? request.query.search.trim() : "";
-  const products = await prisma.product.findMany({ where: { businessId: business.id, state: "ACTIVE", isPublished: true, ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { category: { contains: search, mode: "insensitive" } }] } : {}) }, include: { balances: { where: { branch: { businessId: business.id } }, select: { onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: { mediaAsset: { select: { id: true, secureUrl: true, originalFilename: true, mimeType: true } } } }, specifications: { orderBy: { position: "asc" } } }, orderBy: { name: "asc" } });
+  const searchTokens = typeof request.query.search === "string" ? request.query.search.trim().split(/\s+/).filter(Boolean) : [];
+  const searchCondition = searchTokens.length > 0 ? {
+    AND: searchTokens.map((token) => ({
+      OR: [
+        { name: { contains: token, mode: "insensitive" as const } },
+        { sku: { contains: token, mode: "insensitive" as const } },
+        { barcode: { contains: token, mode: "insensitive" as const } },
+        { brand: { contains: token, mode: "insensitive" as const } },
+        { model: { contains: token, mode: "insensitive" as const } },
+        { category: { contains: token, mode: "insensitive" as const } },
+        { subcategory: { contains: token, mode: "insensitive" as const } },
+        { specifications: { some: { OR: [{ name: { contains: token, mode: "insensitive" as const } }, { value: { contains: token, mode: "insensitive" as const } }] } } }
+      ]
+    }))
+  } : {};
+  const products = await prisma.product.findMany({ where: { businessId: business.id, state: "ACTIVE", isPublished: true, ...searchCondition }, include: { balances: { where: { branch: { businessId: business.id } }, select: { onHand: true, reserved: true } }, productImages: { where: { mediaAsset: { status: "ACTIVE", secureUrl: { not: null } } }, orderBy: [{ isPrimary: "desc" }, { view: "asc" }, { position: "asc" }], include: { mediaAsset: { select: { id: true, secureUrl: true, originalFilename: true, mimeType: true } } } }, specifications: { orderBy: { position: "asc" } } }, orderBy: { name: "asc" } });
   const stockedProducts = products.filter((product) => product.balances.reduce((sum, balance) => sum + Number(balance.onHand) - Number(balance.reserved), 0) > 0);
   const metadata = await getStorefrontProductMetadata(business.id, stockedProducts.map((product) => product.id));
   response.set("Cache-Control", "no-store, no-cache, must-revalidate");

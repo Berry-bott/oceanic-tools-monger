@@ -17,6 +17,7 @@ import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { AppErrorModal } from "@/components/app-error-modal";
+import { smartSearchMatch } from "@/lib/smart-search";
 import { creditorKeys, createCreditor, getCreditors, type Creditor } from "@/services/customers/creditor.service";
 import {
   closeCashShift,
@@ -33,6 +34,8 @@ type Product = {
   sku: string;
   brand?: string | null;
   model?: string | null;
+  category?: string | null;
+  specifications?: Array<{ name: string; value: string }>;
   sellingPrice: number | string;
   bottomPrice?: number | string;
   costPrice?: number | string;
@@ -181,9 +184,18 @@ export default function SalesPage() {
   const availableProducts = useMemo(
     () =>
       products.filter((product) => {
-        const searchTokens = search.toLowerCase().split(/\s+/).filter(Boolean);
-        const productString = `${product.name} ${product.sku} ${product.unit} ${product.brand ?? ""} ${product.model ?? ""}`.toLowerCase();
-        const matches = searchTokens.every(token => productString.includes(token));
+        const matches = smartSearchMatch(
+          [
+            product.name,
+            product.sku,
+            product.unit,
+            product.brand,
+            product.model,
+            product.category,
+            ...(product.specifications?.map((s) => `${s.name} ${s.value}`) ?? []),
+          ],
+          search
+        );
         const balance = product.balances.find(
           (row) => row.branchId === branchId,
         );
