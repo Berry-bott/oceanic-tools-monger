@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Product3DViewer } from "./product-3d-viewer";
 import { StoreProductCard } from "./store-product-card";
 import { useStoreCart } from "@/stores/store-cart.store";
+import { useToastStore } from "@/stores/toast.store";
 import type { StoreProduct } from "@/data/tools-catalog";
 import { fetchStoreStock, getCustomerAccount, loginStoreCustomer, registerStoreCustomer, submitProductReview, type CustomerAccount } from "@/services/store/store.service";
 
@@ -117,7 +118,12 @@ export function ProductDetailClient({
       },
       quantity
     );
-    setDrawerOpen(true);
+    useToastStore.getState().showToast({
+      title: "Added to Cart",
+      message: `${quantity > 1 ? `${quantity}x ` : ""}${product.name}`,
+      imageUrl: product.images[0],
+      price: product.price * quantity,
+    });
   };
 
   const handleBuyNow = () => {
@@ -317,7 +323,7 @@ export function ProductDetailClient({
               <span className="text-3xl font-bold text-charcoal">
                 ₦{product.price.toLocaleString("en-NG")}
               </span>
-              {product.originalPrice != null && Number(product.originalPrice) > 0 && (
+              {product.originalPrice != null && Number(product.originalPrice) > Number(product.price) && (
                 <span className="text-lg text-charcoal-light line-through">
                   ₦{Number(product.originalPrice).toLocaleString("en-NG")}
                 </span>

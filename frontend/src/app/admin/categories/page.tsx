@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
+import { AppErrorModal } from "@/components/app-error-modal";
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { FourDotLoader } from "@/components/four-dot-loader";
@@ -66,14 +67,22 @@ export default function CategoriesPage() {
 
   function renderSubcategory(categoryId: string, subcategory: { id: string; name: string }, inModal = false) {
     return (
-      <div key={subcategory.id} className="flex min-w-0 items-center justify-between gap-1 rounded-lg border border-[#e8ede9] bg-[#f8faf8] py-1 pl-2.5 pr-1 text-xs text-[#536159]">
+      <div key={subcategory.id} className="group flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#e8ede9] bg-[#f8faf8] px-2.5 py-1.5 text-xs text-[#536159] hover:bg-[#f2f6f3] transition-colors">
         {editingSubcategory?.id === subcategory.id ? (
-          <form className="flex min-w-0 flex-1 gap-1" onSubmit={(event) => void renameSubcategory(event)}>
-            <input aria-label="Subcategory name" name="name" required maxLength={100} defaultValue={editingSubcategory.name} className="h-8 min-w-0 flex-1 rounded-md border border-line px-2 text-xs" />
-            <button type="submit" aria-label="Save subcategory name" title="Save" disabled={busyKey === `subcategory:${subcategory.id}`} className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-white text-brand disabled:cursor-wait disabled:opacity-60">{busyKey === `subcategory:${subcategory.id}` ? <FourDotLoader className="scale-75" /> : <AdminUiIcon name="check" size={13} />}</button>
-            <button type="button" aria-label="Cancel editing subcategory" title="Cancel" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted" onClick={() => setEditingSubcategory(null)}><AdminUiIcon name="close" size={13} /></button>
+          <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(event) => void renameSubcategory(event)}>
+            <input aria-label="Subcategory name" name="name" required maxLength={100} defaultValue={editingSubcategory.name} autoFocus className="h-7 min-w-0 flex-1 rounded-md border border-line bg-white px-2 text-xs outline-none focus:border-brand" />
+            <button type="submit" aria-label="Save subcategory name" title="Save" disabled={busyKey === `subcategory:${subcategory.id}`} className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md bg-brand text-white disabled:cursor-wait disabled:opacity-60">{busyKey === `subcategory:${subcategory.id}` ? <FourDotLoader className="scale-75" /> : <AdminUiIcon name="check" size={13} />}</button>
+            <button type="button" aria-label="Cancel editing subcategory" title="Cancel" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-white text-muted hover:text-ink" onClick={() => setEditingSubcategory(null)}><AdminUiIcon name="close" size={13} /></button>
           </form>
-        ) : <><span className="min-w-0 flex-1 truncate" title={subcategory.name}>{subcategory.name}</span><button type="button" aria-label={`Edit ${subcategory.name}`} title="Edit subcategory" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted hover:bg-white hover:text-brand" onClick={() => { if (!inModal) setSubcategoryModalId(null); setEditingSubcategory({ categoryId, id: subcategory.id, name: subcategory.name }); }}><AdminUiIcon name="edit" size={13} /></button><button type="button" aria-label={`Delete ${subcategory.name}`} title="Delete subcategory" className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted hover:bg-red-50 hover:text-red-700" onClick={() => { setSubcategoryModalId(null); setDeleteTarget({ type: "subcategory", categoryId, id: subcategory.id, name: subcategory.name }); }}><AdminUiIcon name="trash" size={13} /></button></>}
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate font-medium text-[#3b4c41]" title={subcategory.name}>{subcategory.name}</span>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button type="button" aria-label={`Edit ${subcategory.name}`} title="Edit subcategory" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted hover:bg-white hover:text-brand" onClick={() => { if (!inModal) setSubcategoryModalId(null); setEditingSubcategory({ categoryId, id: subcategory.id, name: subcategory.name }); }}><AdminUiIcon name="edit" size={12} /></button>
+              <button type="button" aria-label={`Delete ${subcategory.name}`} title="Delete subcategory" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted hover:bg-red-50 hover:text-red-700" onClick={() => { setSubcategoryModalId(null); setDeleteTarget({ type: "subcategory", categoryId, id: subcategory.id, name: subcategory.name }); }}><AdminUiIcon name="trash" size={12} /></button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -207,34 +216,78 @@ export default function CategoriesPage() {
         {!categoriesQuery.isLoading && !categoriesQuery.isError && categories.length === 0 && <div className="rounded-[14px] border border-dashed border-line bg-white"><AdminEmptyState icon="folder" title="No categories yet" description="Add your first category above to organise products." /></div>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {categories.map((category) => (
-            <article key={category.id} className="grid content-start gap-3 rounded-xl border border-line bg-white p-4 shadow-sm">
+            <article key={category.id} className="min-w-0 flex flex-col justify-between gap-3 rounded-xl border border-line bg-white p-4 shadow-sm overflow-hidden">
               {editingCategory?.id === category.id ? (
-                <form className="flex gap-2" onSubmit={(event) => void renameCategory(event)}>
-                  <input aria-label="Category name" name="name" required maxLength={100} defaultValue={editingCategory.name} className={`${inputClass} h-10`} />
+                <form className="flex min-w-0 gap-2" onSubmit={(event) => void renameCategory(event)}>
+                  <input aria-label="Category name" name="name" required maxLength={100} defaultValue={editingCategory.name} className={`${inputClass} h-10 min-w-0 flex-1`} />
                   <button type="submit" aria-label="Save category name" title="Save" disabled={busyKey === `category:${category.id}`} className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg bg-brand text-white disabled:cursor-wait disabled:opacity-60">{busyKey === `category:${category.id}` ? <FourDotLoader /> : <AdminUiIcon name="check" />}</button>
                   <button type="button" aria-label="Cancel editing category" title="Cancel" className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted" onClick={() => setEditingCategory(null)}><AdminUiIcon name="close" /></button>
                 </form>
               ) : (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#edf5ef] text-brand"><AdminUiIcon name="folder" size={19} /></span>
                   <div className="min-w-0 flex-1"><Link href={`/admin/products/new?categoryId=${encodeURIComponent(category.id)}`} aria-label={`Continue adding a product in ${category.name}`} className="block truncate text-sm font-medium text-ink hover:text-brand hover:underline">{category.name}</Link><span className="mt-1 block text-xs text-muted">{category.subcategories.length} subcategories</span></div>
-                  <button type="button" aria-label={`Edit ${category.name}`} title="Edit category" className="grid size-9 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:bg-canvas hover:text-brand" onClick={() => setEditingCategory({ id: category.id, name: category.name })}><AdminUiIcon name="edit" /></button>
-                  <button type="button" aria-label={`Delete ${category.name}`} title="Delete category" className="grid size-9 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setDeleteTarget({ type: "category", categoryId: category.id, id: category.id, name: category.name })}><AdminUiIcon name="trash" /></button>
+                  <button type="button" aria-label={`Edit ${category.name}`} title="Edit category" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:bg-canvas hover:text-brand" onClick={() => setEditingCategory({ id: category.id, name: category.name })}><AdminUiIcon name="edit" /></button>
+                  <button type="button" aria-label={`Delete ${category.name}`} title="Delete category" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:border-red-200 hover:bg-red-50 hover:text-red-700" onClick={() => setDeleteTarget({ type: "category", categoryId: category.id, id: category.id, name: category.name })}><AdminUiIcon name="trash" /></button>
                 </div>
               )}
 
-              {category.subcategories.length > 0 ? <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 max-[380px]:grid-cols-1">
-                {category.subcategories.slice(0, 4).map((subcategory) => renderSubcategory(category.id, subcategory))}
-                {category.subcategories.length > 4 && <button type="button" className="col-span-2 inline-flex h-9 cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-[#d9e2da] bg-white px-3 text-xs font-medium text-brand hover:border-[#b9cdbd] hover:bg-[#f8faf8] max-[380px]:col-span-1" onClick={() => setSubcategoryModalId(category.id)}>Show {category.subcategories.length - 4} more</button>}
-              </div> : <p className="m-0 border-t border-line pt-3 text-xs text-muted">No subcategories yet.</p>}
+              {category.subcategories.length > 0 ? (
+                <div className="flex flex-col gap-1.5 border-t border-line pt-3 min-w-0">
+                  {category.subcategories.slice(0, 4).map((subcategory) => renderSubcategory(category.id, subcategory))}
+                  {category.subcategories.length > 4 && (
+                    <button
+                      type="button"
+                      className="inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-[#d9e2da] bg-white px-3 text-xs font-medium text-brand hover:border-[#b9cdbd] hover:bg-[#f8faf8]"
+                      onClick={() => setSubcategoryModalId(category.id)}
+                    >
+                      Show {category.subcategories.length - 4} more
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="m-0 border-t border-line pt-3 text-xs text-muted">No subcategories yet.</p>
+              )}
 
               {addingSubcategoryTo === category.id ? (
-                <form className="flex gap-2" onSubmit={(event) => void createSubcategory(event, category.id)}>
-                  <input aria-label={`New subcategory for ${category.name}`} name="subcategoryName" required maxLength={100} placeholder="Subcategory name" className={`${inputClass} h-10`} />
-                  <button type="submit" aria-label="Save subcategory" title="Save" disabled={createSubcategoryMutation.isPending} className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg bg-brand text-white disabled:cursor-wait disabled:opacity-60">{createSubcategoryMutation.isPending ? <FourDotLoader /> : <AdminUiIcon name="check" />}</button>
-                  <button type="button" aria-label="Cancel adding subcategory" title="Cancel" className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted" onClick={() => setAddingSubcategoryTo(null)}><AdminUiIcon name="close" /></button>
+                <form className="flex min-w-0 gap-1.5 pt-1" onSubmit={(event) => void createSubcategory(event, category.id)}>
+                  <input
+                    aria-label={`New subcategory for ${category.name}`}
+                    name="subcategoryName"
+                    required
+                    maxLength={100}
+                    placeholder="Subcategory name"
+                    autoFocus
+                    className={`${inputClass} h-9 min-w-0 flex-1 text-xs`}
+                  />
+                  <button
+                    type="submit"
+                    aria-label="Save subcategory"
+                    title="Save"
+                    disabled={createSubcategoryMutation.isPending}
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg bg-brand text-white disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {createSubcategoryMutation.isPending ? <FourDotLoader /> : <AdminUiIcon name="check" size={15} />}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Cancel adding subcategory"
+                    title="Cancel"
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:bg-canvas"
+                    onClick={() => setAddingSubcategoryTo(null)}
+                  >
+                    <AdminUiIcon name="close" size={15} />
+                  </button>
                 </form>
-              ) : <button type="button" className="inline-flex cursor-pointer items-center gap-2 justify-self-start text-sm text-brand hover:text-brand-dark" onClick={() => setAddingSubcategoryTo(category.id)}><AdminUiIcon name="plus" size={15} />Add subcategory</button>}
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex cursor-pointer items-center gap-1.5 justify-self-start text-xs font-medium text-brand hover:text-brand-dark pt-1"
+                  onClick={() => setAddingSubcategoryTo(category.id)}
+                >
+                  <AdminUiIcon name="plus" size={14} />Add subcategory
+                </button>
+              )}
             </article>
           ))}
         </div>
@@ -254,11 +307,12 @@ export default function CategoriesPage() {
             <div><p className="mb-1 mt-0 text-xs font-medium tracking-wide text-[#718b79]">SUBCATEGORIES</p><h2 id="subcategory-list-title" className="m-0 text-lg font-semibold text-ink">{subcategoryModalCategory.name}</h2><p className="mb-0 mt-1 text-sm text-muted">{subcategoryModalCategory.subcategories.length} subcategories</p></div>
             <button type="button" aria-label="Close subcategories" className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-muted hover:bg-canvas" onClick={() => setSubcategoryModalId(null)}><AdminUiIcon name="close" size={15} /></button>
           </div>
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto p-5 max-[420px]:grid-cols-1">
+          <div className="flex flex-col gap-2 overflow-y-auto p-5 sm:grid sm:grid-cols-2">
             {subcategoryModalCategory.subcategories.map((subcategory) => renderSubcategory(subcategoryModalCategory.id, subcategory, true))}
           </div>
         </AdminDialogPanel>
       </div>, document.body)}
+      <AppErrorModal message={error} onClose={() => setError("")} title="Category Action Failed" />
     </main>
   );
 }

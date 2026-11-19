@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Playfair_Display, Jost } from "next/font/google";
 import { QueryProvider } from "@/providers/query-provider";
 import { GoogleOneTap } from "@/components/auth/google-one-tap";
+import { ToastContainer } from "@/components/ui/toast-container";
 import "./globals.css";
 
 const playfair = Playfair_Display({
@@ -55,6 +56,7 @@ export default function RootLayout({
           <Suspense fallback={null}>
             <GoogleOneTap />
             {children}
+            <ToastContainer />
           </Suspense>
         </QueryProvider>
       </body>

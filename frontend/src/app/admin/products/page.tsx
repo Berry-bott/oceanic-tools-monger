@@ -13,6 +13,7 @@ import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import { smartSearchMatch } from "@/lib/smart-search";
 
@@ -172,25 +173,11 @@ export default function ProductsPage() {
             {canCreate(user) && (
               <div className="flex gap-2">
                 {user.role === "OWNER" && <Link href="/admin/products/merge" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Merge duplicates</Link>}
-                <Link href="/admin/products/import" className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Import</Link>
-                <Link href="/admin/products/new" className="h-[35px] cursor-pointer px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm text-white bg-brand border border-brand">Add product</Link>
+                <Link href={user.role === "STAFF" ? "/staff/products/import" : "/admin/products/import"} className="h-[35px] cursor-pointer px-3 inline-flex items-center rounded-lg border border-line bg-white text-sm">Import</Link>
+                <Link href={user.role === "STAFF" ? "/staff/products/new" : "/admin/products/new"} className="h-[35px] cursor-pointer px-3 rounded-lg inline-flex items-center justify-center gap-2 text-sm text-white bg-brand border border-brand">Add product</Link>
               </div>
             )}
           </div>
-          {notice && (
-            <div
-              className="mb-3 border border-[#dcebe0] bg-[#f1f8f3] rounded-lg py-2.5 px-3 text-[#4b7557] text-sm flex items-center justify-between gap-3 [&_button]:[border:0] [&_button]:bg-transparent [&_button]:text-inherit [&_button]:text-[15px]"
-              role="status"
-            >
-              {notice}
-              <button
-                onClick={() => setNotice("")}
-                aria-label="Dismiss notification"
-                title="Dismiss"
-                className="grid size-7 cursor-pointer place-items-center rounded-md hover:bg-white"
-              ><AdminUiIcon name="close" size={14} /></button>
-            </div>
-          )}
           <section
             className="grid grid-cols-4 gap-3 mb-4 max-[620px]:grid-cols-2 max-[620px]:gap-2"
             aria-label="Product summary"
@@ -301,7 +288,7 @@ export default function ProductsPage() {
                 icon="box"
                 title={search || stockFilter !== "ALL" || category !== "ALL" ? "No matching products" : "Your catalogue is empty"}
                 description={search || stockFilter !== "ALL" || category !== "ALL" ? "Try changing your search or filters." : canCreate(user) ? "Add your first product to start tracking stock and sales." : "Products added to your business will appear here."}
-                action={canCreate(user) && !products.length ? <Link href="/admin/products/new" className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
+                action={canCreate(user) && !products.length ? <Link href={user.role === "STAFF" ? "/staff/products/new" : "/admin/products/new"} className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white transition-colors hover:bg-brand-dark">Add product</Link> : undefined}
               />
             ) : (
               <>
@@ -493,6 +480,7 @@ export default function ProductsPage() {
           <footer className="mt-4 flex justify-end gap-2 border-t border-line pt-4"><button type="button" className="h-[35px] cursor-pointer rounded-lg border border-[#e0e7e1] bg-white px-3 text-sm text-[#4e5e54] transition-colors hover:border-[#ccd9ce] hover:bg-[#f8faf8]" onClick={() => setViewingProduct(null)}>Close</button>{canEdit(user) && <Link href={`/admin/products/${viewingProduct.id}/edit`} className="inline-flex h-[35px] items-center gap-2 rounded-lg border border-brand bg-brand px-3 text-sm text-white hover:bg-brand-dark"><AdminUiIcon name="edit" size={14} />Edit product</Link>}</footer>
         </AdminDialogPanel>
       </div>, document.body)}
+      <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Product Action Completed" />
       <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Product update could not be completed" />
     </div>
   );

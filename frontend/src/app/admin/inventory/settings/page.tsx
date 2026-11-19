@@ -13,6 +13,7 @@ import { useInventoryWorkflow } from "@/hooks/mutations/use-inventory-workflow";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 import {
   adjustProductStock,
   approveStockCount,
@@ -87,13 +88,13 @@ export default function InventorySettingsPage() {
 
   const canManage = user.role === "OWNER" || (user.role === "STAFF" && user.staffAccessRole === "SENIOR_STAFF");
 
-  async function action(key: string, request: () => Promise<unknown>) {
+  async function action(key: string, request: () => Promise<unknown>, successMessage = "Inventory action completed successfully.") {
     setBusy(key);
     setActionError("");
     setNotice("");
     try {
       await workflowMutation.mutateAsync(request);
-      setNotice("Inventory workflow updated successfully.");
+      setNotice(successMessage);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "The inventory action failed.");
     } finally {
@@ -153,6 +154,7 @@ export default function InventorySettingsPage() {
         quantity: Number(formData.get("quantity")),
         reason: formData.get("reason"),
       }),
+      "Stock adjustment recorded successfully! Ledger entries and inventory balances have been updated."
     );
     form.reset();
     setSelectedAdjustmentProductId("");
@@ -186,23 +188,12 @@ export default function InventorySettingsPage() {
               <p className="mt-1 text-sm text-[#87948b]">Manage workflows, transfers, counts, and stock adjustments.</p>
             </div>
             <Link
-              href="/admin/inventory"
+              href={user?.role === "STAFF" ? "/staff/inventory" : "/admin/inventory"}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[#e0e7e1] text-[#4e5e54] rounded-lg text-sm font-medium hover:bg-[#f8faf8] transition-colors"
             >
               ← Back to Inventory
             </Link>
           </div>
-
-          {/* Notice banner */}
-          {notice && (
-            <div
-              className="mb-4 border border-[#dcebe0] bg-[#f1f8f3] rounded-lg py-2.5 px-3 text-[#4b7557] text-sm flex items-center justify-between gap-3"
-              role="status"
-            >
-              {notice}
-              <button onClick={() => setNotice("")} aria-label="Dismiss" className="border-0 bg-transparent text-inherit text-base">×</button>
-            </div>
-          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -525,6 +516,7 @@ export default function InventorySettingsPage() {
             </section>
           </div>
         </div>
+        <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Stock Action Completed" />
         <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Stock action could not be completed" />
       </main>
     </div>

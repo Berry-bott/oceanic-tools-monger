@@ -13,7 +13,7 @@ export function mapStoreProductToCatalogProduct(product: ApiProduct): CatalogPro
     model: product.model,
     categorySlug: product.category.toLowerCase().trim().replace(/\s+/g, "-"),
     price: Number(product.sellingPrice),
-    originalPrice: product.originalPrice == null ? undefined : Number(product.originalPrice),
+    originalPrice: product.originalPrice && Number(product.originalPrice) > Number(product.sellingPrice) ? Number(product.originalPrice) : undefined,
     images: (product.images ?? []).map((image) => image.imageUrl).filter((image): image is string => Boolean(image)),
     badge: product.badge ?? undefined,
     rating: product.averageRating == null ? 0 : Number(product.averageRating),

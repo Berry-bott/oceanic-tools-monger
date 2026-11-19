@@ -74,18 +74,21 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
   const isSenior = user?.staffAccessRole === "SENIOR_STAFF";
   const visibleNavigation = navigation.filter((item) => item.access === "owner" ? isOwner : item.access === "senior" ? isOwner || isSenior : item.access === "staff" ? isOwner || isStaff : true);
   const navigationSections = Array.from(new Set(visibleNavigation.map((item) => item.section)));
-  const homeHref = isStaff ? "/admin/sales" : "/admin";
+  const homeHref = isStaff ? "/staff/sales" : "/admin";
   const [mobileOpen, setMobileOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
-  const isNavigationItemActive = (item: (typeof navigation)[number]) => item.href === "/admin"
-    ? pathname === item.href || pathname.startsWith("/staff")
-    : item.href === "/admin/sales"
-      ? pathname === item.href || (pathname.startsWith(`${item.href}/`) && !pathname.startsWith("/admin/sales/installments") && !pathname.startsWith("/admin/sales/returns"))
-      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const isNavigationItemActive = (item: (typeof navigation)[number]) => {
+    const normalizedPath = pathname.startsWith("/staff/") ? pathname.replace(/^\/staff/, "/admin") : pathname;
+    return item.href === "/admin"
+      ? pathname === "/admin" && !isStaff
+      : item.href === "/admin/sales"
+        ? (normalizedPath === "/admin/sales" && !normalizedPath.startsWith("/admin/sales/installments") && !normalizedPath.startsWith("/admin/sales/returns"))
+        : normalizedPath === item.href || normalizedPath.startsWith(`${item.href}/`);
+  };
   const current = visibleNavigation.find(isNavigationItemActive)
     ?? visibleNavigation[0]
     ?? navigation.find(isNavigationItemActive)
@@ -170,7 +173,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                 {visibleNavigation
                   .filter((item) => item.section === section)
                   .map((item) => {
-                    const href = item.href;
+                    const href = isStaff ? item.href.replace(/^\/admin/, "/staff") : item.href;
                     const active = isNavigationItemActive(item);
 
                     return (
@@ -263,7 +266,7 @@ export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
                   </div>
                   <div className="p-1">
                     <Link
-                      href="/admin/change-password"
+                      href={isStaff ? "/staff/change-password" : "/admin/change-password"}
                       onClick={() => setProfileMenuOpen(false)}
                       className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#34413a] transition-colors hover:bg-[#f1f6f2]"
                     >

@@ -11,6 +11,8 @@ import { useReceivePickupPayment, useTransitionOnlineOrder } from "@/hooks/mutat
 import { useBranchStore } from "@/stores/branch.store";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 import { smartSearchMatch } from "@/lib/smart-search";
+import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 
 type User = { id: string; name: string; email: string; role: string };
 type Business = { currency: string };
@@ -278,29 +280,6 @@ export default function OnlineOrdersPage() {
             </select>
           </label>
         </section>
-
-        {pageError && (
-          <div
-            role="alert"
-            className="flex items-center justify-between gap-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
-          >
-            <span>{pageError}</span>
-            <button
-              className="font-normal underline"
-              onClick={() => void ordersQuery.refetch()}
-            >
-              Retry
-            </button>
-          </div>
-        )}
-        {notice && (
-          <div
-            role="status"
-            className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-          >
-            {notice}
-          </div>
-        )}
 
         <section
           className="grid gap-3 sm:grid-cols-3"
@@ -626,6 +605,8 @@ export default function OnlineOrdersPage() {
           </section>
         </div>
       )}
+      <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Order Action Successful" />
+      <AppErrorModal message={error} onClose={() => setError("")} title="Order Action Failed" />
     </main>
   );
 }

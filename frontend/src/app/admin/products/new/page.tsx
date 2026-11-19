@@ -12,6 +12,7 @@ import { ProductSpecificationsEditor, type ProductSpecificationInput } from "@/c
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
+import { AppErrorModal } from "@/components/app-error-modal";
 import { checkProductDuplicates, removeStagedProductImage, uploadStagedProductImage, type ProductDuplicate, type StagedProductImage } from "@/services/products/product.service";
 import { categoryKeys, getProductCategories } from "@/services/products/category.service";
 
@@ -184,7 +185,8 @@ export default function NewProductPage() {
         "oceanic-product-created",
         publishOnSave ? "published" : "draft",
       );
-      router.push(returnToReceiving ? "/admin/purchasing" : "/admin/products");
+      const isStaffUser = user?.role === "STAFF";
+      router.push(returnToReceiving ? (isStaffUser ? "/staff/purchasing" : "/admin/purchasing") : (isStaffUser ? "/staff/products" : "/admin/products"));
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -206,7 +208,7 @@ export default function NewProductPage() {
           role="alert"
         >
           <p>{error || "You do not have permission to add products."}</p>
-          <Link className="text-[#28664e] font-normal" href="/admin/products">
+          <Link className="text-[#28664e] font-normal" href={user?.role === "STAFF" ? "/staff/products" : "/admin/products"}>
             Return to products
           </Link>
         </section>
@@ -229,16 +231,16 @@ export default function NewProductPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
-            href="/admin/products"
+            href={user?.role === "STAFF" ? "/staff/products" : "/admin/products"}
             className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas"
           >
             Back to product list
           </Link>
-          {returnToReceiving && <Link href="/admin/purchasing" className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas">
+          {returnToReceiving && <Link href={user?.role === "STAFF" ? "/staff/purchasing" : "/admin/purchasing"} className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas">
             Return to receiving
           </Link>}
           <Link
-            href="/admin/categories"
+            href={user?.role === "STAFF" ? "/staff/categories" : "/admin/categories"}
             className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-white px-4 text-sm text-ink hover:bg-canvas"
           >
             <AdminUiIcon name="folder" size={17} />
@@ -452,7 +454,7 @@ export default function NewProductPage() {
             </p>
           )}
           <div className="flex justify-end gap-2 max-[620px]:flex-col-reverse">
-            <Link className={secondaryButton} href="/admin/products">
+            <Link className={secondaryButton} href={user?.role === "STAFF" ? "/staff/products" : "/admin/products"}>
               Cancel
             </Link>
             <button
@@ -465,6 +467,7 @@ export default function NewProductPage() {
           </div>
         </form>
       </div>
+      <AppErrorModal message={error} onClose={() => setError("")} title="Product could not be created" />
     </main>
   );
 }

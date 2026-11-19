@@ -12,6 +12,7 @@ import { useProducts } from "@/hooks/queries/use-products";
 import { usePurchasingOverview } from "@/hooks/queries/use-purchasing-overview";
 import { AdminDialogPanel } from "@/components/admin-motion";
 import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { smartSearchMatch } from "@/lib/smart-search";
@@ -368,18 +369,6 @@ export default function PurchasingPage() {
               </button>
             </div>
           )}
-          {notice && (
-            <div
-              className="mb-3 border border-[#dcebe0] bg-[#f1f8f3] rounded-lg py-2.5 px-3 text-[#4b7557] text-sm flex items-center justify-between gap-3 [&_button]:[border:0] [&_button]:bg-transparent [&_button]:text-inherit [&_button]:text-[15px]"
-              role="status"
-            >
-              {notice}
-              <button
-                onClick={() => setNotice("")}
-                aria-label="Dismiss"
-              ></button>
-            </div>
-          )}
           <section className={`grid ${isOwner ? "grid-cols-3" : "grid-cols-1"} gap-3 mb-4 max-[620px]:grid-cols-2 max-[620px]:gap-2`}>
             <article className="bg-white border border-line rounded-xl p-4 grid gap-1.5 min-h-[106px] [&>span]:text-sm [&>span]:text-[#75827a] [&>span]:font-normal [&>strong]:text-2xl [&>strong]:leading-none [&>strong]:font-normal [&>strong]:tracking-tight [&>strong]:text-[#26372d] [&>small]:text-sm [&>small]:text-[#9aa49d] max-[620px]:min-h-[91px] max-[620px]:p-3 max-[620px]:[&>strong]:text-xl">
               <span>Suppliers</span>
@@ -603,7 +592,7 @@ export default function PurchasingPage() {
                   </div>;
                 })}
                 {!receiveLineDrafts.length && <p className="m-0 rounded-lg bg-[#f7f9f7] px-3 py-2.5 text-xs text-[#89948b]">Search above to add products to this receipt.</p>}
-                <Link href="/admin/products/new?returnTo=receive-stock" className="inline-flex h-10 w-fit items-center gap-2 rounded-lg border border-[#dce7de] bg-white px-3 text-sm font-medium text-brand transition-colors hover:border-[#c5d8c9] hover:bg-[#f1f7f2]">
+                <Link href={user?.role === "STAFF" ? "/staff/products/new?returnTo=receive-stock" : "/admin/products/new?returnTo=receive-stock"} className="inline-flex h-10 w-fit items-center gap-2 rounded-lg border border-[#dce7de] bg-white px-3 text-sm font-medium text-brand transition-colors hover:border-[#c5d8c9] hover:bg-[#f1f7f2]">
                   <AdminUiIcon name="plus" size={15} />Create a new product
                 </Link>
               </section>
@@ -715,6 +704,7 @@ export default function PurchasingPage() {
           </AdminDialogPanel>
         </div>
       ), document.body)}
+      <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Purchasing Action Successful" />
       <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Purchasing action could not be completed" />
     </div>
   );

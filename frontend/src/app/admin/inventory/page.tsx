@@ -10,6 +10,7 @@ import { useInventoryOverview } from "@/hooks/queries/use-inventory-overview";
 import { useBranchStore } from "@/stores/branch.store";
 import { AdminPageSkeleton } from "@/components/admin-loading-skeleton";
 import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { FourDotLoader } from "@/components/four-dot-loader";
 import { changeStockLotCondition } from "@/services/inventory/inventory.service";
@@ -285,18 +286,6 @@ export default function InventoryPage() {
               </button>
             </div>
           )}
-          {notice && (
-            <div
-              className="mb-3 border border-[#dcebe0] bg-[#f1f8f3] rounded-lg py-2.5 px-3 text-[#4b7557] text-sm flex items-center justify-between gap-3 [&_button]:[border:0] [&_button]:bg-transparent [&_button]:text-inherit [&_button]:text-[15px]"
-              role="status"
-            >
-              {notice}
-              <button
-                onClick={() => setNotice("")}
-                aria-label="Dismiss"
-              ></button>
-            </div>
-          )}
           <section className="grid grid-cols-5 gap-3 mb-4 max-[1000px]:grid-cols-3 max-[620px]:grid-cols-2 max-[620px]:gap-2">
             <article className="bg-white border border-line rounded-xl p-4 grid gap-1.5 min-h-[106px] [&>span]:text-xs [&>span]:text-[#75827a] [&>span]:font-semibold [&>strong]:text-2xl [&>strong]:leading-none [&>strong]:font-normal [&>strong]:tracking-tight [&>strong]:text-[#26372d] [&>small]:text-xs [&>small]:text-[#9aa49d] max-[620px]:min-h-[91px] max-[620px]:p-3 max-[620px]:[&>strong]:text-xl">
               <span>Products stocked</span>
@@ -340,7 +329,7 @@ export default function InventoryPage() {
 
           <div className="flex justify-end mb-6">
             <Link
-              href="/admin/inventory/settings"
+              href={user?.role === "STAFF" ? "/staff/inventory/settings" : "/admin/inventory/settings"}
               className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark transition-colors animate-pulse"
             >
               Stock Settings
@@ -379,7 +368,7 @@ export default function InventoryPage() {
                     </select>
                     <Link
                       className="flex shrink-0 items-center gap-1 px-2 text-xs text-brand hover:underline"
-                      href="/admin/products"
+                      href={user?.role === "STAFF" ? "/staff/products" : "/admin/products"}
                     >
                       Manage products
                     </Link>
@@ -666,6 +655,7 @@ export default function InventoryPage() {
             </span>
           </footer>
         </div>
+        <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Inventory Action Completed" />
         <AppErrorModal message={actionError} onClose={() => setActionError("")} title="Stock action could not be completed" />
       </main>
     </div>

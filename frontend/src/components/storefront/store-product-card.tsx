@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useStoreCart } from "@/stores/store-cart.store";
+import { useToastStore } from "@/stores/toast.store";
 import type { StoreProduct } from "@/data/tools-catalog";
 
 interface StoreProductCardProps {
@@ -57,6 +58,12 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
       category: product.category,
       brand: product.brand,
       available: product.stockCount,
+    });
+    useToastStore.getState().showToast({
+      title: "Added to Cart",
+      message: product.name,
+      imageUrl: product.images[0],
+      price: product.price,
     });
   };
 
@@ -212,9 +219,9 @@ export function StoreProductCard({ product, showQuickView = true }: StoreProduct
               <span className="text-sm font-bold text-charcoal sm:text-base">
                 ₦{product.price.toLocaleString("en-NG")}
               </span>
-              {product.originalPrice != null && (
+              {product.originalPrice != null && Number(product.originalPrice) > Number(product.price) && (
                 <span className="hidden text-xs text-charcoal-light line-through sm:inline">
-                  ₦{product.originalPrice.toLocaleString("en-NG")}
+                  ₦{Number(product.originalPrice).toLocaleString("en-NG")}
                 </span>
               )}
             </div>

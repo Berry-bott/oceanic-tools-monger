@@ -5,13 +5,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 
 const adminRoles = new Set(["OWNER", "STAFF"]);
-function hasRouteAccess(user: { role: string; staffAccessRole?: string | null }, pathname: string) {
+function hasRouteAccess(user: { role: string; staffAccessRole?: string | null }, rawPathname: string) {
   if (user.role === "OWNER") return true;
   if (user.role !== "STAFF") return false;
-  if (pathname === "/staff/change-password") return true;
-  if (pathname === "/admin" || pathname === "/staff/dashboard") return false;
+  if (rawPathname === "/staff/change-password") return true;
+  if (rawPathname === "/admin" || rawPathname === "/staff" || rawPathname === "/staff/dashboard") return false;
+  const pathname = rawPathname.startsWith("/staff/")
+    ? rawPathname.replace(/^\/staff/, "/admin")
+    : rawPathname;
   const staffRoutes = ["/admin/customers", "/admin/notes"];
-  const seniorRoutes = ["/admin/sales/installments", "/admin/sales/returns", "/admin/products", "/admin/inventory", "/admin/purchasing", "/admin/orders", "/admin/creditors"];
+  const seniorRoutes = ["/admin/sales/installments", "/admin/sales/returns", "/admin/products", "/admin/inventory", "/admin/purchasing", "/admin/orders", "/admin/creditors", "/admin/categories"];
   return pathname === "/admin/sales" || staffRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)) || (user.staffAccessRole === "SENIOR_STAFF" && seniorRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`)));
 }
 
@@ -65,12 +68,22 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
         return;
       }
       if (currentUser.role === "STAFF" && !currentUser.mustChangePassword && pathname === "/staff/change-password") {
-        router.replace("/admin/sales");
+        router.replace("/staff/sales");
         return;
       }
-      if (currentUser.role === "STAFF" && !hasRouteAccess(currentUser, pathname)) {
-        router.replace("/admin/sales");
-        return;
+      if (currentUser.role === "STAFF") {
+        // If staff navigates to /admin/..., rewrite URL to /staff/...
+        if (pathname.startsWith("/admin/")) {
+          const staffEquivalent = pathname.replace(/^\/admin/, "/staff");
+          if (hasRouteAccess(currentUser, staffEquivalent)) {
+            router.replace(staffEquivalent);
+            return;
+          }
+        }
+        if (!hasRouteAccess(currentUser, pathname)) {
+          router.replace("/staff/sales");
+          return;
+        }
       }
       return;
     }

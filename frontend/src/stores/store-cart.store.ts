@@ -60,12 +60,10 @@ export const useStoreCart = create<StoreCartState>()(
                 ? { ...i, ...item, quantity: i.quantity + quantity }
                 : i
             ),
-            isDrawerOpen: true,
           });
         } else {
           set({
             items: [...items, { ...item, quantity }],
-            isDrawerOpen: true,
           });
         }
       },

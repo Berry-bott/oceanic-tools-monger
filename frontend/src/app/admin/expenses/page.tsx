@@ -8,6 +8,8 @@ import { AdminUiIcon } from "@/components/admin-ui-icon";
 import { AdminEmptyState } from "@/components/admin-empty-state";
 import { AdminPageSkeleton, AdminTableSkeleton } from "@/components/admin-loading-skeleton";
 import { AdminDialogPanel } from "@/components/admin-motion";
+import { AppErrorModal } from "@/components/app-error-modal";
+import { AppSuccessModal } from "@/components/app-success-modal";
 import { useCurrentUser } from "@/hooks/queries/use-current-user";
 import { useBranches } from "@/hooks/queries/use-branches";
 import { useRecordExpense } from "@/hooks/mutations/use-finance-mutations";
@@ -150,8 +152,6 @@ export default function ExpensesPage() {
         </div>
       </header>
 
-      {formError && <p className="m-0 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{formError}</p>}
-      {notice && <p className="m-0 rounded-lg border border-[#dcebe0] bg-[#f1f8f3] p-3 text-sm text-[#4b7557]" role="status">{notice}</p>}
       {expensesQuery.isError && <p className="m-0 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">Expense history could not be loaded: {expensesQuery.error instanceof Error ? expensesQuery.error.message : "Please try again."}</p>}
 
       <section className="grid gap-3 sm:grid-cols-2" aria-label="Expense totals">
@@ -230,6 +230,8 @@ export default function ExpensesPage() {
         </div>,
         document.body,
       )}
+      <AppSuccessModal message={notice} onClose={() => setNotice("")} title="Expense Recorded" />
+      <AppErrorModal message={formError} onClose={() => setFormError("")} title="Could not record expense" />
     </main>
   );
 }

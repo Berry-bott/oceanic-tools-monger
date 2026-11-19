@@ -53,12 +53,12 @@ export default function LoginPage() {
       const next = new URLSearchParams(window.location.search).get("next");
       const destination = next && next.startsWith("/")
         ? new URL(next, window.location.origin)
-        : new URL(session.user.role === "STAFF" ? "/admin/sales" : "/admin", window.location.origin);
+        : new URL(session.user.role === "STAFF" ? "/staff/sales" : "/admin", window.location.origin);
 
       router.replace(
         destination.origin === window.location.origin
           ? `${destination.pathname}${destination.search}${destination.hash}`
-          : session.user.role === "STAFF" ? "/admin/sales" : "/admin",
+          : session.user.role === "STAFF" ? "/staff/sales" : "/admin",
       );
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Sign in failed";
